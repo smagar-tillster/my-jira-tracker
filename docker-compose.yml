@@ -1,0 +1,41 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: mytracker-backend
+    ports:
+      - "3050:3050"
+    environment:
+      - PORT=3050
+      - NODE_ENV=development
+    env_file:
+      - ./backend/.env
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    networks:
+      - mytracker-network
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: mytracker-frontend
+    ports:
+      - "3051:3051"
+    environment:
+      - VITE_API_URL=http://localhost:3050/api
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - mytracker-network
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+networks:
+  mytracker-network:
+    driver: bridge
