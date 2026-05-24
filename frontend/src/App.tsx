@@ -52,6 +52,15 @@ function App() {
         ...issue,
         tags: tags[issue.key] || [],
         important: importantFlags[issue.key] || false,
+        searchText: [
+          issue.key,
+          issue.summary,
+          issue.assignee,
+          typeof issue.description === 'string' ? issue.description : JSON.stringify(issue.description || ''),
+          issue.client || '',
+          (issue.labels || []).join(' '),
+          (issue.components || []).join(' '),
+        ].join(' ').toLowerCase(),
       }));
       
       setIssues(issuesWithMetadata);
@@ -81,6 +90,15 @@ function App() {
         ...issue,
         tags: tags[issue.key] || [],
         important: importantFlags[issue.key] || false,
+        searchText: [
+          issue.key,
+          issue.summary,
+          issue.assignee,
+          typeof issue.description === 'string' ? issue.description : JSON.stringify(issue.description || ''),
+          issue.client || '',
+          (issue.labels || []).join(' '),
+          (issue.components || []).join(' '),
+        ].join(' ').toLowerCase(),
       }));
       
       setMyIssues(issuesWithMetadata);
@@ -110,6 +128,15 @@ function App() {
         ...issue,
         tags: tags[issue.key] || [],
         important: importantFlags[issue.key] || false,
+        searchText: [
+          issue.key,
+          issue.summary,
+          issue.assignee,
+          typeof issue.description === 'string' ? issue.description : JSON.stringify(issue.description || ''),
+          issue.client || '',
+          (issue.labels || []).join(' '),
+          (issue.components || []).join(' '),
+        ].join(' ').toLowerCase(),
       }));
       
       setDefects(issuesWithMetadata);

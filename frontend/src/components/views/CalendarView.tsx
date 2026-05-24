@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { JiraIssue } from '../../types';
+import { parseLocalDate } from '../../utils/dateUtils';
 
 interface CalendarViewProps {
   issues: JiraIssue[];
-  dateType?: 'dueDate' | 'releaseDate';
+  dateType?: 'dueDate' | 'releaseDate' | 'plannedUatDate';
 }
 
 const CalendarView: React.FC<CalendarViewProps> = ({ issues, dateType = 'dueDate' }) => {
@@ -11,12 +12,6 @@ const CalendarView: React.FC<CalendarViewProps> = ({ issues, dateType = 'dueDate
   const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
   const [modalDate, setModalDate] = useState<string | null>(null);
   const [modalIssues, setModalIssues] = useState<JiraIssue[]>([]);
-
-  // Filter issues that have dates based on selected dateType
-  const issuesWithDates = issues.filter((issue) => {
-    const dateValue = issue[dateType];
-    return dateValue && dateValue !== 'NA';
-  });
 
   const toggleDateExpansion = (dateKey: string) => {
     const newExpanded = new Set(expandedDates);
@@ -57,8 +52,8 @@ const CalendarView: React.FC<CalendarViewProps> = ({ issues, dateType = 'dueDate
     const threeDays = new Date(today);
     threeDays.setDate(threeDays.getDate() + 3);
     
-    const dueDate = issue.dueDate ? new Date(issue.dueDate) : null;
-    const releaseDate = issue.releaseDate && issue.releaseDate !== 'NA' ? new Date(issue.releaseDate) : null;
+    const dueDate = parseLocalDate(issue.dueDate);
+    const releaseDate = issue.releaseDate !== 'NA' ? parseLocalDate(issue.releaseDate) : null;
     
     // Red background for urgent (due/release <= today + 1)
     if ((dueDate && dueDate <= tomorrow) || (releaseDate && releaseDate <= tomorrow)) {
@@ -96,10 +91,21 @@ const CalendarView: React.FC<CalendarViewProps> = ({ issues, dateType = 'dueDate
 
   // Group issues by date
   const issuesByDate = new Map<string, JiraIssue[]>();
-  issuesWithDates.forEach((issue) => {
+  issues.forEach((issue) => {
     const dateValue = issue[dateType];
+    let date: Date | null = null;
+    
+    // If the issue has a valid date, use it
     if (dateValue && dateValue !== 'NA') {
-      const date = new Date(dateValue);
+      date = parseLocalDate(dateValue);
+    }
+    
+    // If no valid date, assign to 1st of current month
+    if (!date) {
+      date = new Date(year, month, 1);
+    }
+    
+    if (date) {
       const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
       if (!issuesByDate.has(dateKey)) {
         issuesByDate.set(dateKey, []);
@@ -140,7 +146,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ issues, dateType = 'dueDate
       {/* Calendar Header */}
       <div className="flex items-center justify-between mb-2 pb-2 border-b">
         <h2 className="text-lg font-bold text-gray-800">
-          {dateType === 'dueDate' ? 'Due Date' : 'Release Date'}: {currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+          {dateType === 'dueDate' ? 'Due Date' : dateType === 'plannedUatDate' ? 'UAT Date' : 'Release Date'}: {currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
         </h2>
         <div className="flex gap-2">
           <button
@@ -268,7 +274,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ issues, dateType = 'dueDate
 
       {/* Stats */}
       <div className="mt-2 text-center text-sm text-gray-600">
-        {issuesWithDates.length} issues with due dates this month
+        {issues.length} issues displayed (items without dates shown on 1st)
       </div>
 
       {/* Modal for showing all issues on a date */}
@@ -314,11 +320,14 @@ const CalendarView: React.FC<CalendarViewProps> = ({ issues, dateType = 'dueDate
                         {issue.assignee && (
                           <span className="text-gray-700">👤 {issue.assignee}</span>
                         )}
-                        {issue.dueDate && (
-                          <span className="text-orange-600">📅 {new Date(issue.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                        {issue.dueDate && parseLocalDate(issue.dueDate) && (
+                          <span className="text-orange-600">📅 {parseLocalDate(issue.dueDate)!.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
                         )}
-                        {issue.releaseDate && issue.releaseDate !== 'NA' && (
-                          <span className="text-green-600">🚀 {new Date(issue.releaseDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                        {issue.releaseDate && issue.releaseDate !== 'NA' && parseLocalDate(issue.releaseDate) && (
+                          <span className="text-green-600">🚀 {parseLocalDate(issue.releaseDate)!.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                        )}
+                        {issue.plannedUatDate && parseLocalDate(issue.plannedUatDate) && (
+                          <span className="text-purple-600">🧪 {parseLocalDate(issue.plannedUatDate)!.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
                         )}
                       </div>
                       {/* Line 2: Summary */}

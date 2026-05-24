@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { JiraIssue, Column, SortConfig, GroupConfig } from '../types';
 import { filterIssues, sortIssues, groupIssues } from '../services/dataProcessor';
 import { useIssueFiltering } from '../hooks/useIssueFiltering';
@@ -43,6 +43,7 @@ const DefectsTracker: React.FC<DefectsTrackerProps> = ({ issues, loading, onRefr
   const [sprintSearch, setSprintSearch] = useState('');
   const [clientSearch, setClientSearch] = useState('');
   const [groupBySearch, setGroupBySearch] = useState('');
+  const [assigneeSearch, setAssigneeSearch] = useState('');
   const [hideEmptyDefectCause, setHideEmptyDefectCause] = useState(false);
   
   const { searchTerm, setSearchTerm, filters, addFilter, removeFilter, toggleFilterValue, clearAllFilters } =
@@ -142,25 +143,23 @@ const DefectsTracker: React.FC<DefectsTrackerProps> = ({ issues, loading, onRefr
     return { startDate, today, anchorDate, currentPeriodIndex };
   };
 
-  // Filter and sort issues - restrict to last 8 weeks
-  let filteredIssues = filterIssues(issues, filters, searchTerm);
-  
-  // Apply 8-week date filter
-  const { startDate, today } = getEightWeekDateRange();
-  filteredIssues = filteredIssues.filter(issue => {
-    if (issue.statusCategoryChangeDate) {
-      const issueDate = new Date(issue.statusCategoryChangeDate);
-      issueDate.setHours(0, 0, 0, 0);
-      return issueDate >= startDate && issueDate <= today;
-    }
-    return false;
-  });
-  
-  if (hideEmptyDefectCause) {
-    filteredIssues = filteredIssues.filter(issue => !issue.defectCausedBy || issue.defectCausedBy === 'Other');
-  }
-  const sortedIssues = sortIssues(filteredIssues, sortConfig);
-  const groupedIssues = groupIssues(sortedIssues, groupConfig.column);
+  // Filter, restrict to last 8 weeks, sort and group (memoized)
+  const { filteredIssues, sortedIssues, groupedIssues, startDate, today } = useMemo(() => {
+    const f0 = filterIssues(issues, filters, searchTerm);
+    const { startDate: sDate, today: tDate } = getEightWeekDateRange();
+    const f1 = f0.filter(issue => {
+      if (issue.statusCategoryChangeDate) {
+        const issueDate = new Date(issue.statusCategoryChangeDate);
+        issueDate.setHours(0, 0, 0, 0);
+        return issueDate >= sDate && issueDate <= tDate;
+      }
+      return false;
+    });
+    const f2 = hideEmptyDefectCause ? f1.filter(issue => !issue.defectCausedBy || issue.defectCausedBy === 'Other') : f1;
+    const s = sortIssues(f2, sortConfig);
+    const g = groupIssues(s, groupConfig.column);
+    return { filteredIssues: f2, sortedIssues: s, groupedIssues: g, startDate: sDate, today: tDate };
+  }, [issues, filters, searchTerm, hideEmptyDefectCause, sortConfig, groupConfig]);
 
   // Count occurrences of a field value in filtered issues
   const countOccurrences = (field: keyof JiraIssue, value: string): number => {
@@ -266,35 +265,31 @@ const DefectsTracker: React.FC<DefectsTrackerProps> = ({ issues, loading, onRefr
   const getDefectCausedByData = () => {
     const causedBy: { [key: string]: number } = {};
     
-    // Get issues from last 8 weeks
-    const issuesInLast8Weeks = getIssuesInLast8Weeks();
-    const { startDate, today } = getEightWeekDateRange();
-    
-    console.log('Analyzing issues for defect causes (last 8 weeks). Total filtered issues:', issuesInLast8Weeks.length);
-    console.log('Date range:', startDate.toISOString().split('T')[0], 'to', today.toISOString().split('T')[0]);
-    
-    // Count only Bug/Defect issues that have defectCausedBy field populated
-    let issuesWithCause = 0;
-    issuesInLast8Weeks.forEach(issue => {
-      // Only include Bug or Defect issue types
-      if ((issue.issueType === 'Bug' || issue.issueType === 'Defect') && issue.defectCausedBy) {
-        issuesWithCause++;
-        const reason = issue.defectCausedBy;
-        causedBy[reason] = (causedBy[reason] || 0) + 1;
-      }
-    });
-    
-    console.log('Defect issues with defectCausedBy:', issuesWithCause);
-    console.log('Defect causes found:', Object.keys(causedBy));
-    
-    // Sort by count and get top 10
-    const result = Object.entries(causedBy)
-      .map(([reason, count]) => ({ reason, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 10);
-    
-    console.log('Defect Caused By Chart Data:', result);
-    return result;
+      // Get issues from last 8 weeks (already computed in memoized filteredIssues)
+      console.log('Analyzing issues for defect causes (last 8 weeks). Total filtered issues:', filteredIssues.length);
+      console.log('Date range:', startDate.toISOString().split('T')[0], 'to', today.toISOString().split('T')[0]);
+
+      // Count only Bug/Defect issues that have defectCausedBy field populated
+      let issuesWithCause = 0;
+      filteredIssues.forEach(issue => {
+        if ((issue.issueType === 'Bug' || issue.issueType === 'Defect') && issue.defectCausedBy) {
+          issuesWithCause++;
+          const reason = issue.defectCausedBy;
+          causedBy[reason] = (causedBy[reason] || 0) + 1;
+        }
+      });
+
+      console.log('Defect issues with defectCausedBy:', issuesWithCause);
+      console.log('Defect causes found:', Object.keys(causedBy));
+
+      // Sort by count and get top 10
+      const result = Object.entries(causedBy)
+        .map(([reason, count]) => ({ reason, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 10);
+
+      console.log('Defect Caused By Chart Data:', result);
+      return result;
   };
 
   // Calculate defects and tasks counts for last 8 weeks only
@@ -448,7 +443,16 @@ const DefectsTracker: React.FC<DefectsTrackerProps> = ({ issues, loading, onRefr
                 </button>
                 {openDropdown === 'assignee' && (
                   <div className="absolute z-40 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg p-2 min-w-[200px] max-h-[300px] overflow-y-auto">
+                    <input
+                      type="text"
+                      placeholder="Type to search..."
+                      value={assigneeSearch}
+                      onChange={(e) => setAssigneeSearch(e.target.value)}
+                      className="w-full px-2 py-1 mb-2 border border-gray-300 rounded text-sm"
+                      onClick={(e) => e.stopPropagation()}
+                    />
                     {Array.from(new Set(issues.map((i) => i.assignee)))
+                      .filter(assignee => assignee && assignee.toLowerCase().includes(assigneeSearch.toLowerCase()))
                       .sort((a, b) => countOccurrences('assignee', b) - countOccurrences('assignee', a))
                       .map((assignee) => {
                         const isSelected = isFilterSelected('assignee', assignee);

@@ -176,6 +176,9 @@ const mapIssues = (jiraIssues) => {
     const defectCausedBy = fields.customfield_16024?.value || fields.customfield_17343?.value || 'Other';
     const qaNotes = fields.customfield_17249 || null;
     const statusCategoryChangeDate = fields.statuscategorychangedate || null;
+    
+    // Extract Planned UAT Date
+    const plannedUatDate = fields.customfield_16050 || null;
 
     return {
       id: issue.id,
@@ -206,6 +209,7 @@ const mapIssues = (jiraIssues) => {
       defectCausedBy: defectCausedBy,
       qaNotes: qaNotes,
       statusCategoryChangeDate: statusCategoryChangeDate,
+      plannedUatDate: plannedUatDate,
     };
   });
 };
@@ -244,6 +248,7 @@ export const getIssuesByJQL = async (jql) => {
       'customfield_17343', // Defect Caused By (secondary)
       'customfield_17249', // QA Notes
       'statuscategorychangedate', // Status Category Change Date
+      'customfield_16050', // Planned UAT Date
     ];
     
     // Jira API - /search/jql uses nextPageToken for pagination

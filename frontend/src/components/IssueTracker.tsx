@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { JiraIssue, Column, SortConfig, GroupConfig } from '../types';
 import { filterIssues, sortIssues, groupIssues } from '../services/dataProcessor';
+import { useMemo } from 'react';
+import { parseLocalDate } from '../utils/dateUtils';
 import { useIssueFiltering } from '../hooks/useIssueFiltering';
 import { jiraApi } from '../services/api';
 import ListView from './views/ListView';
@@ -17,6 +19,7 @@ const DEFAULT_COLUMNS: Column[] = [
   { key: 'assignee', label: 'Assignee', sortable: true, filterable: true, type: 'assignee', width: 150 },
   { key: 'dueDate', label: 'Due Date', sortable: true, filterable: true, type: 'date', width: 120 },
   { key: 'releaseDate', label: 'Release Date', sortable: true, filterable: false, type: 'date', width: 130 },
+  { key: 'plannedUatDate', label: 'UAT Date', sortable: true, filterable: true, type: 'date', width: 120 },
   { key: 'client', label: 'Client', sortable: true, filterable: true, type: 'text', width: 120 },
   { key: 'components', label: 'Components', sortable: false, filterable: true, type: 'array', width: 200 },
   { key: 'sprint', label: 'Sprint', sortable: true, filterable: true, type: 'text', width: 200 },
@@ -29,7 +32,7 @@ const DEFAULT_COLUMNS: Column[] = [
 ];
 
 // Columns allowed in Group By
-const GROUPABLE_COLUMN_KEYS = ['issueType', 'status', 'assignee', 'dueDate', 'releaseDate', 'client', 'fixVersions'] as const;
+const GROUPABLE_COLUMN_KEYS = ['issueType', 'status', 'assignee', 'dueDate', 'releaseDate', 'plannedUatDate', 'client', 'fixVersions'] as const;
 const GROUPABLE_COLUMNS = DEFAULT_COLUMNS.filter(col => GROUPABLE_COLUMN_KEYS.includes(col.key as any));
 
 // FE Team members list
@@ -53,7 +56,7 @@ const IssueTracker: React.FC<IssueTrackerProps> = ({ issues, loading, onRefresh 
   const [sortConfig, setSortConfig] = useState<SortConfig>({ column: 'dueDate', direction: 'desc' });
   const [groupConfig, setGroupConfig] = useState<GroupConfig>({ column: null, direction: 'asc' });
   const [viewMode, setViewMode] = useState<'list' | 'calendar' | 'gantt'>('list');
-  const [calendarDateType, setCalendarDateType] = useState<'dueDate' | 'releaseDate'>('releaseDate');
+  const [calendarDateType, setCalendarDateType] = useState<'dueDate' | 'releaseDate' | 'plannedUatDate'>('releaseDate');
   const [fullScreenMode, setFullScreenMode] = useState(false);
   const [showImportantOnly, setShowImportantOnly] = useState(false);
   const [showUrgentOnly, setShowUrgentOnly] = useState(false);
@@ -66,6 +69,7 @@ const IssueTracker: React.FC<IssueTrackerProps> = ({ issues, loading, onRefresh 
   const [groupBySearch, setGroupBySearch] = useState('');
   const [clientSearch, setClientSearch] = useState('');
   const [componentSearch, setComponentSearch] = useState('');
+  const [assigneeSearch, setAssigneeSearch] = useState('');
   
   // Load FE Team members from backend
   const [feTeamMembers, setFETeamMembers] = useState<string[]>([]);
@@ -143,7 +147,7 @@ const IssueTracker: React.FC<IssueTrackerProps> = ({ issues, loading, onRefresh 
     tomorrow.setDate(tomorrow.getDate() + 1);
     
     const dueDate = issue.dueDate ? new Date(issue.dueDate) : null;
-    const releaseDate = issue.releaseDate && issue.releaseDate !== 'NA' ? new Date(issue.releaseDate) : null;
+    const releaseDate = issue.releaseDate && issue.releaseDate !== 'NA' ? parseLocalDate(issue.releaseDate) : null;
     
     return Boolean((dueDate && dueDate <= tomorrow) || (releaseDate && releaseDate <= tomorrow));
   };
@@ -156,7 +160,7 @@ const IssueTracker: React.FC<IssueTrackerProps> = ({ issues, loading, onRefresh 
     threeDays.setDate(threeDays.getDate() + 3);
     
     const dueDate = issue.dueDate ? new Date(issue.dueDate) : null;
-    const releaseDate = issue.releaseDate && issue.releaseDate !== 'NA' ? new Date(issue.releaseDate) : null;
+    const releaseDate = issue.releaseDate && issue.releaseDate !== 'NA' ? parseLocalDate(issue.releaseDate) : null;
     
     return Boolean((dueDate && dueDate <= threeDays) || (releaseDate && releaseDate <= threeDays));
   };
@@ -202,6 +206,7 @@ const IssueTracker: React.FC<IssueTrackerProps> = ({ issues, loading, onRefresh 
     const mapping: { [key: string]: string } = {
       'type': 'issueType',
       'status': 'status',
+      'assignee': 'assignee',
       'sprint': 'sprint',
       'release': 'releaseDate',
       'client': 'client',
@@ -296,37 +301,32 @@ const IssueTracker: React.FC<IssueTrackerProps> = ({ issues, loading, onRefresh 
     return index >= 0 ? colors[index % colors.length] : 'bg-gray-100';
   };
 
-  // Filter by important flag
-  let filteredByFlags = showImportantOnly 
-    ? issues.filter(issue => issue.important)
-    : issues;
+  const { filteredIssues, sortedIssues, groupedIssues } = useMemo(() => {
+    // Filter by flags first to reduce set before running general filters
+    let r = showImportantOnly ? issues.filter(issue => issue.important) : issues;
+    if (showUrgentOnly) r = r.filter(issue => isUrgent(issue));
+    if (showAttentionOnly) r = r.filter(issue => needsAttention(issue) && !isUrgent(issue));
+    if (showNoDueDate) r = r.filter(issue => !issue.dueDate);
+    if (showFETeamOnly) r = r.filter(issue => feTeamMembers.includes(issue.assignee));
 
-  // Filter by urgent
-  if (showUrgentOnly) {
-    filteredByFlags = filteredByFlags.filter(issue => isUrgent(issue));
-  }
+    const f = filterIssues(r, filters, searchTerm);
+    const s = sortIssues(f, sortConfig);
+    const g = groupIssues(s, groupConfig.column);
 
-  // Filter by attention
-  if (showAttentionOnly) {
-    filteredByFlags = filteredByFlags.filter(issue => needsAttention(issue) && !isUrgent(issue));
-  }
-
-  // Filter by no due date
-  if (showNoDueDate) {
-    filteredByFlags = filteredByFlags.filter(issue => !issue.dueDate);
-  }
-
-  // Filter by FE Team
-  if (showFETeamOnly) {
-    filteredByFlags = filteredByFlags.filter(issue => 
-      feTeamMembers.includes(issue.assignee)
-    );
-  }
-
-  // Filter and sort issues
-  const filteredIssues = filterIssues(filteredByFlags, filters, searchTerm);
-  const sortedIssues = sortIssues(filteredIssues, sortConfig);
-  const groupedIssues = groupIssues(sortedIssues, groupConfig.column);
+    return { filteredIssues: f, sortedIssues: s, groupedIssues: g };
+  }, [
+    issues,
+    showImportantOnly,
+    showUrgentOnly,
+    showAttentionOnly,
+    showNoDueDate,
+    showFETeamOnly,
+    feTeamMembers,
+    filters,
+    searchTerm,
+    sortConfig,
+    groupConfig,
+  ]);
 
   // Count occurrences of a field value in filtered issues
   const countOccurrences = (field: keyof JiraIssue, value: string): number => {
@@ -446,6 +446,16 @@ const IssueTracker: React.FC<IssueTrackerProps> = ({ issues, loading, onRefresh 
                     }`}
                   >
                     Release Date
+                  </button>
+                  <button
+                    onClick={() => setCalendarDateType('plannedUatDate')}
+                    className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                      calendarDateType === 'plannedUatDate'
+                        ? 'bg-purple-600 text-white'
+                        : 'bg-purple-100 text-purple-800 hover:bg-purple-200'
+                    }`}
+                  >
+                    UAT Date
                   </button>
                 </>
               )}
@@ -680,6 +690,52 @@ const IssueTracker: React.FC<IssueTrackerProps> = ({ issues, loading, onRefresh 
                               className="w-4 h-4"
                             />
                             <span className="text-sm">{status}</span>
+                          </div>
+                          <span className="text-xs text-gray-500">({count})</span>
+                        </label>
+                      );
+                    })}
+                </div>
+              )}
+            </div>
+
+            {/* Filter by Assignee */}
+            <div className="relative z-30 filter-dropdown">
+              <button
+                onClick={() => handleDropdownOpen('assignee')}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white hover:bg-gray-50 w-full text-left"
+              >
+                Assignee... {Array.isArray(filters.assignee) && filters.assignee.length > 0 && `(${filters.assignee.length})`}
+              </button>
+              {openDropdown === 'assignee' && (
+                <div className="absolute z-40 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg p-2 min-w-[200px] max-h-[300px] overflow-y-auto">
+                  <input
+                    type="text"
+                    placeholder="Type to search..."
+                    value={assigneeSearch}
+                    onChange={(e) => setAssigneeSearch(e.target.value)}
+                    className="w-full px-2 py-1 mb-2 border border-gray-300 rounded text-sm"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                  {Array.from(new Set(issues.map((i) => i.assignee)))
+                    .filter(assignee => assignee && assignee.toLowerCase().includes(assigneeSearch.toLowerCase()))
+                    .sort((a, b) => countOccurrences('assignee', b) - countOccurrences('assignee', a))
+                    .map((assignee) => {
+                      const isSelected = isFilterSelected('assignee', assignee);
+                      const count = countOccurrences('assignee', assignee);
+                      return (
+                        <label
+                          key={assignee}
+                          className="flex items-center justify-between gap-2 px-2 py-1 rounded cursor-pointer hover:bg-gray-100"
+                        >
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => togglePendingFilter('assignee', assignee)}
+                              className="w-4 h-4"
+                            />
+                            <span className="text-sm">{assignee}</span>
                           </div>
                           <span className="text-xs text-gray-500">({count})</span>
                         </label>

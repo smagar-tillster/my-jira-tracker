@@ -29,6 +29,9 @@ export interface JiraIssue {
   defectCausedBy?: string | null;
   qaNotes?: string | null;
   statusCategoryChangeDate?: string | null;
+  plannedUatDate?: string | null;
+  // Precomputed lowercased searchable text to speed up client-side search
+  searchText?: string;
 }
 
 export interface Column {

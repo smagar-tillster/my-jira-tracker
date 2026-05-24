@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { JiraIssue, Column, SortConfig } from '../../types';
 import { jiraApi } from '../../services/api';
+import { parseLocalDate } from '../../utils/dateUtils';
 
 interface ListViewProps {
   groupedIssues: Map<string, JiraIssue[]>;
@@ -54,8 +55,8 @@ const ListView: React.FC<ListViewProps> = ({
     const threeDays = new Date(today);
     threeDays.setDate(threeDays.getDate() + 3);
     
-    const dueDate = issue.dueDate ? new Date(issue.dueDate) : null;
-    const releaseDate = issue.releaseDate && issue.releaseDate !== 'NA' ? new Date(issue.releaseDate) : null;
+    const dueDate = parseLocalDate(issue.dueDate);
+    const releaseDate = issue.releaseDate !== 'NA' ? parseLocalDate(issue.releaseDate) : null;
     
     // Red background for urgent (due/release <= today + 1)
     if ((dueDate && dueDate <= tomorrow) || (releaseDate && releaseDate <= tomorrow)) {
@@ -74,7 +75,9 @@ const ListView: React.FC<ListViewProps> = ({
     if (value == null) return '—';
     if (Array.isArray(value)) return value.join(', ');
     if (columnType === 'date' && value) {
-      return new Date(value).toLocaleDateString('en-US', {
+      const date = parseLocalDate(value);
+      if (!date) return '—';
+      return date.toLocaleDateString('en-US', {
         year: 'numeric',
         month: 'short',
         day: 'numeric',
