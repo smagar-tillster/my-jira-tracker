@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { JiraIssue, Column, SortConfig } from '../../types';
 import { jiraApi } from '../../services/api';
 import { parseLocalDate } from '../../utils/dateUtils';
@@ -25,6 +25,31 @@ const ListView: React.FC<ListViewProps> = ({
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
     new Set([...groupedIssues.keys()].slice(0, 1))
   );
+
+  // Pre-compute background color for ALL visible issues in one pass.
+  // parseLocalDate is called once per issue instead of once per row per render.
+  const rowBgColors = useMemo(() => {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+    const threeDays = new Date(today); threeDays.setDate(today.getDate() + 3);
+    const map = new Map<string, string>();
+    for (const issues of groupedIssues.values()) {
+      for (const issue of issues) {
+        if (issue.statusCategory === 'Done' ||
+            issue.status === 'Ready for QA' ||
+            issue.status === 'In QA') {
+          map.set(issue.key, '');
+          continue;
+        }
+        const due = parseLocalDate(issue.dueDate);
+        const rel = issue.releaseDate !== 'NA' ? parseLocalDate(issue.releaseDate) : null;
+        if ((due && due <= tomorrow) || (rel && rel <= tomorrow)) { map.set(issue.key, 'bg-red-100'); continue; }
+        if ((due && due <= threeDays) || (rel && rel <= threeDays)) { map.set(issue.key, 'bg-orange-100'); continue; }
+        map.set(issue.key, '');
+      }
+    }
+    return map;
+  }, [groupedIssues]);
 
   const toggleGroupExpansion = (groupKey: string) => {
     const newExpanded = new Set(expandedGroups);
@@ -288,8 +313,7 @@ const ListView: React.FC<ListViewProps> = ({
 
               {/* Table Rows */}
               {issues.map((issue, index) => {
-                const rowBgColor = getRowBackgroundColor(issue);
-                const baseBg = rowBgColor || (index % 2 === 0 ? 'bg-white' : 'bg-gray-50');
+                  const baseBg = rowBgColors.get(issue.key) || (index % 2 === 0 ? 'bg-white' : 'bg-gray-50');
                 return (
                   <div
                     key={issue.id}

@@ -1,82 +1,26 @@
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { getDb } from '../db/database.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const FETEAM_FILE = path.join(__dirname, '../../data/feteam.json');
-
-/**
- * Load FE Team data from JSON file
- */
-function loadFETeamData() {
-  try {
-    if (!fs.existsSync(FETEAM_FILE)) {
-      fs.writeFileSync(FETEAM_FILE, JSON.stringify({}), 'utf8');
-      return {};
-    }
-    const data = fs.readFileSync(FETEAM_FILE, 'utf8');
-    return JSON.parse(data);
-  } catch (error) {
-    console.error('Error loading FE team data:', error);
-    return {};
-  }
-}
-
-/**
- * Save FE Team data to JSON file
- */
-function saveFETeamData(data) {
-  try {
-    fs.writeFileSync(FETEAM_FILE, JSON.stringify(data, null, 2), 'utf8');
-    return true;
-  } catch (error) {
-    console.error('Error saving FE team data:', error);
-    return false;
-  }
-}
-
-/**
- * Get all FE Team members
- * @returns {string[]} Array of assignee names who are FE Team members
- */
 export function getAllFETeamMembers() {
-  const data = loadFETeamData();
-  return Object.keys(data).filter(assignee => data[assignee] === true);
+  return getDb().prepare('SELECT assignee FROM feteam_members WHERE is_member = 1').all().map(r => r.assignee);
 }
 
-/**
- * Get FE Team membership flags as object
- * @returns {Record<string, boolean>} Object mapping assignee to membership status
- */
 export function getAllFETeamFlags() {
-  return loadFETeamData();
+  const rows = getDb().prepare('SELECT assignee, is_member FROM feteam_members').all();
+  const result = {};
+  for (const { assignee, is_member } of rows) result[assignee] = is_member === 1;
+  return result;
 }
 
-/**
- * Set FE Team membership for an assignee
- * @param {string} assignee - The assignee name
- * @param {boolean} isMember - Whether the assignee is a FE Team member
- */
 export function setFETeamMember(assignee, isMember) {
-  const data = loadFETeamData();
-  
+  const db = getDb();
   if (isMember) {
-    data[assignee] = true;
+    db.prepare('INSERT OR REPLACE INTO feteam_members (assignee, is_member) VALUES (?, 1)').run(assignee);
   } else {
-    delete data[assignee];
+    db.prepare('DELETE FROM feteam_members WHERE assignee = ?').run(assignee);
   }
-  
-  saveFETeamData(data);
 }
 
-/**
- * Check if an assignee is a FE Team member
- * @param {string} assignee - The assignee name
- * @returns {boolean} True if the assignee is a FE Team member
- */
 export function isFETeamMember(assignee) {
-  const data = loadFETeamData();
-  return data[assignee] === true;
+  const row = getDb().prepare('SELECT is_member FROM feteam_members WHERE assignee = ?').get(assignee);
+  return row ? row.is_member === 1 : false;
 }
