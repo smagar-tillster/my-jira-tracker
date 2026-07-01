@@ -451,7 +451,7 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
                 isSelected={isFilterSelected} onToggle={togglePendingFilter} countFn={v => countOcc('issueType', v)} />
 
               {/* Status filter */}
-              <DropdownFilter label="Status" dropKey="status" search="" setSearch={() => {}}
+              <DropdownFilter label="Status" dropKey="status"
                 options={dropdownOptions.status}
                 openDropdown={openDropdown} onOpen={handleDropdownOpen}
                 isSelected={isFilterSelected} onToggle={togglePendingFilter} countFn={v => countOcc('status', v)} />
@@ -530,8 +530,8 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
 interface DropdownFilterProps {
   label: string;
   dropKey: string;
-  search: string;
-  setSearch: (v: string) => void;
+  search?: string;
+  setSearch?: (v: string) => void;
   options: string[];
   openDropdown: string | null;
   onOpen: (key: string) => void;
@@ -544,7 +544,7 @@ const DropdownFilter: React.FC<DropdownFilterProps> = ({
   label, dropKey, search, setSearch, options, openDropdown, onOpen, isSelected, onToggle, countFn,
 }) => {
   const activeCount = options.filter(o => isSelected(dropKey, o)).length;
-  const filtered = options.filter(o => o.toLowerCase().includes(search.toLowerCase()))
+  const filtered = options.filter(o => o.toLowerCase().includes((search ?? '').toLowerCase()))
     .sort((a, b) => countFn(b) - countFn(a));
 
   return (
@@ -555,8 +555,8 @@ const DropdownFilter: React.FC<DropdownFilterProps> = ({
       </button>
       {openDropdown === dropKey && (
         <div className="absolute z-40 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg p-2 min-w-[200px] max-h-[300px] overflow-y-auto">
-          {setSearch !== (() => {}) && (
-            <input type="text" placeholder="Search..." value={search} onChange={e => setSearch(e.target.value)}
+          {setSearch && (
+            <input type="text" placeholder="Search..." value={search ?? ''} onChange={e => setSearch(e.target.value)}
               className="w-full px-2 py-1 mb-2 border border-gray-300 rounded text-sm" onClick={e => e.stopPropagation()} />
           )}
           {filtered.map(opt => (

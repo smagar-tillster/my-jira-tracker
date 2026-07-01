@@ -61,41 +61,6 @@ const ListView: React.FC<ListViewProps> = ({
     setExpandedGroups(newExpanded);
   };
 
-  // Helper function to get row background color
-  const getRowBackgroundColor = (issue: JiraIssue): string => {
-    // Don't highlight Done issues
-    if (issue.statusCategory === 'Done') {
-      return '';
-    }
-    
-    // Don't highlight Ready for QA or In QA - show as normal
-    if (issue.status === 'Ready for QA' || issue.status === 'In QA') {
-      return '';
-    }
-    
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const threeDays = new Date(today);
-    threeDays.setDate(threeDays.getDate() + 3);
-    
-    const dueDate = parseLocalDate(issue.dueDate);
-    const releaseDate = issue.releaseDate !== 'NA' ? parseLocalDate(issue.releaseDate) : null;
-    
-    // Red background for urgent (due/release <= today + 1)
-    if ((dueDate && dueDate <= tomorrow) || (releaseDate && releaseDate <= tomorrow)) {
-      return 'bg-red-100';
-    }
-    
-    // Orange background for attention (due/release <= today + 3)
-    if ((dueDate && dueDate <= threeDays) || (releaseDate && releaseDate <= threeDays)) {
-      return 'bg-orange-100';
-    }
-    
-    return '';
-  };
-
   const formatCellValue = (value: any, columnType: string): string => {
     if (value == null) return '—';
     if (Array.isArray(value)) return value.join(', ');
