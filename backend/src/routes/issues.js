@@ -3,6 +3,7 @@ import { getIssuesByJQL, getMockIssues, getIssuesFromFilter } from '../services/
 import { getAllTags, setIssueTags, getAllUniqueTags } from '../services/tagService.js';
 import { getAllImportantFlags, setIssueImportant } from '../services/importantService.js';
 import { getAllFETeamFlags, setFETeamMember } from '../services/feteamService.js';
+import { getAllMyDayFlags, setIssueMyDay } from '../services/mydayService.js';
 
 const router = express.Router();
 
@@ -201,6 +202,36 @@ router.put('/important/:issueKey', (req, res) => {
       success: false,
       error: error.message || 'Failed to set important flag',
     });
+  }
+});
+
+/**
+ * GET /api/myday
+ * Get all My Day flags for issues
+ */
+router.get('/myday', (req, res) => {
+  try {
+    res.json({ success: true, data: getAllMyDayFlags() });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * PUT /api/myday/:issueKey
+ * Set My Day flag for an issue
+ */
+router.put('/myday/:issueKey', (req, res) => {
+  try {
+    const { issueKey } = req.params;
+    const { myDay } = req.body;
+    if (typeof myDay !== 'boolean') {
+      return res.status(400).json({ success: false, error: 'myDay must be a boolean' });
+    }
+    setIssueMyDay(issueKey, myDay);
+    res.json({ success: true, data: { issueKey, myDay } });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 

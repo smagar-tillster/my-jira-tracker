@@ -6,9 +6,8 @@ import { getDb } from './database.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const DATA_DIR = path.join(__dirname, '..', '..', 'data');
-
 export function migrateFromJson() {
+  const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', '..', 'data');
   const db = getDb();
 
   const { count: tagCount }       = db.prepare('SELECT COUNT(*) as count FROM issue_tags').get();

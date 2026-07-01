@@ -129,6 +129,7 @@ const ListView: React.FC<ListViewProps> = ({
   };
 
   const [importantStates, setImportantStates] = React.useState<Record<string, boolean>>({});
+  const [myDayStates, setMyDayStates] = React.useState<Record<string, boolean>>({});
 
   const renderCell = (issue: JiraIssue, column: Column) => {
     const value = issue[column.key];
@@ -136,21 +137,33 @@ const ListView: React.FC<ListViewProps> = ({
     // Special handling for important star
     if (column.key === 'important') {
       const isImportant = importantStates[issue.key] ?? Boolean(issue.important);
-      
+      const isMyDay = myDayStates[issue.key] ?? Boolean(issue.myDay);
+
       return (
-        <button
-          onClick={async (e) => {
-            e.stopPropagation();
-            const newValue = !isImportant;
-            setImportantStates(prev => ({ ...prev, [issue.key]: newValue }));
-            issue.important = newValue;
-            await jiraApi.setIssueImportant(issue.key, newValue);
-          }}
-          className="text-2xl cursor-pointer hover:scale-110 transition-transform"
-          title={isImportant ? "Remove from important" : "Mark as important"}
-        >
-          {isImportant ? '⭐' : '☆'}
-        </button>
+        <div className="flex gap-1 items-center">
+          <button
+            onClick={async (e) => {
+              e.stopPropagation();
+              const newValue = !isImportant;
+              setImportantStates(prev => ({ ...prev, [issue.key]: newValue }));
+              issue.important = newValue;
+              await jiraApi.setIssueImportant(issue.key, newValue);
+            }}
+            className={`text-lg cursor-pointer hover:scale-110 transition-transform ${isImportant ? 'text-yellow-500' : 'text-gray-300 hover:text-yellow-400'}`}
+            title={isImportant ? "Remove Imp" : "Mark Imp"}
+          >⭐</button>
+          <button
+            onClick={async (e) => {
+              e.stopPropagation();
+              const newValue = !isMyDay;
+              setMyDayStates(prev => ({ ...prev, [issue.key]: newValue }));
+              issue.myDay = newValue;
+              await jiraApi.setIssueMyDay(issue.key, newValue);
+            }}
+            className={`text-lg cursor-pointer hover:scale-110 transition-transform ${isMyDay ? 'text-blue-500' : 'text-gray-300 hover:text-blue-400'}`}
+            title={isMyDay ? "Remove from My Day" : "Add to My Day"}
+          >☀️</button>
+        </div>
       );
     }
 

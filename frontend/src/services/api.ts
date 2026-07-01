@@ -144,6 +144,25 @@ export const jiraApi = {
     }
   },
 
+  getAllMyDayFlags: async (): Promise<Record<string, boolean>> => {
+    try {
+      const response = await apiClient.get('/myday');
+      return response.data.data || {};
+    } catch (error) {
+      console.error('Error fetching my day flags:', error);
+      throw error;
+    }
+  },
+
+  setIssueMyDay: async (issueKey: string, myDay: boolean): Promise<void> => {
+    try {
+      await apiClient.put(`/myday/${issueKey}`, { myDay });
+    } catch (error) {
+      console.error('Error setting my day flag:', error);
+      throw error;
+    }
+  },
+
   /**
    * Get all FE Team membership flags
    */

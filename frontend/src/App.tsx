@@ -1,14 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import IssueTracker from './components/IssueTracker';
-import MyIssuesTracker from './components/MyIssuesTracker';
 import DefectsTracker from './components/DefectsTracker';
 import JiraTasksTracker from './components/JiraTasksTracker';
 import ArchiveTracker from './components/ArchiveTracker';
-import HomeTab from './components/HomeTab';
+import TodoPage from './components/TodoPage';
 import { jiraApi } from './services/api';
 import { JiraIssue } from './types';
 
-type MainTab = 'home' | 'jira-tasks' | 'archive' | 'accomplishments' | 'sprint' | 'me' | 'defects';
+type MainTab = 'tasks' | 'todo' | 'archive' | 'accomplishments' | 'defects';
 
 function App() {
   const [issues, setIssues] = useState<JiraIssue[]>([]);
@@ -19,11 +17,11 @@ function App() {
   const [defectsLoading, setDefectsLoading] = useState(false);
   const defectsFetched = useRef(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<MainTab>('home');
+  const [activeTab, setActiveTab] = useState<MainTab>('tasks');
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
   const [addTodoTrigger, setAddTodoTrigger] = useState(0);
-  // Pre-mount home + jira-tasks immediately so data is ready before first visit
-  const [visitedTabs, setVisitedTabs] = useState<Set<MainTab>>(new Set<MainTab>(['home', 'jira-tasks']));
+  // Pre-mount tasks + todo immediately so data is ready before first visit
+  const [visitedTabs, setVisitedTabs] = useState<Set<MainTab>>(new Set<MainTab>(['tasks', 'todo']));
 
   const [initialLoaded, setInitialLoaded] = useState(false);
   const initialLoadRef = useRef(false);
@@ -66,17 +64,19 @@ function App() {
       setError(null);
       // Use backend JIRA_FILTER_ID from .env (60259 - current sprint)
       const data = await jiraApi.getIssues(false);
-      
-      // Fetch tags and important flags and merge with issues
-      const [tags, importantFlags] = await Promise.all([
+
+      // Fetch tags, important, and my-day flags and merge with issues
+      const [tags, importantFlags, myDayFlags] = await Promise.all([
         jiraApi.getAllTags(),
         jiraApi.getAllImportantFlags(),
+        jiraApi.getAllMyDayFlags(),
       ]);
-      
+
       const issuesWithMetadata = data.map(issue => ({
         ...issue,
         tags: tags[issue.key] || [],
         important: importantFlags[issue.key] || false,
+        myDay: myDayFlags[issue.key] || false,
         searchText: [
           issue.key,
           issue.summary,
@@ -87,7 +87,7 @@ function App() {
           (issue.components || []).join(' '),
         ].join(' ').toLowerCase(),
       }));
-      
+
       setIssues(issuesWithMetadata);
       setLastRefresh(new Date());
     } catch (err) {
@@ -104,17 +104,19 @@ function App() {
       setError(null);
       // Use configurable filter ID for "Me" view (all tickets assigned to current user)
       const data = await jiraApi.getIssuesFromFilter(filterIds.me);
-      
-      // Fetch tags and important flags and merge with issues
-      const [tags, importantFlags] = await Promise.all([
+
+      // Fetch tags, important, and my-day flags and merge with issues
+      const [tags, importantFlags, myDayFlags] = await Promise.all([
         jiraApi.getAllTags(),
         jiraApi.getAllImportantFlags(),
+        jiraApi.getAllMyDayFlags(),
       ]);
-      
+
       const issuesWithMetadata = data.map(issue => ({
         ...issue,
         tags: tags[issue.key] || [],
         important: importantFlags[issue.key] || false,
+        myDay: myDayFlags[issue.key] || false,
         searchText: [
           issue.key,
           issue.summary,
@@ -125,7 +127,7 @@ function App() {
           (issue.components || []).join(' '),
         ].join(' ').toLowerCase(),
       }));
-      
+
       setMyIssues(issuesWithMetadata);
       setLastRefresh(new Date());
     } catch (err) {
@@ -136,29 +138,25 @@ function App() {
     }
   }, [filterIds.me]);
 
-  // Stable combined refresh — avoid recreating inline lambda on every App render
-  const onRefreshBoth = useCallback(() => {
-    fetchIssues();
-    fetchMyIssues();
-  }, [fetchIssues, fetchMyIssues]);
-
   const fetchDefects = useCallback(async () => {
     try {
       setDefectsLoading(true);
       setError(null);
       // Use configurable filter ID for "Defects" view
       const data = await jiraApi.getIssuesFromFilter(filterIds.defects);
-      
-      // Fetch tags and important flags and merge with issues
-      const [tags, importantFlags] = await Promise.all([
+
+      // Fetch tags, important, and my-day flags and merge with issues
+      const [tags, importantFlags, myDayFlags] = await Promise.all([
         jiraApi.getAllTags(),
         jiraApi.getAllImportantFlags(),
+        jiraApi.getAllMyDayFlags(),
       ]);
-      
+
       const issuesWithMetadata = data.map(issue => ({
         ...issue,
         tags: tags[issue.key] || [],
         important: importantFlags[issue.key] || false,
+        myDay: myDayFlags[issue.key] || false,
         searchText: [
           issue.key,
           issue.summary,
@@ -169,7 +167,7 @@ function App() {
           (issue.components || []).join(' '),
         ].join(' ').toLowerCase(),
       }));
-      
+
       setDefects(issuesWithMetadata);
       setLastRefresh(new Date());
     } catch (err) {
@@ -212,32 +210,17 @@ function App() {
               </div>
             )}
 
-            {/* New primary tabs */}
+            {/* Primary tabs */}
             {([
-              { id: 'home',            label: '🏠 Home' },
-              { id: 'jira-tasks',      label: '📋 Jira Tasks' },
+              { id: 'tasks',           label: '📋 Tasks' },
+              { id: 'todo',            label: '✅ Todo' },
               { id: 'archive',         label: '🗃 Archive' },
               { id: 'accomplishments', label: '🏆 Accomplishments' },
+              { id: 'defects',         label: '🐞 Defects' },
             ] as { id: MainTab; label: string }[]).map(tab => (
               <button key={tab.id} onClick={() => switchTab(tab.id)}
                 className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                   activeTab === tab.id ? 'bg-white text-blue-700' : 'bg-blue-500 text-white hover:bg-blue-400'
-                }`}>
-                {tab.label}
-              </button>
-            ))}
-
-            <div className="h-5 w-px bg-blue-400 mx-1" />
-
-            {/* Legacy tabs */}
-            {([
-              { id: 'sprint',  label: 'Current Sprint' },
-              { id: 'me',      label: 'Me' },
-              { id: 'defects', label: 'Defects' },
-            ] as { id: MainTab; label: string }[]).map(tab => (
-              <button key={tab.id} onClick={() => switchTab(tab.id)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                  activeTab === tab.id ? 'bg-white text-blue-700' : 'bg-blue-500/70 text-white hover:bg-blue-400'
                 }`}>
                 {tab.label}
               </button>
@@ -249,20 +232,8 @@ function App() {
       {/* Main Content — all visited tabs stay mounted and overlap via absolute positioning.
            display:none skips browser paint entirely; React state is preserved since components never unmount. */}
       <main className="flex-1 overflow-hidden relative">
-        {visitedTabs.has('home') && (
-          <div className="absolute inset-0" style={activeTab !== 'home' ? { display: 'none' } : undefined}>
-            <HomeTab
-              sprintIssues={issues}
-              myIssues={myIssues}
-              sprintLoading={loading}
-              myLoading={myLoading}
-              onRefresh={onRefreshBoth}
-              addTodoTrigger={addTodoTrigger}
-            />
-          </div>
-        )}
-        {visitedTabs.has('jira-tasks') && (
-          <div className="absolute inset-0" style={activeTab !== 'jira-tasks' ? { display: 'none' } : undefined}>
+        {visitedTabs.has('tasks') && (
+          <div className="absolute inset-0" style={activeTab !== 'tasks' ? { display: 'none' } : undefined}>
             <JiraTasksTracker
               sprintIssues={issues}
               myIssues={myIssues}
@@ -271,6 +242,11 @@ function App() {
               onRefreshSprint={fetchIssues}
               onRefreshMe={fetchMyIssues}
             />
+          </div>
+        )}
+        {visitedTabs.has('todo') && (
+          <div className="absolute inset-0" style={activeTab !== 'todo' ? { display: 'none' } : undefined}>
+            <TodoPage addTodoTrigger={addTodoTrigger} />
           </div>
         )}
         {visitedTabs.has('archive') && (
@@ -287,16 +263,6 @@ function App() {
             </div>
           </div>
         )}
-        {visitedTabs.has('sprint') && (
-          <div className="absolute inset-0" style={activeTab !== 'sprint' ? { display: 'none' } : undefined}>
-            <IssueTracker issues={issues} loading={loading} onRefresh={fetchIssues} />
-          </div>
-        )}
-        {visitedTabs.has('me') && (
-          <div className="absolute inset-0" style={activeTab !== 'me' ? { display: 'none' } : undefined}>
-            <MyIssuesTracker issues={myIssues} loading={myLoading} onRefresh={fetchMyIssues} />
-          </div>
-        )}
         {visitedTabs.has('defects') && (
           <div className="absolute inset-0" style={activeTab !== 'defects' ? { display: 'none' } : undefined}>
             <DefectsTracker issues={defects} loading={defectsLoading} onRefresh={fetchDefects} />
@@ -306,7 +272,7 @@ function App() {
 
       {/* Floating Add To-Do button */}
       <button
-        onClick={() => { switchTab('home'); setAddTodoTrigger(t => t + 1); }}
+        onClick={() => { switchTab('todo'); setAddTodoTrigger(t => t + 1); }}
         title="Add To-Do"
         className="fixed bottom-6 right-6 z-50 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white text-2xl font-light rounded-full shadow-xl flex items-center justify-center transition-transform hover:scale-110 active:scale-95">
         +
@@ -316,11 +282,9 @@ function App() {
       <footer className="bg-gray-800 text-gray-300 text-xs px-6 py-2 text-center">
         <p>
           My Tracker v3.0 | Issues:{' '}
-          {activeTab === 'jira-tasks' ? `${issues.length} sprint + ${myIssues.length} me` :
-           activeTab === 'sprint'     ? issues.length :
-           activeTab === 'me'         ? myIssues.length :
-           activeTab === 'defects'    ? defects.length :
-           activeTab === 'archive'    ? 'loaded in tab' : '—'} |{' '}
+          {activeTab === 'tasks'   ? `${issues.length} sprint + ${myIssues.length} me` :
+           activeTab === 'defects' ? defects.length :
+           activeTab === 'archive' ? 'loaded in tab' : 'loaded in tab'} |{' '}
           Last Refresh: {lastRefresh.toLocaleTimeString()}
         </p>
       </footer>

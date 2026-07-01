@@ -7,7 +7,6 @@ import { useIssueFiltering } from '../hooks/useIssueFiltering';
 import { jiraApi } from '../services/api';
 import ListView from './views/ListView';
 import CalendarView from './views/CalendarView';
-import GanttView from './views/GanttView';
 
 // Simple hook that returns a value that only updates after `delay` ms of no changes
 function useDebounce<T>(value: T, delay: number): T {
@@ -84,13 +83,14 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
   const [visibleColumns] = useState<Column[]>(DEFAULT_COLUMNS);
   const [sortConfig, setSortConfig]   = useState<SortConfig>({ column: 'dueDate', direction: 'desc' });
   const [groupConfig, setGroupConfig] = useState<GroupConfig>({ column: null, direction: 'asc' });
-  const [viewMode, setViewMode]       = useState<'list' | 'calendar' | 'gantt'>('list');
+  const [viewMode, setViewMode]       = useState<'list' | 'calendar'>('list');
   const [calendarDateType, setCalendarDateType] = useState<'dueDate' | 'releaseDate' | 'plannedUatDate'>('releaseDate');
   const [fullScreenMode, setFullScreenMode]     = useState(false);
   const [sourceFilter, setSourceFilter]         = useState<SourceFilter>('all');
 
   // Quick-filter toggles
   const [showImportantOnly, setShowImportantOnly] = useState(false);
+  const [showMyDayOnly, setShowMyDayOnly]         = useState(false);
   const [showUrgentOnly, setShowUrgentOnly]       = useState(false);
   const [showAttentionOnly, setShowAttentionOnly] = useState(false);
   const [showNoDueDate, setShowNoDueDate]         = useState(false);
@@ -249,6 +249,7 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
 
     // 2. Quick-filter toggles
     if (showImportantOnly) r = r.filter(i => i.important);
+    if (showMyDayOnly)     r = r.filter(i => i.myDay);
     if (showUrgentOnly)    r = r.filter(i => isUrgent(i));
     if (showAttentionOnly) r = r.filter(i => needsAttention(i) && !isUrgent(i));
     if (showNoDueDate)     r = r.filter(i => !i.dueDate);
@@ -263,7 +264,7 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
     const s = sortIssues(f, sortConfig);
     const g = groupIssues(s, groupConfig.column);
     return { filteredIssues: f, sortedIssues: s, groupedIssues: g };
-  }, [mergedIssues, sprintIssues, myIssues, sourceFilter, showImportantOnly, showUrgentOnly, showAttentionOnly, showNoDueDate, showFETeamOnly, feTeamMembers, filters, effectiveSCFilter, debouncedSearch, sortConfig, groupConfig]);
+  }, [mergedIssues, sprintIssues, myIssues, sourceFilter, showImportantOnly, showMyDayOnly, showUrgentOnly, showAttentionOnly, showNoDueDate, showFETeamOnly, feTeamMembers, filters, effectiveSCFilter, debouncedSearch, sortConfig, groupConfig]);
 
   // Pre-compute occurrence counts for dropdown options so countFn is O(1)
   const occurrenceCounts = useMemo(() => {
@@ -344,14 +345,14 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
               <div className="h-6 w-px bg-gray-300" />
 
               {/* View mode */}
-              {(['list','calendar','gantt'] as const).map(mode => (
+              {(['list','calendar'] as const).map(mode => (
                 <button key={mode} onClick={() => setViewMode(mode)}
                   className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${viewMode === mode ? 'bg-indigo-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
-                  {mode === 'list' ? '📋 List' : mode === 'calendar' ? '📅 Calendar' : '📊 Gantt'}
+                  {mode === 'list' ? '📋 List' : '📅 Calendar'}
                 </button>
               ))}
 
-              {(viewMode === 'calendar' || viewMode === 'gantt') && (
+              {viewMode === 'calendar' && (
                 <>
                   {(['dueDate','releaseDate','plannedUatDate'] as const).map(dt => (
                     <button key={dt} onClick={() => setCalendarDateType(dt)}
@@ -367,7 +368,11 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
               {/* Quick filters */}
               <button onClick={() => setShowImportantOnly(!showImportantOnly)}
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${showImportantOnly ? 'bg-yellow-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
-                ⭐ Important
+                ⭐ Imp
+              </button>
+              <button onClick={() => setShowMyDayOnly(!showMyDayOnly)}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${showMyDayOnly ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
+                ☀️ My Day
               </button>
               <button onClick={() => setShowUrgentOnly(!showUrgentOnly)}
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${showUrgentOnly ? 'bg-red-600 text-white' : 'bg-red-100 text-red-800 hover:bg-red-200'}`}>
@@ -513,10 +518,8 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
           <ListView groupedIssues={groupedIssues} visibleColumns={visibleColumns}
             sortConfig={sortConfig} onSort={handleSort} onToggleFilterValue={toggleFilterValue}
             feTeamMembers={feTeamMembers} onToggleFETeam={toggleFETeamMember} />
-        ) : viewMode === 'calendar' ? (
-          <CalendarView issues={sortedIssues} dateType={calendarDateType} />
         ) : (
-          <GanttView issues={sortedIssues} dateType={calendarDateType} />
+          <CalendarView issues={sortedIssues} dateType={calendarDateType} />
         )}
       </div>
     </div>

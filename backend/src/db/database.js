@@ -5,12 +5,12 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const DB_PATH = path.join(__dirname, '..', '..', 'data', 'tracker.db');
-
 let _db = null;
 
 export function getDb() {
   if (!_db) {
+    const dataDir = process.env.DATA_DIR || path.join(__dirname, '..', '..', 'data');
+    const DB_PATH = path.join(dataDir, 'tracker.db');
     _db = new Database(DB_PATH);
     _db.pragma('journal_mode = WAL');
     _db.pragma('foreign_keys = ON');
@@ -39,6 +39,10 @@ export function initDb() {
     CREATE TABLE IF NOT EXISTS issue_important (
       issue_key TEXT PRIMARY KEY,
       important INTEGER NOT NULL DEFAULT 1
+    );
+
+    CREATE TABLE IF NOT EXISTS issue_myday (
+      issue_key TEXT PRIMARY KEY
     );
 
     CREATE TABLE IF NOT EXISTS feteam_members (

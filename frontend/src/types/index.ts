@@ -23,6 +23,7 @@ export interface JiraIssue {
   client: string | null;
   tags?: string[];
   important?: boolean;
+  myDay?: boolean;
   parentSummary?: string | null;
   timeSpent?: number;
   originalEstimate?: number;
