@@ -26,6 +26,7 @@ services:
     ports:
       - "3051:3051"
     environment:
+      # Use localhost so the browser can access the backend through the exposed port
       - VITE_API_URL=http://localhost:3050/api
     volumes:
       - ./frontend:/app

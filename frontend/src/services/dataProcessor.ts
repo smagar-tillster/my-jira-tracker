@@ -48,15 +48,13 @@ export const filterIssues = (
     // Search filter
     if (searchTerm.trim()) {
       const searchLower = searchTerm.toLowerCase();
-      const descriptionText = typeof issue.description === 'string' 
-        ? issue.description 
-        : JSON.stringify(issue.description || '');
-      
-      const matches =
-        issue.key.toLowerCase().includes(searchLower) ||
-        issue.summary.toLowerCase().includes(searchLower) ||
-        issue.assignee.toLowerCase().includes(searchLower) ||
-        descriptionText.toLowerCase().includes(searchLower);
+      // Use precomputed searchText when available to avoid repeated JSON.stringify and concat cost
+      const hay = (issue.searchText || (
+        [issue.key, issue.summary, issue.assignee, String(issue.description || ''), String(issue.client || '')]
+          .join(' ') 
+      )).toLowerCase();
+
+      const matches = hay.includes(searchLower);
 
       if (!matches) return false;
     }

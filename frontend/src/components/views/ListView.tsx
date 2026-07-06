@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { JiraIssue, Column, SortConfig } from '../../types';
 import { jiraApi } from '../../services/api';
+import { parseLocalDate } from '../../utils/dateUtils';
 
 interface ListViewProps {
   groupedIssues: Map<string, JiraIssue[]>;
@@ -25,6 +26,31 @@ const ListView: React.FC<ListViewProps> = ({
     new Set([...groupedIssues.keys()].slice(0, 1))
   );
 
+  // Pre-compute background color for ALL visible issues in one pass.
+  // parseLocalDate is called once per issue instead of once per row per render.
+  const rowBgColors = useMemo(() => {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+    const threeDays = new Date(today); threeDays.setDate(today.getDate() + 3);
+    const map = new Map<string, string>();
+    for (const issues of groupedIssues.values()) {
+      for (const issue of issues) {
+        if (issue.statusCategory === 'Done' ||
+            issue.status === 'Ready for QA' ||
+            issue.status === 'In QA') {
+          map.set(issue.key, '');
+          continue;
+        }
+        const due = parseLocalDate(issue.dueDate);
+        const rel = issue.releaseDate !== 'NA' ? parseLocalDate(issue.releaseDate) : null;
+        if ((due && due <= tomorrow) || (rel && rel <= tomorrow)) { map.set(issue.key, 'bg-red-100'); continue; }
+        if ((due && due <= threeDays) || (rel && rel <= threeDays)) { map.set(issue.key, 'bg-orange-100'); continue; }
+        map.set(issue.key, '');
+      }
+    }
+    return map;
+  }, [groupedIssues]);
+
   const toggleGroupExpansion = (groupKey: string) => {
     const newExpanded = new Set(expandedGroups);
     if (newExpanded.has(groupKey)) {
@@ -35,46 +61,13 @@ const ListView: React.FC<ListViewProps> = ({
     setExpandedGroups(newExpanded);
   };
 
-  // Helper function to get row background color
-  const getRowBackgroundColor = (issue: JiraIssue): string => {
-    // Don't highlight Done issues
-    if (issue.statusCategory === 'Done') {
-      return '';
-    }
-    
-    // Don't highlight Ready for QA or In QA - show as normal
-    if (issue.status === 'Ready for QA' || issue.status === 'In QA') {
-      return '';
-    }
-    
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const threeDays = new Date(today);
-    threeDays.setDate(threeDays.getDate() + 3);
-    
-    const dueDate = issue.dueDate ? new Date(issue.dueDate) : null;
-    const releaseDate = issue.releaseDate && issue.releaseDate !== 'NA' ? new Date(issue.releaseDate) : null;
-    
-    // Red background for urgent (due/release <= today + 1)
-    if ((dueDate && dueDate <= tomorrow) || (releaseDate && releaseDate <= tomorrow)) {
-      return 'bg-red-100';
-    }
-    
-    // Orange background for attention (due/release <= today + 3)
-    if ((dueDate && dueDate <= threeDays) || (releaseDate && releaseDate <= threeDays)) {
-      return 'bg-orange-100';
-    }
-    
-    return '';
-  };
-
   const formatCellValue = (value: any, columnType: string): string => {
     if (value == null) return '—';
     if (Array.isArray(value)) return value.join(', ');
     if (columnType === 'date' && value) {
-      return new Date(value).toLocaleDateString('en-US', {
+      const date = parseLocalDate(value);
+      if (!date) return '—';
+      return date.toLocaleDateString('en-US', {
         year: 'numeric',
         month: 'short',
         day: 'numeric',
@@ -101,6 +94,7 @@ const ListView: React.FC<ListViewProps> = ({
   };
 
   const [importantStates, setImportantStates] = React.useState<Record<string, boolean>>({});
+  const [myDayStates, setMyDayStates] = React.useState<Record<string, boolean>>({});
 
   const renderCell = (issue: JiraIssue, column: Column) => {
     const value = issue[column.key];
@@ -108,21 +102,33 @@ const ListView: React.FC<ListViewProps> = ({
     // Special handling for important star
     if (column.key === 'important') {
       const isImportant = importantStates[issue.key] ?? Boolean(issue.important);
-      
+      const isMyDay = myDayStates[issue.key] ?? Boolean(issue.myDay);
+
       return (
-        <button
-          onClick={async (e) => {
-            e.stopPropagation();
-            const newValue = !isImportant;
-            setImportantStates(prev => ({ ...prev, [issue.key]: newValue }));
-            issue.important = newValue;
-            await jiraApi.setIssueImportant(issue.key, newValue);
-          }}
-          className="text-2xl cursor-pointer hover:scale-110 transition-transform"
-          title={isImportant ? "Remove from important" : "Mark as important"}
-        >
-          {isImportant ? '⭐' : '☆'}
-        </button>
+        <div className="flex gap-2 items-center justify-center">
+          <button
+            onClick={async (e) => {
+              e.stopPropagation();
+              const newValue = !isImportant;
+              setImportantStates(prev => ({ ...prev, [issue.key]: newValue }));
+              issue.important = newValue;
+              await jiraApi.setIssueImportant(issue.key, newValue);
+            }}
+            className={`w-5 text-center text-lg cursor-pointer hover:scale-110 transition-all ${isImportant ? 'opacity-100 grayscale-0' : 'opacity-30 grayscale hover:opacity-60'}`}
+            title={isImportant ? "Remove Imp" : "Mark Imp"}
+          >⭐</button>
+          <button
+            onClick={async (e) => {
+              e.stopPropagation();
+              const newValue = !isMyDay;
+              setMyDayStates(prev => ({ ...prev, [issue.key]: newValue }));
+              issue.myDay = newValue;
+              await jiraApi.setIssueMyDay(issue.key, newValue);
+            }}
+            className={`w-5 text-center text-lg cursor-pointer hover:scale-110 transition-all ${isMyDay ? 'opacity-100 grayscale-0' : 'opacity-30 grayscale hover:opacity-60'}`}
+            title={isMyDay ? "Remove from My Day" : "Add to My Day"}
+          >☀️</button>
+        </div>
       );
     }
 
@@ -260,10 +266,10 @@ const ListView: React.FC<ListViewProps> = ({
                 {visibleColumns.map((column) => (
                   <div
                     key={column.key}
-                    className="px-4 py-1.5 text-left text-sm font-bold text-white border-r border-gray-700 last:border-r-0"
+                    className={`px-4 py-1.5 text-sm font-bold text-white border-r border-gray-700 last:border-r-0 ${column.key === 'important' ? 'text-center' : 'text-left'}`}
                     style={{ width: column.width || '150px', minWidth: column.width || '150px', maxWidth: column.width || '150px', flexShrink: 0 }}
                   >
-                    <div className="flex items-center gap-2">
+                    <div className={`flex items-center gap-2 ${column.key === 'important' ? 'justify-center' : ''}`}>
                       {column.sortable && (
                         <button
                           onClick={() => onSort(column.key)}
@@ -285,8 +291,7 @@ const ListView: React.FC<ListViewProps> = ({
 
               {/* Table Rows */}
               {issues.map((issue, index) => {
-                const rowBgColor = getRowBackgroundColor(issue);
-                const baseBg = rowBgColor || (index % 2 === 0 ? 'bg-white' : 'bg-gray-50');
+                  const baseBg = rowBgColors.get(issue.key) || (index % 2 === 0 ? 'bg-white' : 'bg-gray-50');
                 return (
                   <div
                     key={issue.id}

@@ -3,6 +3,7 @@ import { getIssuesByJQL, getMockIssues, getIssuesFromFilter } from '../services/
 import { getAllTags, setIssueTags, getAllUniqueTags } from '../services/tagService.js';
 import { getAllImportantFlags, setIssueImportant } from '../services/importantService.js';
 import { getAllFETeamFlags, setFETeamMember } from '../services/feteamService.js';
+import { getAllMyDayFlags, setIssueMyDay } from '../services/mydayService.js';
 
 const router = express.Router();
 
@@ -205,6 +206,36 @@ router.put('/important/:issueKey', (req, res) => {
 });
 
 /**
+ * GET /api/myday
+ * Get all My Day flags for issues
+ */
+router.get('/myday', (req, res) => {
+  try {
+    res.json({ success: true, data: getAllMyDayFlags() });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * PUT /api/myday/:issueKey
+ * Set My Day flag for an issue
+ */
+router.put('/myday/:issueKey', (req, res) => {
+  try {
+    const { issueKey } = req.params;
+    const { myDay } = req.body;
+    if (typeof myDay !== 'boolean') {
+      return res.status(400).json({ success: false, error: 'myDay must be a boolean' });
+    }
+    setIssueMyDay(issueKey, myDay);
+    res.json({ success: true, data: { issueKey, myDay } });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
  * GET /api/feteam
  * Get all FE Team membership flags
  */
@@ -262,9 +293,10 @@ router.get('/config/filters', (req, res) => {
   res.json({
     success: true,
     data: {
-      sprint: process.env.JIRA_FILTER_ID_SPRINT || process.env.JIRA_FILTER_ID || '',
-      me: process.env.JIRA_FILTER_ID_ME || '',
+      sprint:  process.env.JIRA_FILTER_ID_SPRINT   || process.env.JIRA_FILTER_ID || '',
+      me:      process.env.JIRA_FILTER_ID_ME      || '',
       defects: process.env.JIRA_FILTER_ID_DEFECTS || '',
+      archive: process.env.JIRA_FILTER_ID_ARCHIVE || '',
     },
   });
 });

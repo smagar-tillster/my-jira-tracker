@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { JiraIssue } from '../../types';
+import { parseLocalDate } from '../../utils/dateUtils';
 
 interface GanttViewProps {
   issues: JiraIssue[];
-  dateType?: 'dueDate' | 'releaseDate';
+  dateType?: 'dueDate' | 'releaseDate' | 'plannedUatDate';
 }
 
 const GanttView: React.FC<GanttViewProps> = ({ issues, dateType = 'releaseDate' }) => {
@@ -15,40 +16,19 @@ const GanttView: React.FC<GanttViewProps> = ({ issues, dateType = 'releaseDate' 
     return issue.sprintStartDate;
   });
 
-  // Helper function to get issue background color based on urgency
+  // Helper function to get issue background color based on state
   const getIssueBackgroundColor = (issue: JiraIssue): string => {
-    // Don't highlight Done issues
+    // Color by status category
     if (issue.statusCategory === 'Done') {
-      return 'bg-gray-300';
+      return 'bg-green-500';
     }
     
-    // Don't highlight Ready for QA or In QA - show as normal
-    if (issue.status === 'Ready for QA' || issue.status === 'In QA') {
-      return 'bg-gray-400';
+    if (issue.statusCategory === 'In Progress') {
+      return 'bg-blue-500';
     }
     
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const threeDays = new Date(today);
-    threeDays.setDate(threeDays.getDate() + 3);
-    
-    const dueDate = issue.dueDate ? new Date(issue.dueDate) : null;
-    const releaseDate = issue.releaseDate && issue.releaseDate !== 'NA' ? new Date(issue.releaseDate) : null;
-    
-    // Red background for urgent (due/release <= today + 1)
-    if ((dueDate && dueDate <= tomorrow) || (releaseDate && releaseDate <= tomorrow)) {
-      return 'bg-red-400';
-    }
-    
-    // Orange background for attention (due/release <= today + 3)
-    if ((dueDate && dueDate <= threeDays) || (releaseDate && releaseDate <= threeDays)) {
-      return 'bg-orange-400';
-    }
-    
-    // Default gray for all other tasks
-    return 'bg-gray-400';
+    // To Do or other status
+    return 'bg-gray-500';
   };
 
   // Get the date range for Gantt chart
@@ -64,12 +44,12 @@ const GanttView: React.FC<GanttViewProps> = ({ issues, dateType = 'releaseDate' 
     let maxDate = new Date();
 
     issuesWithDates.forEach((issue) => {
-      const startDate = new Date(issue.sprintStartDate!);
+      const startDate = parseLocalDate(issue.sprintStartDate!);
       const endDateValue = issue[dateType];
-      const endDate = endDateValue && endDateValue !== 'NA' ? new Date(endDateValue) : startDate;
+      const endDate = endDateValue && endDateValue !== 'NA' ? parseLocalDate(endDateValue) : startDate;
 
-      if (startDate < minDate) minDate = startDate;
-      if (endDate > maxDate) maxDate = endDate;
+      if (startDate && startDate < minDate) minDate = startDate;
+      if (endDate && endDate > maxDate) maxDate = endDate;
     });
 
     // Don't add padding before sprint start (keep Monday as start)
@@ -99,10 +79,14 @@ const GanttView: React.FC<GanttViewProps> = ({ issues, dateType = 'releaseDate' 
 
   // Calculate bar position and width for an issue
   const calculateBarPosition = (issue: JiraIssue) => {
-    const startDate = new Date(issue.sprintStartDate!);
+    const startDate = parseLocalDate(issue.sprintStartDate!);
     const endDateValue = issue[dateType];
     // If no end date or end date is 'NA', use start date as end date (1 day bar)
-    const endDate = endDateValue && endDateValue !== 'NA' ? new Date(endDateValue) : startDate;
+    const endDate = endDateValue && endDateValue !== 'NA' ? parseLocalDate(endDateValue) : startDate;
+
+    if (!startDate || !endDate) {
+      return { left: '0%', width: '0%' };
+    }
 
     const startOffset = Math.floor((startDate.getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24));
     // Always show at least 1 day width, even if start and end are the same
@@ -152,7 +136,7 @@ const GanttView: React.FC<GanttViewProps> = ({ issues, dateType = 'releaseDate' 
       {/* Gantt Header */}
       <div className="flex items-center justify-between mb-2 pb-2 border-b">
         <h2 className="text-lg font-bold text-gray-800">
-          Gantt Chart - {dateType === 'dueDate' ? 'Due Date' : 'Release Date'}: {currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+          Gantt Chart - {dateType === 'dueDate' ? 'Due Date' : dateType === 'plannedUatDate' ? 'UAT Date' : 'Release Date'}: {currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
         </h2>
         <div className="flex gap-2">
           <button
@@ -231,16 +215,17 @@ const GanttView: React.FC<GanttViewProps> = ({ issues, dateType = 'releaseDate' 
                             className="text-sm font-semibold text-blue-600 hover:text-blue-800 truncate"
                             title={issue.summary}
                           >
-                            {issue.key}
+                            {issue.client ? `${issue.client} - ${issue.key}` : issue.key}
                           </a>
                           {isExpanded && (
                             <div className="text-xs text-gray-600">
-                              <div className="truncate" title={issue.summary}>{issue.summary}</div>
                               <div className="mt-1">
-                                <span className="bg-blue-100 px-1.5 py-0.5 rounded text-xs">{issue.status}</span>
+                                <span className="font-semibold">State:</span> {issue.status}
                               </div>
                               {issue.assignee && (
-                                <div className="mt-1 text-gray-700">👤 {issue.assignee}</div>
+                                <div className="mt-1">
+                                  <span className="font-semibold">Assignee:</span> {issue.assignee}
+                                </div>
                               )}
                             </div>
                           )}
@@ -279,23 +264,15 @@ const GanttView: React.FC<GanttViewProps> = ({ issues, dateType = 'releaseDate' 
                             left: barPosition.left,
                             width: barPosition.width,
                             top: '8px',
-                            height: isExpanded ? 'auto' : '40px',
+                            height: '40px',
                             minHeight: '40px',
                           }}
                           onClick={() => toggleIssueExpansion(issue.key)}
-                          title={`${issue.key}: ${issue.summary}\nSprint Start: ${new Date(issue.sprintStartDate!).toLocaleDateString()}\n${dateType === 'dueDate' ? 'Due' : 'Release'}: ${issue[dateType] && issue[dateType] !== 'NA' ? new Date(issue[dateType]!).toLocaleDateString() : 'Not set'}\n\nDescription: ${issue.description || 'No description'}`}
+                          title={`${issue.key}\nState: ${issue.status}\nAssignee: ${issue.assignee || 'Unassigned'}\nSprint Start: ${new Date(issue.sprintStartDate!).toLocaleDateString()}\n${dateType === 'dueDate' ? 'Due' : 'Release'}: ${issue[dateType] && issue[dateType] !== 'NA' ? new Date(issue[dateType]!).toLocaleDateString() : 'Not set'}`}
                         >
                           <div className="text-xs font-semibold text-white truncate">
-                            {issue.key}
+                            {issue.status} - {issue.key}
                           </div>
-                          <div className="text-[10px] text-white truncate opacity-90">
-                            {issue.summary}
-                          </div>
-                          {isExpanded && issue.description && (
-                            <div className="text-[10px] text-white mt-1 opacity-80 line-clamp-3">
-                              {issue.description}
-                            </div>
-                          )}
                         </div>
                       </div>
                     </div>
@@ -310,16 +287,16 @@ const GanttView: React.FC<GanttViewProps> = ({ issues, dateType = 'releaseDate' 
       {/* Legend */}
       <div className="mt-4 pt-4 border-t flex gap-4 justify-center text-sm flex-wrap">
         <div className="flex items-center gap-2">
-          <div className="w-4 h-4 bg-gray-400 rounded"></div>
-          <span>Normal</span>
+          <div className="w-4 h-4 bg-gray-500 rounded"></div>
+          <span>To Do</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-4 h-4 bg-orange-400 rounded"></div>
-          <span>Attention (≤ 3 days)</span>
+          <div className="w-4 h-4 bg-blue-500 rounded"></div>
+          <span>In Progress</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-4 h-4 bg-red-400 rounded"></div>
-          <span>Urgent (≤ 1 day)</span>
+          <div className="w-4 h-4 bg-green-500 rounded"></div>
+          <span>Done</span>
         </div>
         <div className="flex items-center gap-2">
           <div className="w-1 h-4 bg-blue-500"></div>

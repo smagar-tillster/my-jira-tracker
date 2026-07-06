@@ -1,116 +1,41 @@
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { getDb } from '../db/database.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const TAGS_FILE = path.join(__dirname, '..', '..', 'data', 'tags.json');
-
-// Ensure data directory exists
-const ensureDataDir = () => {
-  const dataDir = path.dirname(TAGS_FILE);
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
-  }
-};
-
-// Load tags from file
-const loadTags = () => {
-  ensureDataDir();
-  try {
-    if (fs.existsSync(TAGS_FILE)) {
-      const data = fs.readFileSync(TAGS_FILE, 'utf8');
-      return JSON.parse(data);
-    }
-  } catch (error) {
-    console.error('Error loading tags:', error);
-  }
-  return {};
-};
-
-// Save tags to file
-const saveTags = (tags) => {
-  ensureDataDir();
-  try {
-    fs.writeFileSync(TAGS_FILE, JSON.stringify(tags, null, 2), 'utf8');
-    return true;
-  } catch (error) {
-    console.error('Error saving tags:', error);
-    return false;
-  }
-};
-
-/**
- * Get tags for a specific issue
- * @param {string} issueKey - Issue key (e.g., 'NGK-82182')
- * @returns {Array} - Array of tags
- */
 export const getIssueTags = (issueKey) => {
-  const tags = loadTags();
-  return tags[issueKey] || [];
+  const rows = getDb().prepare('SELECT tag FROM issue_tags WHERE issue_key = ?').all(issueKey);
+  return rows.map(r => r.tag);
 };
 
-/**
- * Get all tags
- * @returns {Object} - Object with issue keys as keys and tag arrays as values
- */
 export const getAllTags = () => {
-  return loadTags();
+  const rows = getDb().prepare('SELECT issue_key, tag FROM issue_tags').all();
+  const result = {};
+  for (const { issue_key, tag } of rows) {
+    if (!result[issue_key]) result[issue_key] = [];
+    result[issue_key].push(tag);
+  }
+  return result;
 };
 
-/**
- * Set tags for a specific issue
- * @param {string} issueKey - Issue key (e.g., 'NGK-82182')
- * @param {Array} tags - Array of tags
- * @returns {boolean} - Success status
- */
 export const setIssueTags = (issueKey, tags) => {
-  const allTags = loadTags();
-  allTags[issueKey] = tags;
-  return saveTags(allTags);
+  const db = getDb();
+  const del = db.prepare('DELETE FROM issue_tags WHERE issue_key = ?');
+  const ins = db.prepare('INSERT OR IGNORE INTO issue_tags (issue_key, tag) VALUES (?, ?)');
+  db.transaction(() => {
+    del.run(issueKey);
+    for (const tag of tags) { if (tag) ins.run(issueKey, tag); }
+  })();
+  return true;
 };
 
-/**
- * Add a tag to an issue
- * @param {string} issueKey - Issue key
- * @param {string} tag - Tag to add
- * @returns {boolean} - Success status
- */
 export const addIssueTag = (issueKey, tag) => {
-  const allTags = loadTags();
-  if (!allTags[issueKey]) {
-    allTags[issueKey] = [];
-  }
-  if (!allTags[issueKey].includes(tag)) {
-    allTags[issueKey].push(tag);
-  }
-  return saveTags(allTags);
+  getDb().prepare('INSERT OR IGNORE INTO issue_tags (issue_key, tag) VALUES (?, ?)').run(issueKey, tag);
+  return true;
 };
 
-/**
- * Remove a tag from an issue
- * @param {string} issueKey - Issue key
- * @param {string} tag - Tag to remove
- * @returns {boolean} - Success status
- */
 export const removeIssueTag = (issueKey, tag) => {
-  const allTags = loadTags();
-  if (allTags[issueKey]) {
-    allTags[issueKey] = allTags[issueKey].filter((t) => t !== tag);
-  }
-  return saveTags(allTags);
+  getDb().prepare('DELETE FROM issue_tags WHERE issue_key = ? AND tag = ?').run(issueKey, tag);
+  return true;
 };
 
-/**
- * Get all unique tags across all issues
- * @returns {Array} - Array of unique tags
- */
 export const getAllUniqueTags = () => {
-  const allTags = loadTags();
-  const uniqueTags = new Set();
-  Object.values(allTags).forEach((tags) => {
-    tags.forEach((tag) => uniqueTags.add(tag));
-  });
-  return Array.from(uniqueTags).sort();
+  return getDb().prepare('SELECT DISTINCT tag FROM issue_tags ORDER BY tag').all().map(r => r.tag);
 };

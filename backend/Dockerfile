@@ -4,6 +4,9 @@ FROM node:20-alpine
 # Set working directory
 WORKDIR /app
 
+# Build tools required to compile better-sqlite3's native bindings on Alpine
+RUN apk add --no-cache python3 make g++
+
 # Copy package files
 COPY package*.json ./
 

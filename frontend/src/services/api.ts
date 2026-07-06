@@ -1,7 +1,7 @@
 import axios from 'axios';
-import { JiraIssue } from '../types';
+import { JiraIssue, Todo, TodoCategory, CreateTodoPayload, Accomplishment, CreateAccomplishmentPayload, DailySummary } from '../types';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3050/api';
 
 const apiClient = axios.create({
   baseURL: API_URL,
@@ -58,14 +58,13 @@ export const jiraApi = {
   /**
    * Get filter IDs configuration
    */
-  getFilterConfig: async (): Promise<{ sprint: string; me: string; defects: string }> => {
+  getFilterConfig: async (): Promise<{ sprint: string; me: string; defects: string; archive: string }> => {
     try {
       const response = await apiClient.get('/config/filters');
-      return response.data.data || { sprint: '', me: '', defects: '' };
+      return response.data.data || { sprint: '', me: '', defects: '', archive: '' };
     } catch (error) {
       console.error('Error fetching filter config:', error);
-      // Return defaults if config fetch fails
-      return { sprint: '60259', me: '47216', defects: '57474' };
+      return { sprint: '60259', me: '47216', defects: '57474', archive: '56341' };
     }
   },
 
@@ -145,6 +144,25 @@ export const jiraApi = {
     }
   },
 
+  getAllMyDayFlags: async (): Promise<Record<string, boolean>> => {
+    try {
+      const response = await apiClient.get('/myday');
+      return response.data.data || {};
+    } catch (error) {
+      console.error('Error fetching my day flags:', error);
+      throw error;
+    }
+  },
+
+  setIssueMyDay: async (issueKey: string, myDay: boolean): Promise<void> => {
+    try {
+      await apiClient.put(`/myday/${issueKey}`, { myDay });
+    } catch (error) {
+      console.error('Error setting my day flag:', error);
+      throw error;
+    }
+  },
+
   /**
    * Get all FE Team membership flags
    */
@@ -168,5 +186,97 @@ export const jiraApi = {
       console.error('Error setting FE team membership:', error);
       throw error;
     }
+  },
+
+  /**
+   * Get pre-computed archive (cached daily on backend)
+   */
+  getArchive: async (): Promise<{ issues: JiraIssue[]; fetchedAt: string; issueCount: number }> => {
+    try {
+      const response = await apiClient.get('/archive');
+      return {
+        issues: response.data.data || [],
+        fetchedAt: response.data.fetchedAt || '',
+        issueCount: response.data.issueCount || 0,
+      };
+    } catch (error) {
+      console.error('Error fetching archive:', error);
+      throw error;
+    }
+  },
+};
+
+// ── Todos API ────────────────────────────────────────────────────────────────
+export const todosApi = {
+  getAll: async (type?: string): Promise<Todo[]> => {
+    const response = await apiClient.get('/todos', { params: type ? { type } : {} });
+    return response.data.data || [];
+  },
+
+  getToday: async (): Promise<Todo[]> => {
+    const response = await apiClient.get('/todos/today');
+    return response.data.data || [];
+  },
+
+  create: async (payload: CreateTodoPayload): Promise<Todo> => {
+    const response = await apiClient.post('/todos', payload);
+    return response.data.data;
+  },
+
+  update: async (id: string, updates: Partial<CreateTodoPayload> & { done?: boolean; myDay?: boolean }): Promise<Todo> => {
+    const response = await apiClient.put(`/todos/${id}`, updates);
+    return response.data.data;
+  },
+
+  delete: async (id: string): Promise<void> => {
+    await apiClient.delete(`/todos/${id}`);
+  },
+
+  getCategories: async (): Promise<TodoCategory[]> => {
+    const response = await apiClient.get('/todos/categories');
+    return response.data.data || [];
+  },
+
+  createCategory: async (name: string): Promise<TodoCategory> => {
+    const response = await apiClient.post('/todos/categories', { name });
+    return response.data.data;
+  },
+
+  deleteCategory: async (id: string): Promise<void> => {
+    await apiClient.delete(`/todos/categories/${id}`);
+  },
+};
+
+// ── Accomplishments API ───────────────────────────────────────────────────────
+export const accomplishmentsApi = {
+  getAll: async (filters?: { sprint?: string; category?: string; type?: string }): Promise<Accomplishment[]> => {
+    const response = await apiClient.get('/accomplishments', { params: filters || {} });
+    return response.data.data || [];
+  },
+
+  getSprints: async (): Promise<string[]> => {
+    const response = await apiClient.get('/accomplishments/sprints');
+    return response.data.data || [];
+  },
+
+  create: async (payload: CreateAccomplishmentPayload): Promise<Accomplishment> => {
+    const response = await apiClient.post('/accomplishments', payload);
+    return response.data.data;
+  },
+
+  update: async (id: string, updates: Partial<CreateAccomplishmentPayload>): Promise<Accomplishment> => {
+    const response = await apiClient.put(`/accomplishments/${id}`, updates);
+    return response.data.data;
+  },
+
+  delete: async (id: string): Promise<void> => {
+    await apiClient.delete(`/accomplishments/${id}`);
+  },
+};
+
+export const dailySummaryApi = {
+  getLatest: async (): Promise<DailySummary | null> => {
+    const response = await apiClient.get('/daily-summary/latest');
+    return response.data.data || null;
   },
 };
