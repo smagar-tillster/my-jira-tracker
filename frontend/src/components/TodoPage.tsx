@@ -405,7 +405,7 @@ const TodoPage: React.FC<TodoPageProps> = ({ addTodoTrigger }) => {
                         {/* Flags */}
                         <div className="px-4 py-3 border-r border-gray-100 text-center" style={{ width: 80 }}>
                           <button onClick={e => { e.stopPropagation(); void toggleMyDay(todo); }} title="My Day"
-                            className={`text-base ${isMyDay ? 'text-yellow-500' : 'text-gray-300 hover:text-yellow-400'}`}>☀️</button>
+                            className={`text-base transition-all ${isMyDay ? 'opacity-100 grayscale-0' : 'opacity-30 grayscale hover:opacity-60'}`}>☀️</button>
                         </div>
                         {/* Actions */}
                         <div className="px-4 py-3" style={{ width: 90 }}>

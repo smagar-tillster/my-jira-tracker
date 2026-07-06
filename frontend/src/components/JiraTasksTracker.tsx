@@ -19,7 +19,7 @@ function useDebounce<T>(value: T, delay: number): T {
 }
 
 const DEFAULT_COLUMNS: Column[] = [
-  { key: 'important',      label: '⭐',                sortable: true,  filterable: false, type: 'boolean', width: 60 },
+  { key: 'important',      label: '⭐',                sortable: true,  filterable: false, type: 'boolean', width: 80 },
   { key: 'issueType',      label: 'Type',              sortable: true,  filterable: true,  type: 'text',    width: 100 },
   { key: 'key',            label: 'Issue Key',         sortable: true,  filterable: true,  type: 'text',    width: 120 },
   { key: 'summary',        label: 'Summary',           sortable: true,  filterable: false, type: 'text',    width: 400 },

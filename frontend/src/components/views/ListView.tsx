@@ -105,7 +105,7 @@ const ListView: React.FC<ListViewProps> = ({
       const isMyDay = myDayStates[issue.key] ?? Boolean(issue.myDay);
 
       return (
-        <div className="flex gap-1 items-center">
+        <div className="flex gap-2 items-center justify-center">
           <button
             onClick={async (e) => {
               e.stopPropagation();
@@ -114,7 +114,7 @@ const ListView: React.FC<ListViewProps> = ({
               issue.important = newValue;
               await jiraApi.setIssueImportant(issue.key, newValue);
             }}
-            className={`text-lg cursor-pointer hover:scale-110 transition-transform ${isImportant ? 'text-yellow-500' : 'text-gray-300 hover:text-yellow-400'}`}
+            className={`w-5 text-center text-lg cursor-pointer hover:scale-110 transition-all ${isImportant ? 'opacity-100 grayscale-0' : 'opacity-30 grayscale hover:opacity-60'}`}
             title={isImportant ? "Remove Imp" : "Mark Imp"}
           >⭐</button>
           <button
@@ -125,7 +125,7 @@ const ListView: React.FC<ListViewProps> = ({
               issue.myDay = newValue;
               await jiraApi.setIssueMyDay(issue.key, newValue);
             }}
-            className={`text-lg cursor-pointer hover:scale-110 transition-transform ${isMyDay ? 'text-blue-500' : 'text-gray-300 hover:text-blue-400'}`}
+            className={`w-5 text-center text-lg cursor-pointer hover:scale-110 transition-all ${isMyDay ? 'opacity-100 grayscale-0' : 'opacity-30 grayscale hover:opacity-60'}`}
             title={isMyDay ? "Remove from My Day" : "Add to My Day"}
           >☀️</button>
         </div>
@@ -266,10 +266,10 @@ const ListView: React.FC<ListViewProps> = ({
                 {visibleColumns.map((column) => (
                   <div
                     key={column.key}
-                    className="px-4 py-1.5 text-left text-sm font-bold text-white border-r border-gray-700 last:border-r-0"
+                    className={`px-4 py-1.5 text-sm font-bold text-white border-r border-gray-700 last:border-r-0 ${column.key === 'important' ? 'text-center' : 'text-left'}`}
                     style={{ width: column.width || '150px', minWidth: column.width || '150px', maxWidth: column.width || '150px', flexShrink: 0 }}
                   >
-                    <div className="flex items-center gap-2">
+                    <div className={`flex items-center gap-2 ${column.key === 'important' ? 'justify-center' : ''}`}>
                       {column.sortable && (
                         <button
                           onClick={() => onSort(column.key)}
