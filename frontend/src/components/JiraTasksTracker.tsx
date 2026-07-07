@@ -255,7 +255,7 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
     if (showAttentionOnly) r = r.filter(i => needsAttention(i) && !isUrgent(i));
     if (showNoDueDate)     r = r.filter(i => !i.dueDate);
     if (showFETeamOnly)    r = r.filter(i => feTeamMembers.includes(i.assignee));
-    if (showNoSubtasks)    r = r.filter(i => !i.parentSummary);
+    if (showNoSubtasks)    r = r.filter(i => i.issueType.toLowerCase() !== 'sub-task');
 
     // 3. Apply effective status filter + search — all synchronous, data is pre-loaded
     const f = filterIssues(
