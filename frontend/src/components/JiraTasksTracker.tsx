@@ -95,6 +95,7 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
   const [showAttentionOnly, setShowAttentionOnly] = useState(false);
   const [showNoDueDate, setShowNoDueDate]         = useState(false);
   const [showFETeamOnly, setShowFETeamOnly]       = useState(false);
+  const [showNoSubtasks, setShowNoSubtasks]       = useState(false);
 
   // Dropdown search states
   const [typeSearch, setTypeSearch]           = useState('');
@@ -254,6 +255,7 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
     if (showAttentionOnly) r = r.filter(i => needsAttention(i) && !isUrgent(i));
     if (showNoDueDate)     r = r.filter(i => !i.dueDate);
     if (showFETeamOnly)    r = r.filter(i => feTeamMembers.includes(i.assignee));
+    if (showNoSubtasks)    r = r.filter(i => i.issueType.toLowerCase() !== 'sub-task');
 
     // 3. Apply effective status filter + search — all synchronous, data is pre-loaded
     const f = filterIssues(
@@ -264,7 +266,7 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
     const s = sortIssues(f, sortConfig);
     const g = groupIssues(s, groupConfig.column);
     return { filteredIssues: f, sortedIssues: s, groupedIssues: g };
-  }, [mergedIssues, sprintIssues, myIssues, sourceFilter, showImportantOnly, showMyDayOnly, showUrgentOnly, showAttentionOnly, showNoDueDate, showFETeamOnly, feTeamMembers, filters, effectiveSCFilter, debouncedSearch, sortConfig, groupConfig]);
+  }, [mergedIssues, sprintIssues, myIssues, sourceFilter, showImportantOnly, showMyDayOnly, showUrgentOnly, showAttentionOnly, showNoDueDate, showFETeamOnly, showNoSubtasks, feTeamMembers, filters, effectiveSCFilter, debouncedSearch, sortConfig, groupConfig]);
 
   // Pre-compute occurrence counts for dropdown options so countFn is O(1)
   const occurrenceCounts = useMemo(() => {
@@ -485,6 +487,12 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
                 options={dropdownOptions.component}
                 openDropdown={openDropdown} onOpen={handleDropdownOpen}
                 isSelected={isFilterSelected} onToggle={togglePendingFilter} countFn={v => countOcc('components', v)} />
+
+              {/* No Subtasks filter */}
+              <button onClick={() => setShowNoSubtasks(!showNoSubtasks)}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${showNoSubtasks ? 'bg-indigo-600 text-white' : 'bg-indigo-100 text-indigo-800 hover:bg-indigo-200'}`}>
+                📋 No Sub tasks
+              </button>
 
               {(Object.keys(filters).length > 0 || searchTerm) && (
                 <button onClick={clearAllFilters} className="px-3 py-1.5 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600">Clear Filters</button>

@@ -435,9 +435,9 @@ const TodoPage: React.FC<TodoPageProps> = ({ addTodoTrigger }) => {
               </h3>
               <div className="flex gap-2 items-center">
                 {editingId && (
-                  <button onClick={() => void handleSave(false, true)}
+                  <button onClick={() => { if (confirm('Close this to-do?')) void handleSave(false, true); }}
                     className="px-4 py-2 text-sm bg-gray-700 text-white font-medium rounded-lg hover:bg-gray-800">
-                    Closed
+                    Close
                   </button>
                 )}
                 {!editingId && (
