@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { JiraIssue, Todo, TodoCategory, CreateTodoPayload, Accomplishment, CreateAccomplishmentPayload, DailySummary } from '../types';
+import { JiraIssue, Todo, TodoCategory, CreateTodoPayload, Accomplishment, CreateAccomplishmentPayload, DailySummary, JiraSprint } from '../types';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3050/api';
 
@@ -184,6 +184,59 @@ export const jiraApi = {
       await apiClient.put(`/feteam/${encodeURIComponent(assignee)}`, { isMember });
     } catch (error) {
       console.error('Error setting FE team membership:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * List active + future sprints (numbered "NGK Sprint ..." track) for the Jira Filter dropdown
+   */
+  getSprints: async (): Promise<JiraSprint[]> => {
+    try {
+      const response = await apiClient.get('/sprints');
+      return response.data.data || [];
+    } catch (error) {
+      console.error('Error fetching sprints:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Fetch issues for one or more specific sprints (replaces the default current-sprint filter)
+   */
+  getIssuesBySprints: async (sprintNames: string[]): Promise<JiraIssue[]> => {
+    try {
+      const response = await apiClient.get('/issues/by-sprints', {
+        params: { sprints: sprintNames.join(',') },
+      });
+      return response.data.data || [];
+    } catch (error) {
+      console.error('Error fetching issues by sprints:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get the client -> region mapping (unmapped clients default to 'Other' on the frontend)
+   */
+  getClientRegions: async (): Promise<Record<string, string>> => {
+    try {
+      const response = await apiClient.get('/regions');
+      return response.data.data || {};
+    } catch (error) {
+      console.error('Error fetching client regions:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Set (or clear, with an empty string) the region for a client
+   */
+  setClientRegion: async (client: string, region: string): Promise<void> => {
+    try {
+      await apiClient.put(`/regions/${encodeURIComponent(client)}`, { region });
+    } catch (error) {
+      console.error('Error setting client region:', error);
       throw error;
     }
   },
