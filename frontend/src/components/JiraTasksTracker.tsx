@@ -86,8 +86,28 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
     }
     setSprintQueryLoading(true);
     try {
-      const issues = await jiraApi.getIssuesBySprints(selectedSprintNames);
-      setCustomSprintIssues(issues);
+      // Same metadata merge App.tsx applies to the default sprint data, so IMP / My Day / tags / search work here too
+      const [issues, tags, importantFlags, myDayFlags] = await Promise.all([
+        jiraApi.getIssuesBySprints(selectedSprintNames),
+        jiraApi.getAllTags(),
+        jiraApi.getAllImportantFlags(),
+        jiraApi.getAllMyDayFlags(),
+      ]);
+      setCustomSprintIssues(issues.map(issue => ({
+        ...issue,
+        tags: tags[issue.key] || [],
+        important: importantFlags[issue.key] || false,
+        myDay: myDayFlags[issue.key] || false,
+        searchText: [
+          issue.key,
+          issue.summary,
+          issue.assignee,
+          typeof issue.description === 'string' ? issue.description : JSON.stringify(issue.description || ''),
+          issue.client || '',
+          (issue.labels || []).join(' '),
+          (issue.components || []).join(' '),
+        ].join(' ').toLowerCase(),
+      })));
     } catch (err) {
       console.error('Error fetching issues for selected sprints:', err);
     } finally {
