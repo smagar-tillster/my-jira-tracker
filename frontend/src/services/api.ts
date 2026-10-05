@@ -1,7 +1,9 @@
 import axios from 'axios';
 import { JiraIssue, Todo, TodoCategory, CreateTodoPayload, Accomplishment, CreateAccomplishmentPayload, DailySummary, JiraSprint } from '../types';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3050/api';
+// Default to the backend on whatever host served this page, so the app works from any IP/hostname.
+const API_URL =
+  import.meta.env.VITE_API_URL || `${window.location.protocol}//${window.location.hostname}:3050/api`;
 
 const apiClient = axios.create({
   baseURL: API_URL,
