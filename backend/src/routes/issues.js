@@ -1,8 +1,9 @@
 import express from 'express';
-import { getIssuesByJQL, getMockIssues, getIssuesFromFilter } from '../services/jiraService.js';
+import { getIssuesByJQL, getMockIssues, getIssuesFromFilter, getBoardSprints } from '../services/jiraService.js';
 import { getAllTags, setIssueTags, getAllUniqueTags } from '../services/tagService.js';
 import { getAllImportantFlags, setIssueImportant } from '../services/importantService.js';
 import { getAllFETeamFlags, setFETeamMember } from '../services/feteamService.js';
+import { getAllClientRegions, setClientRegion } from '../services/regionService.js';
 import { getAllMyDayFlags, setIssueMyDay } from '../services/mydayService.js';
 
 const router = express.Router();
@@ -281,6 +282,123 @@ router.put('/feteam/:assignee', (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to set FE team membership',
+    });
+  }
+});
+
+/**
+ * GET /api/regions
+ * Get the client -> region mapping (clients with no mapping are treated as 'Other')
+ */
+router.get('/regions', (req, res) => {
+  try {
+    res.json({ success: true, data: getAllClientRegions() });
+  } catch (error) {
+    console.error('Error fetching client regions:', error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to fetch client regions',
+    });
+  }
+});
+
+/**
+ * PUT /api/regions/:client
+ * Set (or clear, with an empty region) the region for a client
+ */
+router.put('/regions/:client', (req, res) => {
+  try {
+    const { client } = req.params;
+    const { region } = req.body;
+
+    if (typeof region !== 'string') {
+      return res.status(400).json({
+        success: false,
+        error: 'region must be a string (empty string clears the mapping)',
+      });
+    }
+
+    setClientRegion(client, region);
+    res.json({ success: true, data: { client, region: region.trim() } });
+  } catch (error) {
+    console.error('Error setting client region:', error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to set client region',
+    });
+  }
+});
+
+/**
+ * GET /api/sprints
+ * List active + future sprints for the configured board, filtered to the
+ * numbered sprint track (name prefix), sorted chronologically by start date.
+ */
+router.get('/sprints', async (req, res) => {
+  try {
+    const boardId = process.env.JIRA_BOARD_ID || '269';
+    const prefix = (req.query.prefix || 'NGK Sprint').toLowerCase();
+
+    const sprints = await getBoardSprints(boardId, 'active,future');
+    const filtered = sprints
+      .filter(s => s.name && s.name.toLowerCase().startsWith(prefix))
+      .map(s => ({
+        id: s.id,
+        name: s.name,
+        state: s.state,
+        startDate: s.startDate || null,
+        endDate: s.endDate || null,
+      }))
+      .sort((a, b) => {
+        if (!a.startDate && !b.startDate) return 0;
+        if (!a.startDate) return 1;
+        if (!b.startDate) return -1;
+        return new Date(a.startDate) - new Date(b.startDate);
+      });
+
+    res.json({ success: true, data: filtered });
+  } catch (error) {
+    console.error('Error fetching board sprints:', error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to fetch sprints',
+    });
+  }
+});
+
+/**
+ * GET /api/issues/by-sprints?sprints=NGK Sprint 224,NGK Sprint 225
+ * Fetch issues for one or more specific sprints, applying the same
+ * type/subtask/stale-done exclusions as the default sprint filter.
+ */
+router.get('/issues/by-sprints', async (req, res) => {
+  try {
+    const { sprints } = req.query;
+    const sprintNames = (sprints || '').split(',').map(s => s.trim()).filter(Boolean);
+
+    if (sprintNames.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'At least one sprint name is required (sprints=Name1,Name2)',
+      });
+    }
+
+    const projectKey = process.env.JIRA_PROJECT_KEY || 'NGK';
+    const quotedSprints = sprintNames.map(n => `"${n.replace(/"/g, '\\"')}"`).join(', ');
+    const jql = `project = ${projectKey} `
+      + `and sprint in (${quotedSprints}) `
+      + `and type NOT IN (Release, "Test Case Execution-Smoke/Sanity/Regression", Epic) `
+      + `and issuetype not in subTaskIssueTypes() `
+      + `and not (statusCategory = Done and statusCategoryChangedDate <= -15d) `
+      + `ORDER BY created ASC, updated DESC`;
+
+    const issues = await getIssuesByJQL(jql);
+    res.json({ success: true, data: issues, source: 'jira' });
+  } catch (error) {
+    console.error('Error fetching issues by sprints:', error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to fetch issues by sprints',
     });
   }
 });
