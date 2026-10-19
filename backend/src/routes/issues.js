@@ -413,8 +413,6 @@ router.get('/config/filters', (req, res) => {
     data: {
       sprint:  process.env.JIRA_FILTER_ID_SPRINT   || process.env.JIRA_FILTER_ID || '',
       me:      process.env.JIRA_FILTER_ID_ME      || '',
-      defects: process.env.JIRA_FILTER_ID_DEFECTS || '',
-      archive: process.env.JIRA_FILTER_ID_ARCHIVE || '',
     },
   });
 });
