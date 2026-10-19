@@ -133,6 +133,15 @@ export interface CreateAccomplishmentPayload {
   impact?: AccomplishmentImpact;
 }
 
+// ── Sprint (Jira Agile board) ──────────────────────────────────────────────
+export interface JiraSprint {
+  id: number;
+  name: string;
+  state: 'active' | 'future' | 'closed';
+  startDate: string | null;
+  endDate: string | null;
+}
+
 export interface DailySummary {
   id: string;
   summaryDate: string;

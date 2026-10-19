@@ -11,6 +11,9 @@ interface ListViewProps {
   onToggleFilterValue: (column: string, value: string) => void;
   feTeamMembers: string[];
   onToggleFETeam: (assignee: string) => void;
+  // Defaults to expanding the first group (matches the main List page). Pass false to start
+  // every group collapsed instead (e.g. client sub-groups nested under a Region).
+  defaultExpandFirst?: boolean;
 }
 
 const ListView: React.FC<ListViewProps> = ({
@@ -21,9 +24,10 @@ const ListView: React.FC<ListViewProps> = ({
   onToggleFilterValue,
   feTeamMembers,
   onToggleFETeam,
+  defaultExpandFirst = true,
 }) => {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
-    new Set([...groupedIssues.keys()].slice(0, 1))
+    new Set(defaultExpandFirst ? [...groupedIssues.keys()].slice(0, 1) : [])
   );
 
   // Pre-compute background color for ALL visible issues in one pass.

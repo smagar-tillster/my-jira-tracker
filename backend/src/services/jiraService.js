@@ -7,14 +7,48 @@ const JIRA_HOST = process.env.JIRA_HOST;
 const JIRA_EMAIL = process.env.JIRA_EMAIL;
 const JIRA_API_TOKEN = process.env.JIRA_API_TOKEN;
 
+const AUTH_HEADER = `Basic ${Buffer.from(`${JIRA_EMAIL}:${JIRA_API_TOKEN}`).toString('base64')}`;
+
 // Create axios instance with Bearer token (better for Cloud API)
 const jiraClient = axios.create({
   baseURL: `${JIRA_HOST}/rest/api/3`,
   headers: {
-    'Authorization': `Basic ${Buffer.from(`${JIRA_EMAIL}:${JIRA_API_TOKEN}`).toString('base64')}`,
+    'Authorization': AUTH_HEADER,
     'Content-Type': 'application/json',
   },
 });
+
+const agileClient = axios.create({
+  baseURL: `${JIRA_HOST}/rest/agile/1.0`,
+  headers: {
+    'Authorization': AUTH_HEADER,
+    'Content-Type': 'application/json',
+  },
+});
+
+/**
+ * Fetch all sprints for a board from the Jira Agile API, paginating until done.
+ * @param {string|number} boardId - Jira board id
+ * @param {string} states - Comma-separated sprint states, e.g. 'active,future'
+ * @returns {Promise<Array>} - Raw sprint objects (id, name, state, startDate, endDate, createdDate, ...)
+ */
+export const getBoardSprints = async (boardId, states = 'active,future') => {
+  const sprints = [];
+  let startAt = 0;
+  const maxResults = 50;
+
+  while (true) {
+    const response = await agileClient.get(`/board/${boardId}/sprint`, {
+      params: { state: states, startAt, maxResults },
+    });
+    const { values, isLast } = response.data;
+    sprints.push(...(values || []));
+    if (isLast || !values || values.length === 0) break;
+    startAt += maxResults;
+  }
+
+  return sprints;
+};
 
 /**
  * Extracts release date from Fix Version string
@@ -255,34 +289,49 @@ export const getIssuesByJQL = async (jql) => {
     const allIssues = [];
     let nextPageToken = null;
     const maxResults = 100;
-    
+    let firstPageEmptyRetries = 0;
+    const MAX_FIRST_PAGE_RETRIES = 6;
+
     while (true) {
       console.log(`Fetching page (maxResults=${maxResults})${nextPageToken ? `, nextPageToken=${nextPageToken.substring(0, 20)}...` : ''}`);
-      
+
       const params = {
         jql,
         maxResults,
         fields: fieldsArray.join(','),
       };
-      
+
       // Add nextPageToken only if we have one
       if (nextPageToken) {
         params.nextPageToken = nextPageToken;
       }
-      
+
       const response = await jiraClient.get('/search/jql', { params });
 
       const { issues, isLast } = response.data;
       nextPageToken = response.data.nextPageToken;
-      
+
+      // Jira's /search/jql endpoint intermittently returns a valid 200 with
+      // issues: [], isLast: true for a query that returns real results
+      // moments later (confirmed: not an auth/access error, no errorMessages,
+      // no rate-limit headers — just flaky on Jira's end). Retry a few times
+      // before accepting "no results" on the FIRST page only; an empty page
+      // after we've already collected real issues is a normal end-of-results.
+      if ((!issues || issues.length === 0) && allIssues.length === 0 && firstPageEmptyRetries < MAX_FIRST_PAGE_RETRIES) {
+        firstPageEmptyRetries++;
+        console.log(`First page came back empty (attempt ${firstPageEmptyRetries}/${MAX_FIRST_PAGE_RETRIES}) — retrying, likely transient`);
+        await new Promise((resolve) => setTimeout(resolve, 500 * firstPageEmptyRetries));
+        continue;
+      }
+
       if (!issues || issues.length === 0) {
         console.log('No issues returned - done');
         break;
       }
-      
+
       console.log(`✓ Got ${issues.length} issues`);
       allIssues.push(...issues);
-      
+
       // If isLast is true or no nextPageToken, we're done
       if (isLast || !nextPageToken) {
         console.log(`Done fetching - isLast: ${isLast}`);

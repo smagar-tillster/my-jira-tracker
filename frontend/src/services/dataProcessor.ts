@@ -1,6 +1,74 @@
 import { JiraIssue, SortConfig, FilterState } from '../types';
 
 /**
+ * Merge sprint + "me" issue lists into one deduped list, keyed by issue key.
+ * Sprint fields win on overlap; 'source' reflects whichever set(s) an issue appears in.
+ */
+export const mergeIssueSources = (sprintIssues: JiraIssue[], myIssues: JiraIssue[]): JiraIssue[] => {
+  const map = new Map<string, JiraIssue>();
+  for (const issue of sprintIssues) {
+    map.set(issue.key, { ...issue, source: 'sprint' });
+  }
+  for (const issue of myIssues) {
+    if (map.has(issue.key)) {
+      map.set(issue.key, { ...map.get(issue.key)!, source: 'me' });
+    } else {
+      map.set(issue.key, { ...issue, source: 'me' });
+    }
+  }
+  return Array.from(map.values());
+};
+
+/**
+ * Split a comma-separated client field into individual, trimmed client names.
+ */
+export const splitClients = (client: string | null | undefined): string[] =>
+  (client || '').split(',').map(c => c.trim()).filter(Boolean);
+
+/**
+ * Group issues by client, exploding multi-client (comma-separated) issues into each client's group.
+ * Issues with no client land in 'No Client'.
+ */
+export const groupByClient = (issues: JiraIssue[]): Map<string, JiraIssue[]> => {
+  const grouped = new Map<string, JiraIssue[]>();
+  for (const issue of issues) {
+    const clients = splitClients(issue.client);
+    const keys = clients.length > 0 ? clients : ['No Client'];
+    for (const key of keys) {
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key)!.push(issue);
+    }
+  }
+  return new Map([...grouped.entries()].sort((a, b) => a[0].localeCompare(b[0])));
+};
+
+export type QuickGroupField = 'client' | 'status' | 'issueType' | 'assignee' | 'none';
+
+/**
+ * General-purpose grouping used by dashboard-style views that let the user swap the
+ * "Group By" field. 'client' explodes comma-separated clients; 'none' returns a single bucket.
+ */
+export const groupIssuesByField = (issues: JiraIssue[], field: QuickGroupField): Map<string, JiraIssue[]> => {
+  if (field === 'none') return new Map([['All Issues', issues]]);
+  if (field === 'client') return groupByClient(issues);
+
+  const fieldGetters: Record<Exclude<QuickGroupField, 'client' | 'none'>, (i: JiraIssue) => string> = {
+    status: i => i.status,
+    issueType: i => i.issueType,
+    assignee: i => i.assignee || 'Unassigned',
+  };
+  const getValue = fieldGetters[field as Exclude<QuickGroupField, 'client' | 'none'>];
+
+  const grouped = new Map<string, JiraIssue[]>();
+  for (const issue of issues) {
+    const value = getValue(issue) || 'Unknown';
+    if (!grouped.has(value)) grouped.set(value, []);
+    grouped.get(value)!.push(issue);
+  }
+  return new Map([...grouped.entries()].sort((a, b) => a[0].localeCompare(b[0])));
+};
+
+/**
  * Sort issues by a specific column
  */
 export const sortIssues = (

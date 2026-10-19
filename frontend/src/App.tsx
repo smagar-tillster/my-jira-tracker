@@ -3,10 +3,11 @@ import DefectsTracker from './components/DefectsTracker';
 import JiraTasksTracker from './components/JiraTasksTracker';
 import ArchiveTracker from './components/ArchiveTracker';
 import TodoPage from './components/TodoPage';
+import QuickAnalysisTracker from './components/QuickAnalysisTracker';
 import { jiraApi } from './services/api';
 import { JiraIssue } from './types';
 
-type MainTab = 'tasks' | 'todo' | 'archive' | 'accomplishments' | 'defects';
+type MainTab = 'tasks' | 'todo' | 'archive' | 'accomplishments' | 'defects' | 'quickAnalysis';
 
 function App() {
   const [issues, setIssues] = useState<JiraIssue[]>([]);
@@ -213,6 +214,7 @@ function App() {
             {/* Primary tabs */}
             {([
               { id: 'tasks',           label: '📋 Tasks' },
+              { id: 'quickAnalysis',   label: '🔍 Quick Analysis' },
               { id: 'todo',            label: '✅ Todo' },
               { id: 'archive',         label: '🗃 Archive' },
               { id: 'accomplishments', label: '🏆 Accomplishments' },
@@ -235,6 +237,18 @@ function App() {
         {visitedTabs.has('tasks') && (
           <div className="absolute inset-0" style={activeTab !== 'tasks' ? { display: 'none' } : undefined}>
             <JiraTasksTracker
+              sprintIssues={issues}
+              myIssues={myIssues}
+              sprintLoading={loading}
+              myLoading={myLoading}
+              onRefreshSprint={fetchIssues}
+              onRefreshMe={fetchMyIssues}
+            />
+          </div>
+        )}
+        {visitedTabs.has('quickAnalysis') && (
+          <div className="absolute inset-0" style={activeTab !== 'quickAnalysis' ? { display: 'none' } : undefined}>
+            <QuickAnalysisTracker
               sprintIssues={issues}
               myIssues={myIssues}
               sprintLoading={loading}

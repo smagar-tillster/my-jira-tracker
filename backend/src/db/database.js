@@ -50,6 +50,11 @@ export function initDb() {
       is_member INTEGER NOT NULL DEFAULT 1
     );
 
+    CREATE TABLE IF NOT EXISTS client_regions (
+      client TEXT PRIMARY KEY,
+      region TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS todos (
       id         TEXT PRIMARY KEY,
       type       TEXT NOT NULL,
