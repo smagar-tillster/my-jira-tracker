@@ -329,6 +329,51 @@ export const accomplishmentsApi = {
   },
 };
 
+// ── Release & PRs reports API ────────────────────────────────────────────────
+export interface DeliveryTicket {
+  key: string | null; url: string | null; label: string | null; summary: string; status: string; statusCategory: string;
+  ready: boolean; assignee: string; component: string; version: string; notes: string;
+}
+export interface DeliveryRelease {
+  id: string; key: string | null; url: string | null; title: string; tenant: string; tenants: string[]; date: string; env: string; envFlags: string[];
+  status: string; statusCategory: string; released: boolean; assignee: string; what: string; summary: string;
+  components: { name: string; version: string }[]; tickets: DeliveryTicket[]; notes: string; notReady: number; ready: boolean; noReleaseTicket?: boolean;
+}
+export interface DeliveryDependency { type: string; tone: 'ok' | 'warn' | 'info'; text: string; url?: string }
+export interface DeliveryPr {
+  id: string; repo: string; component: string; number: number; url: string; title: string; line1: string; line2: string; author: string; mergedAt: string | null; day: string | null;
+  keys: string[]; tickets: { key: string; summary: string; url: string }[]; tenants: string[]; risk: 'low' | 'medium' | 'high' | null;
+  analysis: { summary: string; how: string[]; dependencies: string[]; confirm: string[]; risk: string; basis: string; generatedAt: string; ai?: boolean } | null;
+  dependsOn: DeliveryDependency[]; files: { name: string; add: number; del: number }[];
+  rulesOnly: boolean; aiRecommended: boolean; tier: 'simple' | 'standard' | 'complex' | null; tierWhy: string;
+  open: boolean; isDraft: boolean; createdAt: string | null; updatedAt: string | null; reviewDecision: string;
+}
+export interface AnalyzeJob { id: string; state: 'running' | 'done' | 'queued' | 'failed'; startedAt: string; finishedAt: string | null; message: string }
+export interface DeliveryMeta {
+  generatedAt: string; day: string; lastReleasedDay: string | null; tenants: string[]; envs: string[];
+  window?: { sinceLabel: string; untilLabel: string };
+  counts: { releases: number; toRelease: number; prsToday: number; prsPendingAi: number; openPrs: number };
+  timing: { totalSec: number; stages: Record<string, number> } | null;
+}
+export interface RefreshJob { state: 'idle' | 'running' | 'done' | 'failed'; startedAt: string | null; finishedAt: string | null; log: string[] }
+
+const csv = (a?: string[]) => (a && a.length ? a.join(',') : undefined);
+
+export const deliveryApi = {
+  meta: async (): Promise<DeliveryMeta> => (await apiClient.get('/delivery/meta')).data.data,
+  released: async (f: { from?: string; to?: string; tenants?: string[]; envs?: string[] }): Promise<{ from: string; to: string; lastReleasedDay: string | null; rows: DeliveryRelease[] }> =>
+    (await apiClient.get('/delivery/released', { params: { from: f.from || undefined, to: f.to || undefined, tenant: csv(f.tenants), env: csv(f.envs) } })).data.data,
+  toRelease: async (f: { tenants?: string[]; envs?: string[] }): Promise<{ day: string; rows: DeliveryRelease[] }> =>
+    (await apiClient.get('/delivery/to-release', { params: { tenant: csv(f.tenants), env: csv(f.envs) } })).data.data,
+  prs: async (f: { from?: string; to?: string }): Promise<{ from: string; to: string; rows: DeliveryPr[] }> =>
+    (await apiClient.get('/delivery/prs', { params: { from: f.from || undefined, to: f.to || undefined } })).data.data,
+  openPrs: async (): Promise<{ rows: DeliveryPr[] }> => (await apiClient.get('/delivery/open-prs')).data.data,
+  analyzePr: async (repo: string, number: number): Promise<AnalyzeJob> => (await apiClient.post(`/delivery/prs/${repo}/${number}/analyze`)).data.data,
+  analyzeStatus: async (): Promise<Record<string, AnalyzeJob>> => (await apiClient.get('/delivery/prs/analyze/status')).data.data,
+  refresh: async (): Promise<RefreshJob> => (await apiClient.post('/delivery/refresh')).data.data,
+  refreshStatus: async (): Promise<RefreshJob> => (await apiClient.get('/delivery/refresh/status')).data.data,
+};
+
 export const dailySummaryApi = {
   getLatest: async (): Promise<DailySummary | null> => {
     const response = await apiClient.get('/daily-summary/latest');
