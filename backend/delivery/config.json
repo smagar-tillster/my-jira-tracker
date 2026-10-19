@@ -1,0 +1,40 @@
+{
+  "root": "~/Documents/git/kiosk",
+  "repos": [
+    "kiosk-ui",
+    "kiosk-web-service",
+    "kiosk-menu-service",
+    "kiosk-device-service",
+    "rbi-loyalty-client",
+    "kiosk-avolta-loyalty-client"
+  ],
+  "sprintPrefix": "NGK Sprint",
+  "component": "FE",
+  "repoComponent": {
+    "kiosk-ui": "FE",
+    "kiosk-web-service": "Web Service (WS)",
+    "kiosk-menu-service": "Menu Service (MS)",
+    "kiosk-device-service": "Device Service (DS)",
+    "rbi-loyalty-client": "RBI loyalty client",
+    "kiosk-avolta-loyalty-client": "Avolta loyalty client"
+  },
+  "analysis": {
+    "standardBudget": 8000,
+    "standardPatchLines": 40,
+    "complexBudget": 16000,
+    "complexPatchLines": 70,
+    "complexIfRuntimeLines": 400,
+    "complexIfFiles": 15,
+    "complexPathPattern": "payment|cardholder|auth|security|token|oauth|encrypt",
+    "simpleMaxFiles": 3,
+    "simpleMaxLines": 30,
+    "simpleNonRuntimeMaxLines": 800,
+    "model": "haiku",
+    "complexModel": "haiku",
+    "relatedMax": 3
+  },
+  "tenantAliases": {
+    "SHAK-US-PENN": "PENN-US",
+    "SHAK-PENN-US": "PENN-US"
+  }
+}

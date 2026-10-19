@@ -7,6 +7,7 @@ import accomplishmentsRouter from './routes/accomplishments.js';
 import archiveRouter from './routes/archive.js';
 import dailySummaryRouter from './routes/dailySummary.js';
 import dailyBriefingRouter from './routes/dailyBriefing.js';
+import deliveryRouter from './routes/delivery.js';
 import { initDb } from './db/database.js';
 import { migrateFromJson } from './db/migrate.js';
 import { refreshArchiveCache, isCacheStale } from './services/archiveService.js';
@@ -37,6 +38,7 @@ app.use('/api', accomplishmentsRouter);
 app.use('/api', archiveRouter);
 app.use('/api', dailySummaryRouter);
 app.use('/api', dailyBriefingRouter);
+app.use('/api', deliveryRouter);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

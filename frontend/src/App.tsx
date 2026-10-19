@@ -4,10 +4,11 @@ import JiraTasksTracker from './components/JiraTasksTracker';
 import ArchiveTracker from './components/ArchiveTracker';
 import TodoPage from './components/TodoPage';
 import QuickAnalysisTracker from './components/QuickAnalysisTracker';
+import ReleasePrReports from './components/ReleasePrReports';
 import { jiraApi } from './services/api';
 import { JiraIssue } from './types';
 
-type MainTab = 'tasks' | 'todo' | 'archive' | 'accomplishments' | 'defects' | 'quickAnalysis';
+type MainTab = 'tasks' | 'todo' | 'archive' | 'accomplishments' | 'defects' | 'quickAnalysis' | 'releases';
 
 function App() {
   const [issues, setIssues] = useState<JiraIssue[]>([]);
@@ -215,6 +216,7 @@ function App() {
             {([
               { id: 'tasks',           label: '📋 Tasks' },
               { id: 'quickAnalysis',   label: '🔍 Quick Analysis' },
+              { id: 'releases',        label: '📦 Release & PRs' },
               { id: 'todo',            label: '✅ Todo' },
               { id: 'archive',         label: '🗃 Archive' },
               { id: 'accomplishments', label: '🏆 Accomplishments' },
@@ -256,6 +258,11 @@ function App() {
               onRefreshSprint={fetchIssues}
               onRefreshMe={fetchMyIssues}
             />
+          </div>
+        )}
+        {visitedTabs.has('releases') && (
+          <div className="absolute inset-0" style={activeTab !== 'releases' ? { display: 'none' } : undefined}>
+            <ReleasePrReports />
           </div>
         )}
         {visitedTabs.has('todo') && (
