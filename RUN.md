@@ -32,11 +32,7 @@ npm run dev > "C:\Users\smagar\OneDrive - Tillster Inc\logs\MyTracker\backend\st
 | `JIRA_API_TOKEN` | Jira API token ([id.atlassian.com](https://id.atlassian.com/manage-profile/security/api-tokens)) |
 | `JIRA_FILTER_ID_SPRINT` | Filter ID for the "Tasks" (sprint) tab |
 | `JIRA_FILTER_ID_ME` | Filter ID for the "Me" view |
-| `JIRA_FILTER_ID_DEFECTS` | Filter ID for the "Defects" tab |
-| `JIRA_FILTER_ID_ARCHIVE` | Filter ID for the "Archive" tab |
-| `DAILY_SUMMARY_API_KEY` | Shared key required to `POST /api/daily-summary` |
-| `DAILY_SUMMARY_MODE` | `file` reads `DAILY_SUMMARY_FILE_PATH`; `api` reads the DB record |
-| `DAILY_SUMMARY_FILE_PATH` | Path to the daily briefing `.md` written by the scheduled job |
+| `REPORTS_DIR_NEWRELIC` / `REPORTS_DIR_MYTESTER` / `REPORTS_DIR_DEFECTS` | Optional. Folders of `.html` reports shown by the New Relic Conditions, MyTester and Defects apps. Defaults are under `~/Library/CloudStorage/OneDrive-TillsterInc/databases/`. |
 | `PORT` | Backend port (default `3050`) |
 | `NODE_ENV` | `development` / `production` |
 

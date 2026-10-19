@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { JiraIssue, Todo, TodoCategory, CreateTodoPayload, Accomplishment, CreateAccomplishmentPayload, DailySummary, JiraSprint } from '../types';
+import { JiraIssue, Accomplishment, CreateAccomplishmentPayload, JiraSprint } from '../types';
 
 // Default to the backend on whatever host served this page, so the app works from any IP/hostname.
 const API_URL =
@@ -45,28 +45,15 @@ export const jiraApi = {
   },
 
   /**
-   * Fetch defects from filter 57474 (last 8 weeks of Done FE tasks)
-   */
-  getDefects: async (): Promise<JiraIssue[]> => {
-    try {
-      const response = await apiClient.get('/issues/filter/57474');
-      return response.data.data || [];
-    } catch (error) {
-      console.error('Error fetching defects:', error);
-      throw error;
-    }
-  },
-
-  /**
    * Get filter IDs configuration
    */
-  getFilterConfig: async (): Promise<{ sprint: string; me: string; defects: string; archive: string }> => {
+  getFilterConfig: async (): Promise<{ sprint: string; me: string }> => {
     try {
       const response = await apiClient.get('/config/filters');
-      return response.data.data || { sprint: '', me: '', defects: '', archive: '' };
+      return response.data.data || { sprint: '', me: '' };
     } catch (error) {
       console.error('Error fetching filter config:', error);
-      return { sprint: '60259', me: '47216', defects: '57474', archive: '56341' };
+      return { sprint: '60259', me: '47216' };
     }
   },
 
@@ -242,64 +229,6 @@ export const jiraApi = {
       throw error;
     }
   },
-
-  /**
-   * Get pre-computed archive (cached daily on backend)
-   */
-  getArchive: async (): Promise<{ issues: JiraIssue[]; fetchedAt: string; issueCount: number }> => {
-    try {
-      const response = await apiClient.get('/archive');
-      return {
-        issues: response.data.data || [],
-        fetchedAt: response.data.fetchedAt || '',
-        issueCount: response.data.issueCount || 0,
-      };
-    } catch (error) {
-      console.error('Error fetching archive:', error);
-      throw error;
-    }
-  },
-};
-
-// ── Todos API ────────────────────────────────────────────────────────────────
-export const todosApi = {
-  getAll: async (type?: string): Promise<Todo[]> => {
-    const response = await apiClient.get('/todos', { params: type ? { type } : {} });
-    return response.data.data || [];
-  },
-
-  getToday: async (): Promise<Todo[]> => {
-    const response = await apiClient.get('/todos/today');
-    return response.data.data || [];
-  },
-
-  create: async (payload: CreateTodoPayload): Promise<Todo> => {
-    const response = await apiClient.post('/todos', payload);
-    return response.data.data;
-  },
-
-  update: async (id: string, updates: Partial<CreateTodoPayload> & { done?: boolean; myDay?: boolean }): Promise<Todo> => {
-    const response = await apiClient.put(`/todos/${id}`, updates);
-    return response.data.data;
-  },
-
-  delete: async (id: string): Promise<void> => {
-    await apiClient.delete(`/todos/${id}`);
-  },
-
-  getCategories: async (): Promise<TodoCategory[]> => {
-    const response = await apiClient.get('/todos/categories');
-    return response.data.data || [];
-  },
-
-  createCategory: async (name: string): Promise<TodoCategory> => {
-    const response = await apiClient.post('/todos/categories', { name });
-    return response.data.data;
-  },
-
-  deleteCategory: async (id: string): Promise<void> => {
-    await apiClient.delete(`/todos/categories/${id}`);
-  },
 };
 
 // ── Accomplishments API ───────────────────────────────────────────────────────
@@ -374,9 +303,14 @@ export const deliveryApi = {
   refreshStatus: async (): Promise<RefreshJob> => (await apiClient.get('/delivery/refresh/status')).data.data,
 };
 
-export const dailySummaryApi = {
-  getLatest: async (): Promise<DailySummary | null> => {
-    const response = await apiClient.get('/daily-summary/latest');
-    return response.data.data || null;
-  },
+// ── Report hub (HTML reports from folders on the backend host) ─────────────
+export interface HubSource { id: string; label: string; available: boolean }
+export interface HubReportFile { path: string; name: string; size: number; modifiedAt: string }
+
+export const hubApi = {
+  getSources: async (): Promise<HubSource[]> => (await apiClient.get('/hub/sources')).data.data,
+  getFiles: async (source: string): Promise<HubReportFile[]> => (await apiClient.get(`/hub/${source}/files`)).data.data,
+  /** URL the iframe loads; relative links inside the report resolve under the same prefix. */
+  fileUrl: (source: string, filePath: string): string =>
+    `${API_URL}/hub/${source}/file/${filePath.split('/').map(encodeURIComponent).join('/')}`,
 };
