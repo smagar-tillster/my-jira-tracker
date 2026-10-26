@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AnalyzeJob, DeliveryPr, GenerateJob, deliveryApi, generateBusy } from '../../services/api';
 import { Modal, Section } from './shared';
 import { jobText, prId, useCodeReview } from './useCodeReview';
+import TenantGroupList from './TenantGroupList';
 
 const RISK: Record<string, string> = { low: 'bg-green-100 text-green-800', medium: 'bg-yellow-100 text-yellow-800', high: 'bg-red-100 text-red-800' };
 const TONE: Record<string, string> = { ok: 'bg-green-100 text-green-800', warn: 'bg-red-100 text-red-800', info: 'bg-blue-100 text-blue-800' };
@@ -123,34 +124,33 @@ function Understanding({ p }: { p: DeliveryPr }) {
   return <span className="text-gray-400">Not reviewed</span>;
 }
 
-/** PRs grouped by repo, dependencies on the PR's own line. Used for merged and open PRs ("open" adds draft/review/age). */
+const prTenants = (p: DeliveryPr) => p.tenants;
+
+/** What a collapsed tenant group says about its PRs: how many, in which repos, and (merged PRs) over how many days. */
+const prSummary = (prs: DeliveryPr[], open?: boolean) => {
+  const repos = [...new Set(prs.map(p => p.repo))];
+  const days = [...new Set(prs.map(p => p.day).filter(Boolean))] as string[];
+  const parts = [`${prs.length} PR${prs.length === 1 ? '' : 's'} in ${repos.length} repo${repos.length === 1 ? '' : 's'} (${repos.join(', ')})`];
+  if (open) { const d = prs.filter(p => p.isDraft).length; if (d) parts.push(`${d} draft${d === 1 ? '' : 's'}`); }
+  else if (days.length) parts.push(`${days.length} day${days.length === 1 ? '' : 's'}`);
+  return parts.join(' · ');
+};
+
+/** PRs grouped by tenant (across repos), dependencies on the PR's own line. Used for merged and open PRs ("open" adds draft/review/age). */
 export default function PrTable({ rows, open, empty, onChanged }: { rows: DeliveryPr[]; open?: boolean; empty: string; onChanged: () => void }) {
   const [shown, setShown] = useState<DeliveryPr | null>(null);
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const { jobs, start } = useAnalyze(onChanged);
   const review = useCodeReview(onChanged);
   const startReview = (p: DeliveryPr) => review.start([{ repo: p.repo, number: p.number }]);
 
-  const byRepo = useMemo(() => {
-    const m = new Map<string, DeliveryPr[]>();
-    for (const p of rows) m.set(p.repo, [...(m.get(p.repo) || []), p]);
-    return [...m.entries()];
-  }, [rows]);
   // keep the open modal in sync with refreshed rows
   const current = shown ? rows.find(r => r.id === shown.id) || shown : null;
-  const toggle = (repo: string) => setCollapsed(prev => { const n = new Set(prev); n.has(repo) ? n.delete(repo) : n.add(repo); return n; });
 
   if (rows.length === 0) return <div className="p-8 text-center text-gray-400">{empty}</div>;
   return (
-    <div className="space-y-3">
-      {byRepo.map(([repo, prs]) => (
-        <div key={repo} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-          <button onClick={() => toggle(repo)} className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 text-left">
-            <span className="text-gray-400">{collapsed.has(repo) ? '▶' : '▼'}</span>
-            <span className="font-semibold text-gray-800">{repo}</span>
-            <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{prs.length}</span>
-          </button>
-          {!collapsed.has(repo) && (
+    <>
+      <TenantGroupList items={rows} tenantsOf={prTenants} unit="PR" summary={prs => prSummary(prs, open)}>
+        {prs => (
             <table className="w-full text-sm">
               <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
                 <tr><th className="px-3 py-1.5">PR</th><th className="px-3 py-1.5">Ticket</th><th className="px-3 py-1.5">What it builds</th><th className="px-3 py-1.5">Understanding</th><th className="px-3 py-1.5"></th></tr>
@@ -159,7 +159,7 @@ export default function PrTable({ rows, open, empty, onChanged }: { rows: Delive
                 {prs.map(p => (
                   <tr key={p.id} className="border-t border-gray-100 align-top hover:bg-gray-50">
                     <td className="px-3 py-2 whitespace-nowrap">
-                      <a href={p.url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline font-medium">#{p.number}</a>
+                      <a href={p.url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline font-medium">{p.repo} #{p.number}</a>
                       {open && p.isDraft && <span className="ml-1.5 text-[11px] px-1.5 py-0.5 rounded bg-gray-200 text-gray-700">draft</span>}
                       <div className="text-xs text-gray-400">
                         {open ? `opened ${dateOf(p.createdAt || '')} · ${ageDays(p.createdAt || '')}d` : `${dateOf(p.mergedAt || '')} ${timeOf(p.mergedAt || '')}`}
@@ -199,10 +199,9 @@ export default function PrTable({ rows, open, empty, onChanged }: { rows: Delive
                 ))}
               </tbody>
             </table>
-          )}
-        </div>
-      ))}
+        )}
+      </TenantGroupList>
       {current && <PrModal p={current} job={jobs[current.id]} onStart={start} reviewJob={review.jobs[prId(current)]} onReview={startReview} onClose={() => setShown(null)} />}
-    </div>
+    </>
   );
 }
