@@ -62,6 +62,26 @@ test('contextFor numbers the unchanged lines around a hunk and skips changed one
   assert.ok(!/^10 +line10$/m.test(out)); // changed lines are already in the patch
 });
 
+test('cleanInline drops a startLine that is not before line, and comments with no usable anchor or text', () => {
+  const out = gen.cleanInline([
+    { path: 'a.js', line: 5, startLine: 5, side: 'RIGHT', body: 'same line' },
+    { path: 'a.js', line: '7', startLine: '3', side: 'RIGHT', body: 'range' },
+    { path: 'a.js', line: 9, startLine: 12, body: 'backwards' },
+    { path: '', line: 2, body: 'no path' },
+    { path: 'a.js', line: 0, body: 'no line' },
+    { path: 'a.js', line: 4, body: '   ' },
+  ]);
+  assert.deepEqual(out.map((c) => [c.line, c.startLine]), [[5, undefined], [7, 3], [9, undefined]]);
+  assert.deepEqual(gen.cleanInline(undefined), []);
+});
+
+test('a model answer with startLine equal to line still saves a draft', async () => {
+  const bad = answer({ inline: [{ path: 'src/a.js', line: 2, startLine: 2, side: 'RIGHT', severity: 'issue', body: '**Issue:** x.' }] });
+  const r = await gen.generateReview({ repo: 'kiosk-ui', number: 106, gh, buildPacket: packet('light', 'f1e1234567'), prFiles: async () => FILES, claude: okClaude(bad), helper: noHelper });
+  assert.equal(r.state, 'done', r.message);
+  assert.equal(getReview('kiosk-ui', 106, 'f1e1234567').inline.length, 1);
+});
+
 test('a comment that is not on a diff line is moved into the overview, not lost', () => {
   const draft = { body: 'Overview', inline: [
     { path: 'src/a.js', line: 2, side: 'RIGHT', severity: 'issue', body: 'on the diff' },
