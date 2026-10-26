@@ -21,7 +21,7 @@ export const APPS: AppDef[] = [
   { id: 'tasks',         name: 'Tasks',                 icon: '📋', section: 'apps', description: 'Sprint and personal Jira tasks', keywords: ['jira', 'sprint', 'issues'] },
   { id: 'quickAnalysis', name: 'Quick Analysis',        icon: '🔍', section: 'apps', description: 'Concerns across releases and sprints', keywords: ['concerns', 'risk', 'overdue'] },
   { id: 'releases',      name: 'Release & PRs',         icon: '📦', section: 'apps', description: 'What was released, what is next, and PRs', keywords: ['release', 'pull request', 'delivery'] },
-  { id: 'prReviews',     name: 'PR Reviews',            icon: '📝', section: 'apps', description: 'AI review drafts for open PRs: read, then post', keywords: ['review', 'pull request', 'github', 'comments', 'drafts'] },
+  { id: 'prReviews',     name: 'PR Reviews',            icon: '📝', section: 'apps', description: 'Code review drafts for open PRs: read, then post', keywords: ['review', 'pull request', 'github', 'comments', 'drafts'] },
   { id: 'monitoring',    name: 'Monitoring Dashboard',  icon: '📡', section: 'apps', description: 'Hosted fleet monitoring', keywords: ['fleet', 'kiosk', 'health'] },
   { id: 'mytester',      name: 'MyTester',              icon: '🧪', section: 'apps', description: 'Test reports', keywords: ['test', 'qa', 'report'] },
   { id: 'defects',       name: 'Defects',               icon: '🐞', section: 'apps', description: 'Defect reports', keywords: ['bugs', 'report'] },

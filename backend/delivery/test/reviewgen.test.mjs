@@ -113,8 +113,9 @@ test('an existing draft is not generated again, and the model is not called', as
 test('when the claude CLI is unusable the request is queued for a Claude session', async () => {
   const r = await gen.generateReview({ repo: 'kiosk-ui', number: 103, gh, buildPacket: packet('light', 'cafe1234567'), prFiles: async () => FILES, claude: async () => ({ ok: false, reason: 'not logged in', text: '' }), helper: noHelper });
   assert.equal(r.state, 'queued');
-  assert.match(r.message, /pr-review kiosk-ui#103/);
-  assert.ok(fs.existsSync(path.join(gen.REQUESTS_DIR, 'kiosk-ui__103.json')));
+  assert.ok(!/claude|\bAI\b/i.test(r.message)); // shown in the UI
+  const req = JSON.parse(fs.readFileSync(path.join(gen.REQUESTS_DIR, 'kiosk-ui__103.json'), 'utf8'));
+  assert.match(req.hint, /pr-review kiosk-ui#103/);
   assert.equal(getReview('kiosk-ui', 103, 'cafe1234567'), null);
 });
 

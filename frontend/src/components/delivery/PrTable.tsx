@@ -50,8 +50,8 @@ export function useAnalyze(onDone: () => void) {
 
 function AnalyzeButton({ p, job, onStart }: { p: DeliveryPr; job?: AnalyzeJob; onStart: (p: DeliveryPr) => void }) {
   if (job?.state === 'running') return <span className="text-xs text-blue-700">⏳ Analyzing…</span>;
-  if (job?.state === 'queued') return <span className="text-xs text-amber-700" title={job.message}>Queued for Claude <span className="text-gray-400">(CLI not signed in)</span></span>;
-  const label = p.analysis && !p.rulesOnly ? '↻ Re-analyze' : '✨ Analyze with AI';
+  if (job?.state === 'queued') return <span className="text-xs text-amber-700" title={job.message}>Queued for a manual run</span>;
+  const label = p.analysis && !p.rulesOnly ? '↻ Re-analyze' : 'Analyze';
   return (
     <span className="inline-flex flex-col">
       <button onClick={() => onStart(p)} className="text-xs px-2 py-1 rounded bg-indigo-100 text-indigo-800 hover:bg-indigo-200 whitespace-nowrap">{label}</button>
@@ -101,12 +101,12 @@ function PrModal({ p, job, onStart, reviewJob, onReview, onClose }: { p: Deliver
       <Section title="Understanding">
         {a ? (
           <div className="bg-blue-50 border border-blue-100 rounded p-3 space-y-2">
-            <p className="text-xs text-gray-500">{a.ai === false ? `Not AI-reviewed (${a.basis}).` : `AI-assisted reading of the diff and ticket (${a.basis}; ${a.generatedAt}). Verify before relying on it.`}</p>
+            <p className="text-xs text-gray-500">{a.ai === false ? `Rules-based summary (${a.basis}).` : `Reading of the diff and ticket (${a.basis}; ${a.generatedAt}). Verify before relying on it.`}</p>
             <p className="font-medium">{a.summary}</p>
             {a.how?.length > 0 && <><p className="text-xs text-gray-500">How it works</p><List items={a.how} /></>}
             {a.dependencies?.length > 0 && <><p className="text-xs text-gray-500">Dependencies (my reading)</p><List items={a.dependencies} /></>}
           </div>
-        ) : <p className="text-gray-500">No AI analysis yet.</p>}
+        ) : <p className="text-gray-500">No analysis yet.</p>}
         <div className="mt-2">
           {p.open ? <CodeReviewButton p={p} job={reviewJob} onStart={onReview} /> : <AnalyzeButton p={p} job={job} onStart={onStart} />}
         </div>
@@ -119,7 +119,7 @@ function PrModal({ p, job, onStart, reviewJob, onReview, onClose }: { p: Deliver
 function Understanding({ p }: { p: DeliveryPr }) {
   if (p.analysis && p.rulesOnly) return <><span className="px-1.5 py-0.5 rounded mr-1.5 bg-gray-100 text-gray-600">rules only</span>{p.analysis.summary}</>;
   if (p.analysis) return <><span className={`px-1.5 py-0.5 rounded mr-1.5 font-medium ${RISK[p.risk || 'low']}`}>{p.risk}</span>{p.analysis.summary}</>;
-  if (p.aiRecommended) return <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800" title={p.tierWhy}>AI recommended ({p.tierWhy})</span>;
+  if (p.aiRecommended) return <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800" title={p.tierWhy}>Analysis recommended ({p.tierWhy})</span>;
   return <span className="text-gray-400">Not reviewed</span>;
 }
 

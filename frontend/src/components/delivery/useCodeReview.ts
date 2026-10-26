@@ -58,7 +58,7 @@ export const jobText = (j?: GenerateJob): { text: string; tone: 'info' | 'ok' | 
     case 'running': return { text: 'Reviewing…', tone: 'info' };
     case 'done': return { text: 'Draft ready in To review', tone: 'ok' };
     case 'exists': return { text: 'A review for this commit already exists', tone: 'warn' };
-    case 'queued': return { text: `Queued for Claude: ${j.message}`, tone: 'warn' };
+    case 'queued': return { text: 'Could not start automatically; request saved for a manual run', tone: 'warn' };
     default: return { text: `Failed: ${j.message}`, tone: 'err' };
   }
 };

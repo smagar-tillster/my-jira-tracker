@@ -361,7 +361,7 @@ const PrReviews: React.FC = () => {
               </a>
               <div className="text-xs text-gray-500 mt-1">
                 {selected.slug}#{selected.number} · by {selected.author || 'unknown'} · commit {selected.headSha.slice(0, 7)} · drafted {ago(selected.generatedAt)}
-                {selected.model ? ` · ${selected.model}` : ''}{selected.edited ? ' · edited by you' : ''}
+                {selected.edited ? ' · edited by you' : ''}
               </div>
               <div className="flex gap-1.5 flex-wrap mt-2 mb-3">
                 {selected.risk && <Badge className={RISK[selected.risk]}>risk: {selected.risk}</Badge>}

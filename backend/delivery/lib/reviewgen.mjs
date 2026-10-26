@@ -194,8 +194,8 @@ export const generateReview = async ({ repo, number, gh, buildPacket, prFiles, c
     const r = await claude({ prompt: buildPrompt(tier), input, model, timeoutMs: cfg.claudeTimeoutMs });
     if (!r.ok) {
       fs.mkdirSync(REQUESTS_DIR, { recursive: true });
-      fs.writeFileSync(path.join(REQUESTS_DIR, `${repo}__${number}.json`), JSON.stringify({ repo, number, requestedAt: new Date().toISOString(), reason: r.reason, tier }, null, 2));
-      return { state: 'queued', message: `The claude CLI is not usable (${String(r.reason).slice(0, 120)}). Run /pr-review ${repo}#${number} in a Claude session.` };
+      fs.writeFileSync(path.join(REQUESTS_DIR, `${repo}__${number}.json`), JSON.stringify({ repo, number, requestedAt: new Date().toISOString(), reason: r.reason, tier, hint: `run /pr-review ${repo}#${number} in a Claude session` }, null, 2));
+      return { state: 'queued', message: `Could not start automatically; request saved (${repo}#${number}).` };
     }
     const j = parseModelJson(r.text);
     if (!j || typeof j.body !== 'string' || !j.body.trim()) return { state: 'failed', message: 'The model did not return a usable review' };
