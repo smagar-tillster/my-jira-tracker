@@ -76,7 +76,8 @@ function App() {
     poll();
     const t = setInterval(poll, 120000);
     window.addEventListener('focus', poll);
-    return () => { alive = false; clearInterval(t); window.removeEventListener('focus', poll); };
+    window.addEventListener('reviews-changed', poll); // a review finished, or one was posted or skipped: update the badge now
+    return () => { alive = false; clearInterval(t); window.removeEventListener('focus', poll); window.removeEventListener('reviews-changed', poll); };
   }, []);
 
   const bellItems: BellItem[] = reviewDrafts > 0

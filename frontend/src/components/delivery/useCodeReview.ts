@@ -21,7 +21,10 @@ export function useCodeReview(onDone: () => void) {
     try {
       const next = await reviewsApi.generateStatus();
       setJobs(prev => {
-        if (Object.entries(next).some(([id, j]) => generateBusy(prev[id]) && j.state === 'done')) onDoneRef.current();
+        if (Object.entries(next).some(([id, j]) => generateBusy(prev[id]) && j.state === 'done')) {
+          onDoneRef.current();
+          window.dispatchEvent(new Event('reviews-changed')); // the header bell recounts the drafts
+        }
         return next;
       });
       if (!Object.values(next).some(generateBusy)) stop();

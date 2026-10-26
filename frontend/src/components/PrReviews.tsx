@@ -211,8 +211,10 @@ const PrReviews: React.FC = () => {
 
   const selected = reviews.find(r => rid(r) === selectedId) || null;
 
-  const replace = (updated: PrReview) =>
+  const replace = (updated: PrReview) => {
     setReviews(prev => prev.map(r => (rid(r) === rid(updated) ? { ...updated, current: updated.status === 'draft' ? r.current : null } : r)));
+    window.dispatchEvent(new Event('reviews-changed')); // posted or skipped: the header bell recounts the drafts
+  };
 
   const select = (r: PrReview) => {
     setSelectedId(rid(r)); setEditingBody(false); setEditingComment(null); setConfirming(false); setAckSecrets(false); setNotice(null);
