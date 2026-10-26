@@ -49,7 +49,8 @@ const fmt = (i, why) => `- ${i.key} (${why}; ${i.fields.status?.name || '?'}; cr
  * Builds the "Known defects" packet section. `search` is the Jira search function (injected for tests).
  * Each query fails on its own, so a Jira hiccup never blocks the packet.
  */
-export const knownDefectsMarkdown = async ({ search, keys, title, ticketSummary, files, knownTenants, component = null }) => {
+export const MAX_DEFECT_CANDIDATES = 3; // the reviewer cites at most 3 and only the clearly related, so a longer list is wasted reading
+export const knownDefectsMarkdown = async ({ search, keys, title, ticketSummary, files, knownTenants, component = null, limit = MAX_DEFECT_CANDIDATES }) => {
   const FIELDS = ['summary', 'status', 'created'];
   const seen = new Set(); const lines = []; const notes = [];
   const add = async (jql, why, max) => {
@@ -64,6 +65,7 @@ export const knownDefectsMarkdown = async ({ search, keys, title, ticketSummary,
   const words = areaWords(files);
   await add(defectJql(words, 180, component), `same area "${words.join('"/"')}"${component ? `, ${component}` : ''}, last 180 days`, 4);
 
+  lines.splice(limit); // linked defects come first, then same tenant, then same area
   const head = '## Known defects that may relate (candidates only)\nCite one only if it is clearly about the same flow, tenant or files, and never say this PR or an earlier one caused it.';
   if (!lines.length) return `${head}\nNone found${notes.length ? ` (some Jira queries failed: ${notes[0]})` : ''}.\n`;
   return `${head}\n${lines.join('\n')}${notes.length ? `\n(some Jira queries failed: ${notes[0]})` : ''}\n`;

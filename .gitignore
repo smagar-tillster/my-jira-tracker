@@ -46,3 +46,8 @@ debug/
 *.bak
 *.tmp
 *.temp
+
+# Local data that must never be committed: cached Jira sprint data and Jira/UAT exports
+.briefing-cache/
+/dev.xml
+/uat.xml

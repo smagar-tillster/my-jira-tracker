@@ -61,7 +61,7 @@ export const sameMachineOnly = (req, res, next) => {
 
 const fail = (res, r) => res.status(r.status || 500).json({ success: false, error: r.error || (r.errors || []).join('; ') || 'Failed', ...(r.needsAcknowledge ? { needsAcknowledge: true } : {}), ...(r.draft ? { data: r.draft } : {}) });
 
-export const createReviewsRouter = ({ gh = realGh } = {}) => {
+export const createReviewsRouter = ({ gh = realGh, now = () => Date.now() } = {}) => {
   const router = express.Router();
 
   // Open PRs per configured repo, cached for a minute (the list view and the bell both ask often).
@@ -117,7 +117,7 @@ export const createReviewsRouter = ({ gh = realGh } = {}) => {
   // GET /api/reviews/queue — PRs that need a review: open, not draft, not a bot, no review saved for the current head commit, and worth
   // reading (tier not in review.skipTiers). Skipped PRs come back under `skipped` with the reason. ?all=1 returns everything in `data`.
   router.get('/reviews/queue', async (req, res) => {
-    const { skipAuthors, skipTiers } = reviewConfig();
+    const { skipAuthors, skipTiers, minAgeMinutes } = reviewConfig();
     const { byKey, error } = await openPrs(true);
     const have = new Set(listReviews().map((r) => reviewId(r.repo, r.number, r.headSha)));
     const candidates = [...byKey.values()]
@@ -125,7 +125,10 @@ export const createReviewsRouter = ({ gh = realGh } = {}) => {
       .filter((p) => !(p.author?.is_bot || skipAuthors.includes(String(p.author?.login || '').toLowerCase())))
       .filter((p) => !have.has(reviewId(p.repo, p.number, p.headRefOid)))
       .sort((a, b) => String(a.updatedAt).localeCompare(String(b.updatedAt)));
-    const items = await Promise.all(candidates.map(async (p) => {
+    // PRs touched within the last minAgeMinutes are still moving; they wait (listed under `settling`). ?all=1 skips the wait.
+    const settled = req.query.all === '1' ? candidates : candidates.filter((p) => now() - Date.parse(p.updatedAt) >= minAgeMinutes * 60000);
+    const settling = candidates.filter((p) => !settled.includes(p));
+    const items = await Promise.all(settled.map(async (p) => {
       const t = await tierFor(p);
       return { repo: p.repo, number: p.number, title: p.title, url: p.url, headSha: p.headRefOid, baseRef: p.baseRefName, author: p.author?.login || '', updatedAt: p.updatedAt, tier: t.tier, tierWhy: t.why };
     }));
@@ -134,6 +137,7 @@ export const createReviewsRouter = ({ gh = realGh } = {}) => {
       success: true,
       data: keep,
       skipped: skipped.map((i) => ({ repo: i.repo, number: i.number, title: i.title, url: i.url, why: i.tierWhy })),
+      settling: settling.map((p) => ({ repo: p.repo, number: p.number, title: p.title, url: p.url, updatedAt: p.updatedAt })),
       ...(error ? { warning: error } : {}),
     });
   });

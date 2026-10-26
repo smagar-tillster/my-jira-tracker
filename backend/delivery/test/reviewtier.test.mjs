@@ -117,4 +117,36 @@ test('GET /reviews/queue returns worthwhile PRs with a tier and lists skipped on
   }
 });
 
+test('GET /reviews/queue holds back PRs touched in the last 30 minutes, and ?all=1 skips the wait', async () => {
+  const { default: express } = await import('express');
+  const { createReviewsRouter } = await import('../../src/routes/reviews.js');
+  const NOW = Date.parse('2026-10-26T12:00:00Z');
+  const iso = (minutesAgo) => new Date(NOW - minutesAgo * 60000).toISOString();
+  const pr = (number, minutesAgo) => ({ number, title: `PR ${number}`, url: `u${number}`, author: { login: 'a' }, isDraft: false, headRefOid: `h${number}`, updatedAt: iso(minutesAgo), baseRefName: 'main' });
+  const prs = [pr(10, 5), pr(11, 29), pr(12, 31), pr(13, 600)];
+  const viewed = [];
+  const gh = async (args) => {
+    if (args[1] === 'list') return prs;
+    viewed.push(Number(args[2]));
+    return { title: 'x', body: '', files: [{ path: 'src/common/services/a.js', additions: 60, deletions: 10 }, { path: 'src/common/services/b.js', additions: 30, deletions: 2 }] };
+  };
+  const app = express();
+  app.use('/api', createReviewsRouter({ gh, now: () => NOW }));
+  const server = http.createServer(app);
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const base = `http://127.0.0.1:${server.address().port}/api/reviews/queue`;
+  try {
+    const body = await (await fetch(base)).json();
+    assert.deepEqual(body.data.map((i) => i.number), [13, 12]); // oldest first; 10 and 11 are too fresh
+    assert.deepEqual(body.settling.map((i) => i.number).sort(), [10, 11]);
+    assert.ok(!viewed.includes(10) && !viewed.includes(11)); // no file lookups spent on PRs that must wait
+
+    const all = await (await fetch(`${base}?all=1`)).json();
+    assert.deepEqual(all.data.map((i) => i.number), [13, 12, 11, 10]);
+    assert.deepEqual(all.settling, []);
+  } finally {
+    server.close();
+  }
+});
+
 test.after(() => fs.rmSync(tmp, { recursive: true, force: true }));

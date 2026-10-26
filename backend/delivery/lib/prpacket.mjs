@@ -32,6 +32,34 @@ export const numberPatch = (patch) => {
 
 const PRIO = { build: 0, source: 1, config: 2, test: 3, translations: 4, styles: 5, assets: 9 };
 
+// ---- keep the packet small: the reviewer pays for every line it reads
+// PR template text that says nothing about the change: checklists, empty evidence sections, bare attachment links.
+const BOILERPLATE_HEADING = /^(developer checklist|reviewer checklist|testing artifacts)\b/i;
+const PLACEHOLDER_LINE = /^(provide a brief explanation of the issue\.?|screenshot\/recording of behavior)$/i;
+
+export const cleanBody = (body) => {
+  const out = []; let skipLevel = null; let links = 0;
+  for (const line of String(body || '').replace(/\r\n?/g, '\n').split('\n')) { // GitHub PR bodies use CRLF
+    const h = line.match(/^(#{1,6})\s*(.*)$/);
+    if (h) {
+      if (skipLevel !== null && h[1].length > skipLevel) continue; // a sub-heading of a dropped section
+      skipLevel = BOILERPLATE_HEADING.test(h[2].trim()) ? h[1].length : null;
+      if (skipLevel !== null) continue;
+    } else if (skipLevel !== null) continue;
+    const t = line.trim();
+    if (/^https?:\/\/\S+$/.test(t)) { links++; continue; }
+    if (PLACEHOLDER_LINE.test(t)) continue;
+    out.push(line);
+  }
+  const text = out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  return links ? `${text}\n\n(${links} attachment link${links > 1 ? 's' : ''} omitted)`.trim() : text;
+};
+
+// A one-line translation change (a new key) needs no diff context: it is listed in one line instead.
+export const TRIVIAL_MAX_LINES = 2;
+export const isTrivialChange = (r) => r.kind === 'translations' && (r.add || 0) + (r.del || 0) <= TRIVIAL_MAX_LINES;
+export const changedLines = (patch) => String(patch || '').split('\n').filter((l) => /^[+-][^+-]/.test(l)).map((l) => l.trim().replace(/^([+-])\s+/, '$1')).join(' ; ').slice(0, 160);
+
 export const packetFor = async ({ gh, slug, repo, number, budget: maxChars = 20000, patchLines = 70, lineNumbers = false }) => {
   const v = await gh(['pr', 'view', String(number), '--repo', slug, '--json', 'title,body,author,mergedAt,state,url,baseRefName,headRefName,commits,additions,deletions,changedFiles']);
   const files = await gh(['api', `repos/${slug}/pulls/${number}/files?per_page=100`]);
@@ -52,7 +80,8 @@ export const packetFor = async ({ gh, slug, repo, number, budget: maxChars = 200
 
   const byKind = {};
   for (const r of rows) byKind[r.kind] = (byKind[r.kind] || 0) + 1;
-  const shown = rows.filter((r) => !SKIP.test(r.name) && r.patch).sort((a, b) => PRIO[a.kind] - PRIO[b.kind] || (b.add + b.del) - (a.add + a.del));
+  const collapsed = rows.filter((r) => !SKIP.test(r.name) && r.patch && isTrivialChange(r));
+  const shown = rows.filter((r) => !SKIP.test(r.name) && r.patch && !isTrivialChange(r)).sort((a, b) => PRIO[a.kind] - PRIO[b.kind] || (b.add + b.del) - (a.add + a.del));
   let budget = maxChars; const patches = [];
   for (const r of shown) {
     const lines = (lineNumbers ? numberPatch(r.patch) : r.patch).split('\n');
@@ -67,7 +96,7 @@ export const packetFor = async ({ gh, slug, repo, number, budget: maxChars = 200
     `${v.url} · ${v.state} · merged ${v.mergedAt || '-'} · author ${v.author?.login || '?'} · ${v.headRefName} -> ${v.baseRefName}`,
     `${v.changedFiles} files, +${v.additions}/-${v.deletions}; by kind: ${Object.entries(byKind).map(([k, n]) => `${k} ${n}`).join(', ')}`,
     '', '## Ticket', ticketMd || '(no NGK ticket found in the title or branch)',
-    '## PR description', (v.body || '(empty)').slice(0, 3000), '',
+    '## PR description', cleanBody(v.body).slice(0, 3000) || '(empty)', '',
     `## Commits (${(v.commits || []).length})`, ...(v.commits || []).slice(0, 25).map((c) => `- ${c.messageHeadline}`), '',
     '## Dependency facts (by rules)',
     `- version bumps: ${bumps.length ? bumps.map((b) => `${b.name} ${b.from ?? 'new'} -> ${b.to ?? 'removed'} (${b.file})`).join('; ') : 'none'}`,
@@ -77,6 +106,7 @@ export const packetFor = async ({ gh, slug, repo, number, budget: maxChars = 200
     `## Patches (trimmed; ${patches.length} of ${shown.length} files with patches)`,
     ...(lineNumbers ? ['Line numbers: `R<n>` = line n of the NEW file (use side RIGHT; added and unchanged lines), `L<n>` = line n of the OLD file (use side LEFT; deleted lines). Only lines shown below can take an inline comment.', ''] : []),
     ...patches,
+    ...(collapsed.length ? ['', `## Small translation changes (${collapsed.length} file${collapsed.length > 1 ? 's' : ''}, one line each; no diff shown, so no inline anchors)`, ...collapsed.map((r) => `- ${r.name} +${r.add}/-${r.del}: ${changedLines(r.patch)}`)] : []),
   ].join('\n');
   return { md, keys, files: rows.map(({ patch, ...r }) => r), bumps, refs, title: v.title, additions: v.additions, deletions: v.deletions };
 };

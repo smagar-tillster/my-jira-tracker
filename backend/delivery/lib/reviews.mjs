@@ -24,6 +24,8 @@ export const reviewConfig = () => {
     packetChars: c.packetChars || 60000,
     patchLines: c.patchLines || 400,
     skipTiers: Array.isArray(c.skipTiers) ? c.skipTiers : ['skip'], // PR tiers not worth a review (see reviewtier.mjs)
+    // A PR touched in the last N minutes is still being pushed to: reviewing every intermediate head wastes a review per push.
+    minAgeMinutes: Number.isFinite(c.minAgeMinutes) && c.minAgeMinutes >= 0 ? c.minAgeMinutes : 30,
   };
 };
 

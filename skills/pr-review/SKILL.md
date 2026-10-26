@@ -1,6 +1,6 @@
 ---
 name: pr-review
-description: Review open, non-draft PRs (kiosk-ui first) like a senior engineer and save the review as a draft the user reads and posts from My Tracker. Only meaningful PRs are reviewed (docs, CI, tests, styles, translations and tiny changes are skipped), at a depth that fits the change. A code review first (comments anchored to lines, with suggested fixes), checked against the knowledge base (capability maps and defect patterns) plus impact, testing guidance and history. Triggers on the scheduled "PR review drafts" task, or when the user says "/pr-review", "/pr-review kiosk-ui#123", "review the open PRs". Drafts only: never posts to GitHub, approves, or requests changes.
+description: Review open, non-draft PRs (kiosk-ui first) like a senior engineer and save the review as a draft the user reads and posts from My Tracker. Only meaningful PRs are reviewed (docs, CI, tests, styles, translations and tiny changes are skipped), at a depth that fits the change (light or deep). Comments are anchored to lines with suggested fixes, and checked against known defect patterns when they match. Triggers on the scheduled "PR review drafts" task, or when the user says "/pr-review", "/pr-review kiosk-ui#123", "review the open PRs". Drafts only: never posts to GitHub, approves, or requests changes.
 ---
 
 # PR review drafts
@@ -21,44 +21,35 @@ You save the result as a **draft** through the My Tracker backend. The user read
 
 ## Procedure
 
-1. **Get the work.** If the user named a PR, see *One PR you are given* below. Otherwise `curl -s http://localhost:3050/api/reviews/queue`. Each item has `repo`, `number`, `headSha`, `title`, `url`, `author`, `baseRef`, `tier` (`light` or `deep`) and `tierWhy`. PRs not worth a review (docs, CI, tests, styles or translations only, or tiny) come back under `skipped` with a reason: do not review them, but count them in the final summary. If `data` is empty, stop and say so in one line, with the skipped count. If the call fails, say the backend is unreachable and stop.
+1. **Get the work.** If the user named a PR, see *One PR you are given* below. Otherwise `curl -s http://localhost:3050/api/reviews/queue`. Each item has `repo`, `number`, `headSha`, `title`, `url`, `author`, `baseRef`, `tier` (`light` or `deep`) and `tierWhy`. The response also lists `skipped` (docs, CI, tests, styles, translations only, or tiny: do not review) and `settling` (touched in the last 30 minutes, so still being pushed to: they wait for a later run). Count both in the final summary. If `data` is empty, stop and say so in one line. If the call fails, say the backend is unreachable and stop.
 2. **For each PR, oldest first** (at most 5 per run; the rest wait for the next run):
-   1. **Packet:** `curl -s http://localhost:3050/api/reviews/packet/<repo>/<number>`. It has the PR, its Jira ticket, changed files by kind, the patches **with line numbers**, dependency facts, and history (earlier PRs and reviews on the same files or tickets, plus candidate known defects: linked to the ticket, or recent ones for the same tenant or area). The first line is `<!-- headSha: ... -->`; use that value as `headSha`.
-   2. **Surrounding code.** A diff alone hides most bugs. Read the code around each change in the local clone `~/Documents/git/kiosk/kiosk-ui` (path from `backend/delivery/config.json` `root`; read only when the task prompt names it): `git -C <clone> fetch origin pull/<number>/head`, then `git -C <clone> show FETCH_HEAD:<path>`. Find callers of changed functions, other users of changed config keys, sibling files that must change together (i18n for every locale, tenant overrides, tests), and how errors reach the user. **Do not use `gh api`**: it is blocked in the sandboxed session. `gh pr view` / `gh pr diff` and the packet work. If the clone is not available, review from the packet and say in the overview what you could not check.
-   3. **Knowledge base (RAG).** `${RAG_ROOT}` is the my-rag checkout, defined in `~/.claude/skills/paths.env`. Start every query with `@datafeed` so the data feed answers.
-      1. **Map the changed files.** `${RAG_ROOT}/.venv/bin/python ${RAG_ROOT}/scripts/capabilities_for_files.py --repo kiosk-ui <the paths from the packet's "Changed files">` prints the capabilities that own those files (ranked, with doc and status) and the **defect patterns whose `paths` match**. It reads the docs directly, so it does not depend on search wording.
-      2. **Capability maps.** For the top 3 capabilities, `query_data` with `@datafeed capability map: <capability>`. It lists what else must change together (backend endpoints, config keys, other repos) and what is not verified.
-      3. **Defect patterns.** `@datafeed defect: <capability names and the PR's area words>`, plus every pattern the script matched. Treat each matched pattern as a **mandatory check**: say whether the PR meets it, citing the pattern id. If the check needs something you cannot read (for example `kiosk-configuration`), say what to look at; never claim a check passed that you could not run.
-      4. **Docs drift.** If the PR changes behavior, config keys or endpoints that a capability doc describes, note it for the final chat summary (`Docs to update: <doc> (<what>)`). Do not put it in the draft: it is internal.
-
-      Use only what the tools returned. `status: partial` and "not verified" are gaps, not facts. Never paste raw store or guest data. If the knowledge base is unavailable, continue and say `RAG unavailable` in the final chat summary, not in the draft. List the pattern ids you applied in `patterns` in the draft; do not write them in the comment text.
-   4. **Review the code** (next section), **write the draft**, **save it**.
-3. **Finish** with one line per PR: `kiosk-ui#123 — draft saved (deep): 2 issues, 3 suggestions, 1 question (risk medium)` or `skipped: <reason>`, then one line `Skipped by rules: N (kiosk-ui#120 docs only, …)`, then any internal notes: `Docs to update: …`, `RAG unavailable`, patterns applied. Do not paste review text into the summary.
+   1. **Packet:** `curl -s http://localhost:3050/api/reviews/packet/<repo>/<number>`. It has the PR, its ticket, changed files by kind, the patches **with line numbers**, dependency facts and history. One-line translation changes are listed in a short section without a diff (no anchors there). The first line is `<!-- headSha: ... tier: ... -->`; use that headSha.
+   2. **Surrounding code.** For `deep` PRs, read the code around each change in the local clone `~/Documents/git/kiosk/kiosk-ui` (path from `backend/delivery/config.json` `root`; read only when the task prompt names it): `git -C <clone> fetch origin pull/<number>/head`, then `git -C <clone> show FETCH_HEAD:<path>`. Find callers of changed functions, other users of changed config keys, sibling files that must change together (i18n for every locale, tenant overrides, tests). For `light` PRs read only direct callers of what changed, and only if it is cheap. **Do not use `gh api`**: it is blocked in the sandboxed session. If the clone is not available, review from the packet and say so in the overview.
+   3. **Knowledge base (`${RAG_ROOT}` is the my-rag checkout, defined in `~/.claude/skills/paths.env`).**
+      - **Always:** `${RAG_ROOT}/.venv/bin/python ${RAG_ROOT}/scripts/capabilities_for_files.py --repo kiosk-ui <paths from the packet's "Changed files">`. It is local and free. It prints the capabilities that own the files (shared files like `constants.js` are set aside) and the **defect patterns whose `paths` match**.
+      - **If a pattern matched:** `query_data` with `@datafeed defect: <pattern ids and the PR's area words>`. Treat each matched pattern as a **mandatory check**: say whether the PR meets it, in plain words (no ids in the comment). If the check needs something you cannot read (for example `kiosk-configuration`), say what to look at; never claim a check passed that you could not run.
+      - **`light` with no pattern matched:** stop here. No searches.
+      - **`deep`:** also follow *Knowledge base, beyond the helper* in `references/deep-review.md`.
+      - List the pattern ids you applied in `patterns` in the draft, never in the comment text.
+   4. **Review the code.** `deep`: read `references/deep-review.md` first. `light`: see *Light reviews* below.
+   5. **Write the draft** (formats below) and **save it**.
+3. **Finish** with one line per PR: `kiosk-ui#123 — draft saved (deep): 2 issues, 3 suggestions, 1 question (risk medium)` or `skipped: <reason>`, then `Skipped by rules: N (kiosk-ui#120 docs only, …)` and `Waiting (recently updated): N`, then any internal notes: `Docs to update: …`, `RAG unavailable`, patterns applied. Do not paste review text into the summary.
 
 ## One PR you are given
 
-When the user runs `/pr-review kiosk-ui#123` (or pastes a github.com PR URL), skip the queue: take the repo and number, fetch the packet, use its `headSha` and the tier on its first line, and run steps 2.1 to 2.4 for that PR only. The repo must be one of `review.repos` in `backend/delivery/config.json` (kiosk-ui today); otherwise say it is not configured. A PR the rules would skip is still reviewed when the user asks, at `light` depth. If a draft for that head commit already exists (`409`), tell the user to open it in the PR Reviews tab.
+When the user runs `/pr-review kiosk-ui#123` (or pastes a github.com PR URL), skip the queue: take the repo and number, fetch the packet, use its `headSha` and the tier on its first line, and run steps 2.1 to 2.5 for that PR only. The repo must be one of `review.repos` in `backend/delivery/config.json` (kiosk-ui today); otherwise say it is not configured. A PR the rules would skip, or one still settling, is reviewed anyway when the user asks, at `light` depth. If a draft for that head commit already exists (`409`), tell the user to open it in the PR Reviews tab.
 
 If a PR cannot be reviewed (packet fails, diff unreadable), skip it and say why; do not save an empty or guessed draft.
 
-## How to review the code
+## Light reviews
 
-Think like the engineer who will be paged if this breaks. For every changed hunk ask: what does this do on the unhappy path? Then write comments only for things you can point at.
+An ordinary change. Think like the engineer who will be paged if this breaks: for each changed hunk ask what happens on the unhappy path. Keep to:
+- **Correctness:** wrong conditions, null or missing-key access, shared state mutated, behavior that no longer matches the PR's description.
+- **Security and data:** secrets, card data, guest PII, unescaped HTML, new third-party hosts.
+- **Tillster rules that apply:** money in integer cents, new behavior behind a flag, payment paths (set `flags.touchesPaymentPaths`), dependency changes.
+- **Matched defect patterns.**
 
-**Depth by tier** (the packet's first line and its `Review depth` line, or the queue item's `tier`):
-- `deep`: everything below, read the surrounding code, up to 10 line comments, overview as described.
-- `light`: an ordinary change. Keep to correctness, security and data, Tillster rules and the matched defect patterns; read only the changed files and their direct callers; at most 4 line comments; overview about 100 words; leave out Testing unless something is non-obvious.
-- Save `tier` (`light` or `deep`) in the draft. A `skip` PR never comes from the queue.
-
-**Look for, in this order**
-1. **Correctness:** wrong conditions, off-by-one, null/undefined or missing-key access, wrong operator, mutated shared state, copy-paste errors between similar blocks, behavior that no longer matches the PR's own description.
-2. **Failure and edge cases:** empty, slow or failing network; double-tap or double-submit; timeouts and retries; error states the user can actually see; what happens offline (kiosks must keep taking orders during a cloud outage, so a new hard dependency on a cloud call in an in-store path is an issue).
-3. **kiosk-ui specifics (AngularJS 1.6, runs for days without a reload):** listeners, `$on`, `$watch`, `$interval`/`$timeout` and DOM handlers not cleaned up on `$destroy` (memory growth); work outside the digest cycle; scope pollution; per-tenant config and override keys that exist for some tenants but not others; strings added without every locale; hardcoded text, currency or date formats; accessibility (screen reader, focus, touch target size).
-4. **Security and data:** secrets, tokens, card data or guest PII in code, logs or fixtures; unescaped HTML; URLs or scripts loaded from new third-party hosts.
-5. **Tillster rules, only where they apply:** money as floating point (integer cents); timestamps not UTC ISO-8601; logging without a correlation id or not structured; queries or cache keys not scoped by brand and restaurant; mutations without an idempotency key; new behavior without a LaunchDarkly flag with per-brand targeting; dependencies added, upgraded or removed without mention (flag copyleft licenses); changes under payment, cardholder, auth, token or encryption paths (set `flags.touchesPaymentPaths`).
-6. **Tests:** changed branches with no test, tests that cannot fail, snapshots that hide the behavior.
-
-**Do not** comment on formatting a linter handles, personal taste, or "consider adding a comment". Do not repeat one problem at several lines: anchor it at the first and say "same in lines X and Y". Do not praise. Quality beats count: **at most 10 line comments**, most important first. If you find nothing worth a line comment, save zero and say so in the overview. A review with invented findings is worse than a short one.
+At most **4** line comments, an overview of about **100 words**, and no Testing section unless something is non-obvious. Save `tier: "light"`. No formatting or taste comments; no praise; an empty review with an honest overview beats an invented finding.
 
 ## Writing a line comment (`inline[]`)
 
@@ -79,7 +70,7 @@ Think like the engineer who will be paged if this breaks. For every changed hunk
 
 ## The overview comment (`body`)
 
-**Concise.** About 120–150 words in total. It is what the dev reads first and it carries our added context; the code review itself is in the line comments, so do not restate the diff and do not repeat them. Exactly these parts:
+**Concise** (`light` about 100 words, `deep` 120–150). It is what the dev reads first; the code review itself is in the line comments, so do not restate the diff or repeat them. Exactly these parts:
 
 ```
 ### Summary
@@ -96,11 +87,10 @@ Think like the engineer who will be paged if this breaks. For every changed hunk
 <Only if there is something non-obvious worth testing: 1–3 specific bullets. Omit this section entirely for trivial or mechanical changes.>
 ```
 
-Rules for the parts:
-- **Summary + history:** use the packet's "Related earlier PRs" and "Earlier reviews" only when they bear on this change. One clause each, with the PR or ticket id. No history section of its own.
-- **Impact + known defects:** the packet's "Known defects that may relate" are candidates, not facts. Cite a defect only when it is clearly about the same flow, tenant or files, say how it relates ("same screen", "same config key"), and never write that this PR or an earlier PR caused it. You can also cite defects you found through the RAG. If none is clearly related, leave the line out; do not list candidates to look thorough.
+- **Summary + history:** use the packet's "Related earlier PRs" and "Earlier reviews" only when they bear on this change. One clause each, with the PR or ticket id.
+- **Known defects:** the packet's candidates are candidates, not facts. Cite one only when it is clearly about the same flow, tenant or files, say how it relates, and never write that this PR or an earlier PR caused it. Leave the line out if none is clearly related.
 - **Testing:** specific to this change (a flow, a tenant, a locale, an offline case). No generic advice like "run the tests".
-- If you could not read the surrounding code, add `_Reviewed from the diff only._` at the end of the Result line.
+- If you could not read the surrounding code, add `_Reviewed from the diff only._` at the end of the Result line. If part of a file was cut from the packet, say which lines you did not cover.
 - Leave a blank line between paragraphs and before the Result line, so it renders the same on GitHub and in the app.
 
 ## Saving the draft
@@ -138,12 +128,8 @@ curl -s -X POST http://localhost:3050/api/reviews/drafts -H 'Content-Type: appli
 }
 ```
 
-- `tier` is the depth you used and `patterns` the defect pattern ids you applied (matched by the script or found by search); both feed later learning, such as which patterns keep firing.
+- `tier` is the depth you used and `patterns` the defect pattern ids you applied; both feed later learning, such as which patterns keep firing.
 - `summary`, `risk`, `components`, `files`, `tickets` and `related` are the **memory**: later reviews use them to say "this changed before". Fill them in properly even though they are not shown on GitHub. `files` is every non-trivial file the PR changes (not lockfiles or images).
 - `risk` is your honest rating of the chance this causes a defect or an outage: `high` for payment paths, shared state, broad config, or untested behavior changes; `low` for copy, styles or tests only. `confidence` reflects how much surrounding code and history you could actually read.
 - Responses: `201` saved. `422` lists the inline comments that are not on lines in the diff, with the valid lines: correct them and retry once; if it still fails, move that point into the overview. `409` means a review for that commit is already posted or skipped (leave it), or the PR has a newer commit (fetch the packet again). `400` lists what to fix.
-- A new push gives a new `headSha`, so the next run writes a fresh draft and the old one shows as outdated.
-
-## What is stored, and where
-
-Drafts are `backend/data/delivery/reviews/<repo>/<number>__<sha7>.json` (git-ignored). Each inline comment also stores the code around its line so the tab can show comment and code together. Posted and skipped drafts stay as the history. Future reviews read them through the packet's "Earlier reviews touching these files or tickets" section.
+- A new push gives a new `headSha`, so the next run writes a fresh draft and the old one shows as outdated. Drafts live in `backend/data/delivery/reviews/` (git-ignored) and later reviews read them through the packet's "Earlier reviews" section.
