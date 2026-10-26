@@ -331,6 +331,8 @@ export interface PrReview {
   risk: 'low' | 'medium' | 'high' | null; components: string[]; files: string[]; tickets: string[];
   flags: { touchesPaymentPaths: boolean; possibleSecrets: boolean; redacted: string[]; confidence: string };
   related: { id: string; kind: 'pr' | 'defect'; why: string }[];
+  /** For the user only (never posted): knowledge gaps, docs that may need an update, which checks could not run. */
+  internalNotes?: string[];
   edited?: boolean; postedAt?: string; reviewUrl?: string | null; staleReason?: string; alreadyOnGitHub?: boolean; inlineMovedToBody?: boolean;
   /** Is the PR still open at the same head commit? null when unknown (only meaningful for drafts). */
   current: boolean | null;
@@ -343,7 +345,26 @@ const reviewErr = (e: any): never => {
 };
 const rvPath = (r: Pick<PrReview, 'repo' | 'number' | 'headSha'>) => `/reviews/${r.repo}/${r.number}/${r.headSha.slice(0, 7)}`;
 
+/** An open PR that has no review saved for its current head commit. */
+export interface ReviewQueueItem {
+  repo: string; number: number; title: string; url: string; headSha: string; baseRef: string; author: string; updatedAt: string;
+  tier: 'skip' | 'light' | 'deep'; tierWhy: string;
+}
+/** One "Initiate Code Review" job. exists = a review for this commit is already saved; queued = the claude CLI is unusable, run /pr-review in Claude. */
+export interface GenerateJob {
+  id: string; state: 'waiting' | 'running' | 'done' | 'exists' | 'queued' | 'failed'; message: string;
+  queuedAt: string; startedAt: string | null; finishedAt: string | null;
+}
+export const generateBusy = (j?: GenerateJob) => j?.state === 'waiting' || j?.state === 'running';
+
 export const reviewsApi = {
+  /** Open PRs without a review for their current commit, including ones the rules would skip (their tier says so). */
+  queue: async (): Promise<ReviewQueueItem[]> => (await apiClient.get('/reviews/queue', { params: { all: 1 } })).data.data,
+  /** Initiate Code Review for several PRs at once; the backend runs a few at a time and keeps the rest waiting. */
+  generate: async (prs: { repo: string; number: number }[]): Promise<Record<string, GenerateJob>> => {
+    try { return (await apiClient.post('/reviews/generate', { prs })).data.data; } catch (e) { return reviewErr(e); }
+  },
+  generateStatus: async (): Promise<Record<string, GenerateJob>> => (await apiClient.get('/reviews/generate/status')).data.data,
   list: async (): Promise<PrReview[]> => (await apiClient.get('/reviews')).data.data,
   summary: async (): Promise<Record<PrReviewStatus, number>> => (await apiClient.get('/reviews/summary')).data.data,
   /** Edits the overview text and/or, per line comment (matched by position), its text and whether it is included. */

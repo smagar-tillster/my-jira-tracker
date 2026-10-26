@@ -8,6 +8,7 @@ import { loadPrLedger } from '../../delivery/lib/prledger.mjs';
 import { knownDefectsMarkdown } from '../../delivery/lib/reviewcontext.mjs';
 import { loadLedger } from '../../delivery/lib/releases.mjs';
 import { tierFromView, reviewTierOf, partitionByTier } from '../../delivery/lib/reviewtier.mjs';
+import { generateReview, createJobRunner } from '../../delivery/lib/reviewgen.mjs';
 import { relatedPrs, relatedMarkdown } from '../../delivery/lib/prrelated.mjs';
 import {
   reviewConfig, listReviews, getReview, prepareDraft, commitDraft, anchorInline, editDraft, markSkipped, postReview,
@@ -61,7 +62,7 @@ export const sameMachineOnly = (req, res, next) => {
 
 const fail = (res, r) => res.status(r.status || 500).json({ success: false, error: r.error || (r.errors || []).join('; ') || 'Failed', ...(r.needsAcknowledge ? { needsAcknowledge: true } : {}), ...(r.draft ? { data: r.draft } : {}) });
 
-export const createReviewsRouter = ({ gh = realGh, now = () => Date.now() } = {}) => {
+export const createReviewsRouter = ({ gh = realGh, now = () => Date.now(), claude, helper } = {}) => {
   const router = express.Router();
 
   // Open PRs per configured repo, cached for a minute (the list view and the bell both ask often).
@@ -143,6 +144,29 @@ export const createReviewsRouter = ({ gh = realGh, now = () => Date.now() } = {}
   });
 
   // GET /api/reviews/packet/:repo/:number — everything Claude needs to read the PR, plus history (markdown)
+  // The packet as markdown plus the pieces other code needs (used by the packet endpoint and by Initiate Code Review).
+  const buildPacket = async (repo, number) => {
+    const cfg = reviewConfig();
+    const slug = cfg.repos[repo];
+    const p = await packetFor({ gh, slug, repo, number, budget: cfg.packetChars, patchLines: cfg.patchLines, lineNumbers: true });
+    const head = await gh(['pr', 'view', String(number), '--repo', slug, '--json', 'headRefOid,isDraft,state,title,url,author,baseRefName']);
+
+    const ledgerHits = relatedPrs(loadPrLedger(), { id: `${repo}#${number}`, repo, keys: p.keys, files: p.files });
+    const reviewHits = relatedReviews({ repo, number, files: p.files, tickets: p.keys });
+
+    const ticketSummary = (p.md.match(/^### NGK-\d+: (.+)$/m) || [])[1] || '';
+    const knownTenants = new Set(Object.values(loadLedger().releases || {}).flatMap((r) => r.tenants || []));
+    const defects = await knownDefectsMarkdown({ search, keys: p.keys, title: p.title, ticketSummary, files: p.files, knownTenants, component: cfg.components[repo] || null });
+
+    const rt = reviewTierOf(p);
+    const text = [
+      `<!-- headSha: ${head.headRefOid} state: ${head.state} draft: ${head.isDraft} tier: ${rt.tier} -->`,
+      `Review depth: **${rt.tier}** (${rt.why}; ${rt.lines} lines, ${rt.runtimeLines} runtime)`,
+      p.md, '', relatedMarkdown(ledgerHits), relatedReviewsMarkdown(reviewHits), defects,
+    ].join('\n');
+    return { text, p, head, tier: rt };
+  };
+
   router.get('/reviews/packet/:repo/:number', async (req, res) => {
     const { repo } = req.params;
     const number = Number(req.params.number);
@@ -150,23 +174,7 @@ export const createReviewsRouter = ({ gh = realGh, now = () => Date.now() } = {}
     const slug = cfg.repos[repo];
     if (!slug || !Number.isInteger(number) || number <= 0) return res.status(400).json({ success: false, error: 'Unknown repo or PR number' });
     try {
-      const p = await packetFor({ gh, slug, repo, number, budget: cfg.packetChars, patchLines: cfg.patchLines, lineNumbers: true });
-      const head = await gh(['pr', 'view', String(number), '--repo', slug, '--json', 'headRefOid,isDraft,state']);
-
-      const ledgerHits = relatedPrs(loadPrLedger(), { id: `${repo}#${number}`, repo, keys: p.keys, files: p.files });
-      const reviewHits = relatedReviews({ repo, number, files: p.files, tickets: p.keys });
-
-      const ticketSummary = (p.md.match(/^### NGK-\d+: (.+)$/m) || [])[1] || '';
-      const knownTenants = new Set(Object.values(loadLedger().releases || {}).flatMap((r) => r.tenants || []));
-      const defects = await knownDefectsMarkdown({ search, keys: p.keys, title: p.title, ticketSummary, files: p.files, knownTenants, component: cfg.components[repo] || null });
-
-      const rt = reviewTierOf(p);
-      const text = [
-        `<!-- headSha: ${head.headRefOid} state: ${head.state} draft: ${head.isDraft} tier: ${rt.tier} -->`,
-        `Review depth: **${rt.tier}** (${rt.why}; ${rt.lines} lines, ${rt.runtimeLines} runtime)`,
-        p.md, '', relatedMarkdown(ledgerHits), relatedReviewsMarkdown(reviewHits), defects,
-      ].join('\n');
-      res.type('text/markdown').send(text);
+      res.type('text/markdown').send((await buildPacket(repo, number)).text);
     } catch (e) {
       console.error('review packet failed:', e.message);
       res.status(502).json({ success: false, error: `Could not build the packet: ${String(e.stderr || e.message).split('\n')[0].slice(0, 300)}` });
@@ -183,6 +191,37 @@ export const createReviewsRouter = ({ gh = realGh, now = () => Date.now() } = {}
     }
     return all;
   };
+
+  // ---- Initiate Code Review: the user picks open PRs, each gets a headless review saved as a draft (never posted).
+  const runner = createJobRunner({
+    maxParallel: reviewConfig().maxParallel,
+    work: ({ repo, number }) => generateReview({ repo, number, gh, buildPacket, prFiles, ...(claude ? { claude } : {}), ...(helper ? { helper } : {}) }),
+  });
+  router.generateRunner = runner; // tests wait on it
+
+  // POST /api/reviews/generate  {"prs":[{"repo":"kiosk-ui","number":9325}, ...]}
+  router.post('/reviews/generate', sameMachineOnly, (req, res) => {
+    const cfg = reviewConfig();
+    const prs = Array.isArray(req.body?.prs) ? req.body.prs : [];
+    if (!prs.length) return res.status(400).json({ success: false, error: 'Send {"prs":[{"repo","number"}]}.' });
+    if (prs.length > cfg.maxBatch) return res.status(400).json({ success: false, error: `At most ${cfg.maxBatch} PRs at a time.` });
+    const seen = new Set(); const clean = [];
+    for (const x of prs) {
+      const number = Number(x?.number);
+      if (!cfg.repos[x?.repo] || !Number.isInteger(number) || number <= 0) return res.status(400).json({ success: false, error: `${x?.repo}#${x?.number} is not a configured repo and PR number.` });
+      if (!seen.has(`${x.repo}#${number}`)) { seen.add(`${x.repo}#${number}`); clean.push({ repo: x.repo, number }); }
+    }
+    const data = Object.fromEntries(clean.map((c) => [`${c.repo}#${c.number}`, runner.enqueue(`${c.repo}#${c.number}`, c)]));
+    res.status(202).json({ success: true, data });
+  });
+
+  // GET /api/reviews/generate/status — state per PR: waiting | running | done | exists | queued | failed
+  router.get('/reviews/generate/status', (req, res) => {
+    const data = runner.status();
+    // a PR whose draft now exists is no longer in the open-PR cache's "needs review" list
+    if (Object.values(data).some((j) => j.state === 'done')) openCache.at = 0;
+    res.json({ success: true, data });
+  });
 
   // POST /api/reviews/drafts — Claude saves a draft. The server validates it, checks every inline comment sits on a line that is
   // really in the diff (and stores the surrounding code for the reviewer), and owns status, event and marker.

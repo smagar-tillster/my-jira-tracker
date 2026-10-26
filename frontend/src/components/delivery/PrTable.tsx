@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AnalyzeJob, DeliveryPr, deliveryApi } from '../../services/api';
+import { AnalyzeJob, DeliveryPr, GenerateJob, deliveryApi, generateBusy } from '../../services/api';
 import { Modal, Section } from './shared';
+import { jobText, prId, useCodeReview } from './useCodeReview';
 
 const RISK: Record<string, string> = { low: 'bg-green-100 text-green-800', medium: 'bg-yellow-100 text-yellow-800', high: 'bg-red-100 text-red-800' };
 const TONE: Record<string, string> = { ok: 'bg-green-100 text-green-800', warn: 'bg-red-100 text-red-800', info: 'bg-blue-100 text-blue-800' };
@@ -59,9 +60,24 @@ function AnalyzeButton({ p, job, onStart }: { p: DeliveryPr; job?: AnalyzeJob; o
   );
 }
 
+const JOB_TONE: Record<string, string> = { info: 'text-blue-700', ok: 'text-green-700', warn: 'text-amber-700', err: 'text-red-600' };
+
+/** Open PRs: the review is written as a draft in the PR Reviews tab, which the user reads and posts by hand. */
+function CodeReviewButton({ p, job, onStart }: { p: DeliveryPr; job?: GenerateJob; onStart: (p: DeliveryPr) => void }) {
+  const t = jobText(job);
+  return (
+    <span className="inline-flex flex-col">
+      {generateBusy(job)
+        ? <span className="text-xs text-blue-700">⏳ {t?.text}</span>
+        : <button onClick={() => onStart(p)} className="text-xs px-2 py-1 rounded bg-indigo-100 text-indigo-800 hover:bg-indigo-200 whitespace-nowrap">Initiate Code Review</button>}
+      {t && !generateBusy(job) && <span className={`text-[11px] max-w-[170px] ${JOB_TONE[t.tone]}`} title={job?.message}>{t.text.slice(0, 80)}</span>}
+    </span>
+  );
+}
+
 const List = ({ items }: { items?: string[] }) => <ul className="list-disc pl-5 space-y-1">{(items || []).map((s, i) => <li key={i}>{s}</li>)}</ul>;
 
-function PrModal({ p, job, onStart, onClose }: { p: DeliveryPr; job?: AnalyzeJob; onStart: (p: DeliveryPr) => void; onClose: () => void }) {
+function PrModal({ p, job, onStart, reviewJob, onReview, onClose }: { p: DeliveryPr; job?: AnalyzeJob; onStart: (p: DeliveryPr) => void; reviewJob?: GenerateJob; onReview: (p: DeliveryPr) => void; onClose: () => void }) {
   const a = p.analysis;
   const adds = p.files.reduce((s, f) => s + f.add, 0);
   const dels = p.files.reduce((s, f) => s + f.del, 0);
@@ -91,7 +107,9 @@ function PrModal({ p, job, onStart, onClose }: { p: DeliveryPr; job?: AnalyzeJob
             {a.dependencies?.length > 0 && <><p className="text-xs text-gray-500">Dependencies (my reading)</p><List items={a.dependencies} /></>}
           </div>
         ) : <p className="text-gray-500">No AI analysis yet.</p>}
-        <div className="mt-2"><AnalyzeButton p={p} job={job} onStart={onStart} /></div>
+        <div className="mt-2">
+          {p.open ? <CodeReviewButton p={p} job={reviewJob} onStart={onReview} /> : <AnalyzeButton p={p} job={job} onStart={onStart} />}
+        </div>
       </Section>
       {a?.confirm?.length ? <Section title="Please confirm"><List items={a.confirm} /></Section> : null}
     </Modal>
@@ -110,6 +128,8 @@ export default function PrTable({ rows, open, empty, onChanged }: { rows: Delive
   const [shown, setShown] = useState<DeliveryPr | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const { jobs, start } = useAnalyze(onChanged);
+  const review = useCodeReview(onChanged);
+  const startReview = (p: DeliveryPr) => review.start([{ repo: p.repo, number: p.number }]);
 
   const byRepo = useMemo(() => {
     const m = new Map<string, DeliveryPr[]>();
@@ -169,8 +189,10 @@ export default function PrTable({ rows, open, empty, onChanged }: { rows: Delive
                     <td className="px-3 py-2 whitespace-nowrap">
                       <div className="flex flex-col items-start gap-1.5">
                         <button onClick={() => setShown(p)} className="text-blue-600 hover:underline text-sm">Details</button>
-                        {(!p.analysis || p.rulesOnly) && <AnalyzeButton p={p} job={jobs[p.id]} onStart={start} />}
-                        {p.analysis && !p.rulesOnly && jobs[p.id]?.state === 'running' && <span className="text-xs text-blue-700">⏳ Analyzing…</span>}
+                        {p.open
+                          ? !p.isDraft && <CodeReviewButton p={p} job={review.jobs[prId(p)]} onStart={startReview} />
+                          : (!p.analysis || p.rulesOnly) && <AnalyzeButton p={p} job={jobs[p.id]} onStart={start} />}
+                        {!p.open && p.analysis && !p.rulesOnly && jobs[p.id]?.state === 'running' && <span className="text-xs text-blue-700">⏳ Analyzing…</span>}
                       </div>
                     </td>
                   </tr>
@@ -180,7 +202,7 @@ export default function PrTable({ rows, open, empty, onChanged }: { rows: Delive
           )}
         </div>
       ))}
-      {current && <PrModal p={current} job={jobs[current.id]} onStart={start} onClose={() => setShown(null)} />}
+      {current && <PrModal p={current} job={jobs[current.id]} onStart={start} reviewJob={review.jobs[prId(current)]} onReview={startReview} onClose={() => setShown(null)} />}
     </div>
   );
 }

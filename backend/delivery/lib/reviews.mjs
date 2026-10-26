@@ -26,6 +26,14 @@ export const reviewConfig = () => {
     skipTiers: Array.isArray(c.skipTiers) ? c.skipTiers : ['skip'], // PR tiers not worth a review (see reviewtier.mjs)
     // A PR touched in the last N minutes is still being pushed to: reviewing every intermediate head wastes a review per push.
     minAgeMinutes: Number.isFinite(c.minAgeMinutes) && c.minAgeMinutes >= 0 ? c.minAgeMinutes : 30,
+    // "Initiate Code Review": one headless `claude -p` call per PR (reviewgen.mjs). haiku for ordinary changes, sonnet for deep ones.
+    models: { light: c.models?.light || 'haiku', deep: c.models?.deep || 'sonnet' },
+    maxParallel: Number.isInteger(c.maxParallel) && c.maxParallel > 0 ? Math.min(c.maxParallel, 6) : 3,
+    maxBatch: Number.isInteger(c.maxBatch) && c.maxBatch > 0 ? c.maxBatch : 20,
+    ragRoot: c.ragRoot || path.join(process.env.HOME || '', 'Documents', 'my-rag'), // my-rag checkout, read for capability maps and defect patterns
+    contextChars: c.contextChars || 14000, // unchanged code around the changes, deep reviews only
+    maxInputChars: c.maxInputChars || 90000,
+    claudeTimeoutMs: c.claudeTimeoutMs || 300000,
   };
 };
 
@@ -152,6 +160,7 @@ export const normalizeDraft = (input) => {
         redacted: [...found],
         confidence,
       },
+      internalNotes: list(input?.internalNotes, 10), // for the user only: never part of what is posted
       related: (Array.isArray(input?.related) ? input.related : []).slice(0, 20).map((r) => ({ id: str(r?.id, 100), kind: r?.kind === 'defect' ? 'defect' : 'pr', why: str(r?.why, 400) })).filter((r) => r.id),
     },
   };
