@@ -1,6 +1,6 @@
 ---
 name: pr-review
-description: Review open, non-draft PRs (kiosk-ui first) like a senior engineer and save the review as a draft the user reads and posts from My Tracker. Only meaningful PRs are reviewed (docs, CI, tests, styles, translations and tiny changes are skipped), at a depth that fits the change (light or deep). Comments are anchored to lines with suggested fixes, and checked against known defect patterns when they match. Triggers on the scheduled "PR review drafts" task, or when the user says "/pr-review", "/pr-review kiosk-ui#123", "review the open PRs". Drafts only: never posts to GitHub, approves, or requests changes.
+description: Review open, non-draft PRs (kiosk-ui first) like a senior engineer and save the review as a draft the user reads and posts from My Tracker. Only meaningful PRs are reviewed (docs, CI, tests, styles, translations and tiny changes are skipped), at a depth that fits the change (light or deep). Comments are anchored to lines with suggested fixes, and checked against known defect patterns when they match. Triggers on the scheduled "PR review drafts" task, or when the user says "/pr-review", "/pr-review kiosk-ui#123", "review the open PRs". Also reviews a one-off PR in any other repo (paste its github.com URL) in Copilot style, in chat, and gives the user the one command that posts it. Drafts only: never posts to GitHub, approves, or requests changes.
 ---
 
 # PR review drafts
@@ -11,7 +11,7 @@ You save the result as a **draft** through the My Tracker backend. The user read
 
 ## Hard rules
 
-- **Never post to GitHub.** No `gh pr review`, `gh pr comment`, `gh api -X POST`, no approving, no "request changes". Reviews are saved as drafts only; the backend forces `event: COMMENT` and `status: draft` anyway.
+- **Never post to GitHub.** No `gh pr review`, `gh pr comment`, `gh api -X POST`, no approving, no "request changes". Reviews are saved as drafts only; the backend forces `event: COMMENT` and `status: draft` anyway. For a one-off review of another repo you only give the user the post command (a `COMMENT` review); the user runs it, never you.
 - **Only talk to `http://localhost:3050/api/reviews/*`** for the review data. The backend holds the Jira and GitHub credentials. Never read `backend/.env` or any credential file, and never print tokens.
 - **No secrets or card data in a review.** If the diff contains something that looks like a secret, key, token, password, card number, CVV or personal data about a guest, describe it ("a hardcoded API key in `src/x.js`") without quoting any of it, and mark that comment `issue`. The server also redacts and flags these, but do not rely on that.
 - **Track changes, not people.** History you cite is about files, components, tickets and PRs. Do not compare developers, rank authors, or note who "usually" causes defects.
@@ -37,7 +37,7 @@ You save the result as a **draft** through the My Tracker backend. The user read
 
 ## One PR you are given
 
-When the user runs `/pr-review kiosk-ui#123` (or pastes a github.com PR URL), skip the queue: take the repo and number, fetch the packet, use its `headSha` and the tier on its first line, and run steps 2.1 to 2.5 for that PR only. The repo must be one of `review.repos` in `backend/delivery/config.json` (kiosk-ui today); otherwise say it is not configured. A PR the rules would skip, or one still settling, is reviewed anyway when the user asks, at `light` depth. If a draft for that head commit already exists (`409`), tell the user to open it in the PR Reviews tab.
+When the user runs `/pr-review kiosk-ui#123` (or pastes a github.com PR URL), skip the queue: take the repo and number, fetch the packet, use its `headSha` and the tier on its first line, and run steps 2.1 to 2.5 for that PR only. If the repo is **not** one of `review.repos` in `backend/delivery/config.json` (kiosk-ui today), do not stop: do a **one-off review** as described in `references/oneoff-review.md` (fetch with `gh`, review in chat in Copilot style, then give the user the single command that posts it). No draft is saved and no tier, knowledge-base or tracker step applies. A PR the rules would skip, or one still settling, is reviewed anyway when the user asks, at `light` depth. If a draft for that head commit already exists (`409`), tell the user to open it in the PR Reviews tab.
 
 If a PR cannot be reviewed (packet fails, diff unreadable), skip it and say why; do not save an empty or guessed draft.
 
