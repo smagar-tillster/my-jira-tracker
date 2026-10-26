@@ -152,7 +152,24 @@ export const settleAnchors = (draft, files) => {
   return { draft, moved: moved.length };
 };
 
-const TRIVIAL_FILE = /(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|\.(png|jpe?g|gif|svg|webp|ico|woff2?|ttf|eot|mp4|pdf)$)/i;
+/**
+ * Makes the model's line comments safe for the draft schema: numbers are coerced, and a startLine that is not before `line`
+ * (models often send startLine = line for a single line) is dropped so the comment stays a single-line comment.
+ * Comments with no path, line or text are dropped.
+ */
+export const cleanInline = (list) => {
+  const out = [];
+  for (const c of Array.isArray(list) ? list : []) {
+    const line = Number(c?.line);
+    if (typeof c?.path !== 'string' || !c.path.trim() || !Number.isInteger(line) || line <= 0 || typeof c?.body !== 'string' || !c.body.trim()) continue;
+    const start = Number(c.startLine);
+    const { startLine, ...rest } = c;
+    out.push({ ...rest, line, ...(Number.isInteger(start) && start > 0 && start < line ? { startLine: start } : {}) });
+  }
+  return out;
+};
+
+const TRIVIAL_FILE =/(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|\.(png|jpe?g|gif|svg|webp|ico|woff2?|ttf|eot|mp4|pdf)$)/i;
 
 /**
  * The whole pipeline for one PR. Returns { state, message, draft? } with state done | exists | queued | failed.
@@ -204,7 +221,7 @@ export const generateReview = async ({ repo, number, gh, buildPacket, prFiles, c
     const prep = prepareDraft({
       repo, number, headSha: head.headRefOid, baseRef: head.baseRefName, title: head.title, url: head.url, author: head.author?.login || '',
       model: `${model} (claude CLI)`, body: j.body,
-      inline: (Array.isArray(j.inline) ? j.inline : []).slice(0, tier === 'deep' ? 10 : 4),
+      inline: cleanInline(j.inline).slice(0, tier === 'deep' ? 10 : 4),
       summary: j.summary, risk: j.risk, tier, patterns: (Array.isArray(j.patterns) ? j.patterns : []).filter((id) => known.has(id)),
       components: j.components, flags: j.flags, related: j.related,
       files: names.filter((n) => !TRIVIAL_FILE.test(n)).slice(0, 100), tickets: p.keys,
