@@ -4,12 +4,13 @@ import QuickAnalysisTracker from './components/QuickAnalysisTracker';
 import ReleasePrReports from './components/ReleasePrReports';
 import AppDrawer from './components/shell/AppDrawer';
 import TabStrip from './components/shell/TabStrip';
-import NotificationBell from './components/shell/NotificationBell';
+import NotificationBell, { BellItem } from './components/shell/NotificationBell';
+import PrReviews from './components/PrReviews';
 import EmbeddedApp from './components/apps/EmbeddedApp';
 import ReportViewer from './components/apps/ReportViewer';
 import ComingSoon from './components/apps/ComingSoon';
 import { APP_BY_ID, FLEET_URL } from './apps/registry';
-import { jiraApi } from './services/api';
+import { jiraApi, reviewsApi } from './services/api';
 import { JiraIssue } from './types';
 
 const OPEN_APPS_KEY = 'mytracker.openApps.v1';
@@ -42,6 +43,7 @@ function App() {
   const [openIds, setOpenIds] = useState<string[]>(() => loadOpenApps().open);
   const [activeId, setActiveId] = useState<string | null>(() => loadOpenApps().active);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [reviewDrafts, setReviewDrafts] = useState(0);
 
   const [initialLoaded, setInitialLoaded] = useState(false);
   const initialLoadRef = useRef(false);
@@ -66,6 +68,20 @@ function App() {
       // storage unavailable: tabs just won't be remembered
     }
   }, [openIds, activeId]);
+
+  // Bell: how many PR review drafts are waiting for you. Quiet on failure; the bell just shows nothing.
+  useEffect(() => {
+    let alive = true;
+    const poll = () => reviewsApi.summary().then(c => { if (alive) setReviewDrafts(c.draft || 0); }).catch(() => {});
+    poll();
+    const t = setInterval(poll, 120000);
+    window.addEventListener('focus', poll);
+    return () => { alive = false; clearInterval(t); window.removeEventListener('focus', poll); };
+  }, []);
+
+  const bellItems: BellItem[] = reviewDrafts > 0
+    ? [{ id: 'review-drafts', icon: '📝', text: `${reviewDrafts} PR review draft${reviewDrafts === 1 ? '' : 's'} ready`, detail: 'Read them and post from PR Reviews', onClick: () => openApp('prReviews') }]
+    : [];
 
   // Ctrl/Cmd+K toggles the apps drawer
   useEffect(() => {
@@ -221,6 +237,8 @@ function App() {
         );
       case 'releases':
         return <ReleasePrReports />;
+      case 'prReviews':
+        return <PrReviews />;
       case 'monitoring':
         return <EmbeddedApp title={app.name} url={FLEET_URL} />;
       case 'mytester':
@@ -247,7 +265,7 @@ function App() {
                 ❌ {error}
               </div>
             )}
-            <NotificationBell />
+            <NotificationBell items={bellItems} />
             <button
               onClick={() => setDrawerOpen(true)}
               title="Apps & tools (Ctrl/Cmd+K)"

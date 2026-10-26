@@ -36,5 +36,20 @@
   "tenantAliases": {
     "SHAK-US-PENN": "PENN-US",
     "SHAK-PENN-US": "PENN-US"
+  },
+  "review": {
+    "repos": {
+      "kiosk-ui": "Tillster/kiosk-ui"
+    },
+    "skipAuthors": [
+      "dependabot[bot]",
+      "renovate[bot]",
+      "github-actions[bot]"
+    ],
+    "packetChars": 60000,
+    "patchLines": 400,
+    "components": {
+      "kiosk-ui": "FE"
+    }
   }
 }

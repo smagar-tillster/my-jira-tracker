@@ -5,6 +5,7 @@ import issuesRouter from './routes/issues.js';
 import accomplishmentsRouter from './routes/accomplishments.js';
 import deliveryRouter from './routes/delivery.js';
 import hubRouter from './routes/hub.js';
+import reviewsRouter from './routes/reviews.js';
 import { initDb } from './db/database.js';
 import { migrateFromJson } from './db/migrate.js';
 
@@ -32,6 +33,7 @@ app.use('/api', issuesRouter);
 app.use('/api', accomplishmentsRouter);
 app.use('/api', deliveryRouter);
 app.use('/api', hubRouter);
+app.use('/api', reviewsRouter);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

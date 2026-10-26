@@ -15,9 +15,24 @@ export const kindOf = (f) => (BUILD.test(f) ? 'build'
   : /\.(png|jpe?g|gif|svg|webp)$/i.test(f) ? 'assets'
   : /\.(json|ya?ml|properties|xml|conf|cnf|env)$/.test(f) ? 'config' : 'source');
 
+// Adds the file line number to every diff line so a reviewer can anchor an inline comment exactly:
+//   R<n> = line n of the new file (side RIGHT; added or unchanged lines)   L<n> = line n of the old file (side LEFT; deleted lines)
+export const numberPatch = (patch) => {
+  let o = 0; let n = 0;
+  return String(patch || '').split('\n').map((line) => {
+    const h = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+    if (h) { o = Number(h[1]); n = Number(h[2]); return line; }
+    if (line.startsWith('\\')) return line; // "\ No newline at end of file"
+    const tag = line[0];
+    if (tag === '+') return `${`R${n++}`.padEnd(7)}${line}`;
+    if (tag === '-') return `${`L${o++}`.padEnd(7)}${line}`;
+    const out = `${`R${n}`.padEnd(7)}${line}`; o++; n++; return out;
+  }).join('\n');
+};
+
 const PRIO = { build: 0, source: 1, config: 2, test: 3, translations: 4, styles: 5, assets: 9 };
 
-export const packetFor = async ({ gh, slug, repo, number, budget: maxChars = 20000, patchLines = 70 }) => {
+export const packetFor = async ({ gh, slug, repo, number, budget: maxChars = 20000, patchLines = 70, lineNumbers = false }) => {
   const v = await gh(['pr', 'view', String(number), '--repo', slug, '--json', 'title,body,author,mergedAt,state,url,baseRefName,headRefName,commits,additions,deletions,changedFiles']);
   const files = await gh(['api', `repos/${slug}/pulls/${number}/files?per_page=100`]);
   const keys = [...new Set(`${v.title} ${v.headRefName}`.toUpperCase().match(/NGK-\d+/g) || [])];
@@ -40,7 +55,7 @@ export const packetFor = async ({ gh, slug, repo, number, budget: maxChars = 200
   const shown = rows.filter((r) => !SKIP.test(r.name) && r.patch).sort((a, b) => PRIO[a.kind] - PRIO[b.kind] || (b.add + b.del) - (a.add + a.del));
   let budget = maxChars; const patches = [];
   for (const r of shown) {
-    const lines = r.patch.split('\n');
+    const lines = (lineNumbers ? numberPatch(r.patch) : r.patch).split('\n');
     const cut = lines.slice(0, patchLines).join('\n') + (lines.length > patchLines ? `\n… (${lines.length - patchLines} more lines)` : '');
     const chunk = `#### ${r.name} (${r.kind}, +${r.add}/-${r.del})\n\`\`\`diff\n${cut}\n\`\`\`\n`;
     if (chunk.length > budget && patches.length) break;
@@ -59,7 +74,9 @@ export const packetFor = async ({ gh, slug, repo, number, budget: maxChars = 200
     `- PRs referenced: ${refs.length ? refs.map((r) => `${r.slug}#${r.number}`).join(', ') : 'none'}`, '',
     '## Changed files',
     ...rows.map((r) => `- ${r.name} [${r.kind}, ${r.status}] +${r.add}/-${r.del}`), '',
-    `## Patches (trimmed; ${patches.length} of ${shown.length} files with patches)`, ...patches,
+    `## Patches (trimmed; ${patches.length} of ${shown.length} files with patches)`,
+    ...(lineNumbers ? ['Line numbers: `R<n>` = line n of the NEW file (use side RIGHT; added and unchanged lines), `L<n>` = line n of the OLD file (use side LEFT; deleted lines). Only lines shown below can take an inline comment.', ''] : []),
+    ...patches,
   ].join('\n');
   return { md, keys, files: rows.map(({ patch, ...r }) => r), bumps, refs, title: v.title, additions: v.additions, deletions: v.deletions };
 };
