@@ -314,3 +314,68 @@ export const hubApi = {
   fileUrl: (source: string, filePath: string): string =>
     `${API_URL}/hub/${source}/file/${filePath.split('/').map(encodeURIComponent).join('/')}`,
 };
+
+// ── PR review drafts (Claude writes them; the user reviews and presses Post) ──
+export type PrReviewStatus = 'draft' | 'posted' | 'skipped' | 'stale';
+export interface DiffContextLine { n: number; type: 'add' | 'del' | 'ctx'; text: string; anchor: boolean }
+export interface PrReviewComment {
+  path: string; line: number; startLine?: number; side: 'LEFT' | 'RIGHT'; body: string;
+  severity: 'issue' | 'suggestion' | 'question' | 'nit' | 'note';
+  include: boolean; edited?: boolean; diffContext?: DiffContextLine[];
+}
+export interface PrReview {
+  repo: string; slug: string; number: number; headSha: string; baseRef: string; title: string; url: string; author: string;
+  generatedAt: string; model: string; status: PrReviewStatus; event: 'COMMENT'; marker: string; body: string;
+  inline: PrReviewComment[];
+  summary: { changes: string; impact: string; risks: string; tests: string };
+  risk: 'low' | 'medium' | 'high' | null; components: string[]; files: string[]; tickets: string[];
+  flags: { touchesPaymentPaths: boolean; possibleSecrets: boolean; redacted: string[]; confidence: string };
+  related: { id: string; kind: 'pr' | 'defect'; why: string }[];
+  /** For the user only (never posted): knowledge gaps, docs that may need an update, which checks could not run. */
+  internalNotes?: string[];
+  edited?: boolean; postedAt?: string; reviewUrl?: string | null; staleReason?: string; alreadyOnGitHub?: boolean; inlineMovedToBody?: boolean;
+  /** Is the PR still open at the same head commit? null when unknown (only meaningful for drafts). */
+  current: boolean | null;
+}
+export class ReviewApiError extends Error {
+  constructor(message: string, public needsAcknowledge = false) { super(message); }
+}
+const reviewErr = (e: any): never => {
+  throw new ReviewApiError(e?.response?.data?.error || e?.message || 'Request failed', !!e?.response?.data?.needsAcknowledge);
+};
+const rvPath = (r: Pick<PrReview, 'repo' | 'number' | 'headSha'>) => `/reviews/${r.repo}/${r.number}/${r.headSha.slice(0, 7)}`;
+
+/** An open PR that has no review saved for its current head commit. */
+export interface ReviewQueueItem {
+  repo: string; number: number; title: string; url: string; headSha: string; baseRef: string; author: string; updatedAt: string;
+  tier: 'skip' | 'light' | 'deep'; tierWhy: string;
+}
+/** One "Initiate Code Review" job. exists = a review for this commit is already saved; queued = the claude CLI is unusable, run /pr-review in Claude. */
+export interface GenerateJob {
+  id: string; state: 'waiting' | 'running' | 'done' | 'exists' | 'queued' | 'failed'; message: string;
+  queuedAt: string; startedAt: string | null; finishedAt: string | null;
+}
+export const generateBusy = (j?: GenerateJob) => j?.state === 'waiting' || j?.state === 'running';
+
+export const reviewsApi = {
+  /** Open PRs without a review for their current commit, including ones the rules would skip (their tier says so). */
+  queue: async (): Promise<ReviewQueueItem[]> => (await apiClient.get('/reviews/queue', { params: { all: 1 } })).data.data,
+  /** Initiate Code Review for several PRs at once; the backend runs a few at a time and keeps the rest waiting. */
+  generate: async (prs: { repo: string; number: number }[]): Promise<Record<string, GenerateJob>> => {
+    try { return (await apiClient.post('/reviews/generate', { prs })).data.data; } catch (e) { return reviewErr(e); }
+  },
+  generateStatus: async (): Promise<Record<string, GenerateJob>> => (await apiClient.get('/reviews/generate/status')).data.data,
+  list: async (): Promise<PrReview[]> => (await apiClient.get('/reviews')).data.data,
+  summary: async (): Promise<Record<PrReviewStatus, number>> => (await apiClient.get('/reviews/summary')).data.data,
+  /** Edits the overview text and/or, per line comment (matched by position), its text and whether it is included. */
+  edit: async (r: PrReview, patch: { body?: string; inline?: { body?: string; include?: boolean }[] }): Promise<PrReview> => {
+    try { return (await apiClient.put(rvPath(r), patch)).data.data; } catch (e) { return reviewErr(e); }
+  },
+  skip: async (r: PrReview): Promise<PrReview> => {
+    try { return (await apiClient.post(`${rvPath(r)}/skip`, {})).data.data; } catch (e) { return reviewErr(e); }
+  },
+  /** Posts to GitHub. Only call from a button the user pressed; sends the explicit confirmation the backend requires. */
+  post: async (r: PrReview, opts: { acknowledgeSecrets?: boolean } = {}): Promise<PrReview> => {
+    try { return (await apiClient.post(`${rvPath(r)}/post`, { confirm: true, acknowledgeSecrets: !!opts.acknowledgeSecrets })).data.data; } catch (e) { return reviewErr(e); }
+  },
+};

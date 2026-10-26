@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AnalyzeJob, DeliveryPr, deliveryApi } from '../../services/api';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { AnalyzeJob, DeliveryPr, GenerateJob, deliveryApi, generateBusy } from '../../services/api';
 import { Modal, Section } from './shared';
+import { jobText, prId, useCodeReview } from './useCodeReview';
+import TenantGroupList from './TenantGroupList';
 
 const RISK: Record<string, string> = { low: 'bg-green-100 text-green-800', medium: 'bg-yellow-100 text-yellow-800', high: 'bg-red-100 text-red-800' };
 const TONE: Record<string, string> = { ok: 'bg-green-100 text-green-800', warn: 'bg-red-100 text-red-800', info: 'bg-blue-100 text-blue-800' };
@@ -49,8 +51,8 @@ export function useAnalyze(onDone: () => void) {
 
 function AnalyzeButton({ p, job, onStart }: { p: DeliveryPr; job?: AnalyzeJob; onStart: (p: DeliveryPr) => void }) {
   if (job?.state === 'running') return <span className="text-xs text-blue-700">⏳ Analyzing…</span>;
-  if (job?.state === 'queued') return <span className="text-xs text-amber-700" title={job.message}>Queued for Claude <span className="text-gray-400">(CLI not signed in)</span></span>;
-  const label = p.analysis && !p.rulesOnly ? '↻ Re-analyze' : '✨ Analyze with AI';
+  if (job?.state === 'queued') return <span className="text-xs text-amber-700" title={job.message}>Queued for a manual run</span>;
+  const label = p.analysis && !p.rulesOnly ? '↻ Re-analyze' : 'Analyze';
   return (
     <span className="inline-flex flex-col">
       <button onClick={() => onStart(p)} className="text-xs px-2 py-1 rounded bg-indigo-100 text-indigo-800 hover:bg-indigo-200 whitespace-nowrap">{label}</button>
@@ -59,9 +61,24 @@ function AnalyzeButton({ p, job, onStart }: { p: DeliveryPr; job?: AnalyzeJob; o
   );
 }
 
+const JOB_TONE: Record<string, string> = { info: 'text-blue-700', ok: 'text-green-700', warn: 'text-amber-700', err: 'text-red-600' };
+
+/** Open PRs: the review is written as a draft in the PR Reviews tab, which the user reads and posts by hand. */
+function CodeReviewButton({ p, job, onStart }: { p: DeliveryPr; job?: GenerateJob; onStart: (p: DeliveryPr) => void }) {
+  const t = jobText(job);
+  return (
+    <span className="inline-flex flex-col">
+      {generateBusy(job)
+        ? <span className="text-xs text-blue-700">⏳ {t?.text}</span>
+        : <button onClick={() => onStart(p)} className="text-xs px-2 py-1 rounded bg-indigo-100 text-indigo-800 hover:bg-indigo-200 whitespace-nowrap">Initiate Code Review</button>}
+      {t && !generateBusy(job) && <span className={`text-[11px] max-w-[170px] ${JOB_TONE[t.tone]}`} title={job?.message}>{t.text.slice(0, 80)}</span>}
+    </span>
+  );
+}
+
 const List = ({ items }: { items?: string[] }) => <ul className="list-disc pl-5 space-y-1">{(items || []).map((s, i) => <li key={i}>{s}</li>)}</ul>;
 
-function PrModal({ p, job, onStart, onClose }: { p: DeliveryPr; job?: AnalyzeJob; onStart: (p: DeliveryPr) => void; onClose: () => void }) {
+function PrModal({ p, job, onStart, reviewJob, onReview, onClose }: { p: DeliveryPr; job?: AnalyzeJob; onStart: (p: DeliveryPr) => void; reviewJob?: GenerateJob; onReview: (p: DeliveryPr) => void; onClose: () => void }) {
   const a = p.analysis;
   const adds = p.files.reduce((s, f) => s + f.add, 0);
   const dels = p.files.reduce((s, f) => s + f.del, 0);
@@ -85,13 +102,15 @@ function PrModal({ p, job, onStart, onClose }: { p: DeliveryPr; job?: AnalyzeJob
       <Section title="Understanding">
         {a ? (
           <div className="bg-blue-50 border border-blue-100 rounded p-3 space-y-2">
-            <p className="text-xs text-gray-500">{a.ai === false ? `Not AI-reviewed (${a.basis}).` : `AI-assisted reading of the diff and ticket (${a.basis}; ${a.generatedAt}). Verify before relying on it.`}</p>
+            <p className="text-xs text-gray-500">{a.ai === false ? `Rules-based summary (${a.basis}).` : `Reading of the diff and ticket (${a.basis}; ${a.generatedAt}). Verify before relying on it.`}</p>
             <p className="font-medium">{a.summary}</p>
             {a.how?.length > 0 && <><p className="text-xs text-gray-500">How it works</p><List items={a.how} /></>}
             {a.dependencies?.length > 0 && <><p className="text-xs text-gray-500">Dependencies (my reading)</p><List items={a.dependencies} /></>}
           </div>
-        ) : <p className="text-gray-500">No AI analysis yet.</p>}
-        <div className="mt-2"><AnalyzeButton p={p} job={job} onStart={onStart} /></div>
+        ) : <p className="text-gray-500">No analysis yet.</p>}
+        <div className="mt-2">
+          {p.open ? <CodeReviewButton p={p} job={reviewJob} onStart={onReview} /> : <AnalyzeButton p={p} job={job} onStart={onStart} />}
+        </div>
       </Section>
       {a?.confirm?.length ? <Section title="Please confirm"><List items={a.confirm} /></Section> : null}
     </Modal>
@@ -101,36 +120,37 @@ function PrModal({ p, job, onStart, onClose }: { p: DeliveryPr; job?: AnalyzeJob
 function Understanding({ p }: { p: DeliveryPr }) {
   if (p.analysis && p.rulesOnly) return <><span className="px-1.5 py-0.5 rounded mr-1.5 bg-gray-100 text-gray-600">rules only</span>{p.analysis.summary}</>;
   if (p.analysis) return <><span className={`px-1.5 py-0.5 rounded mr-1.5 font-medium ${RISK[p.risk || 'low']}`}>{p.risk}</span>{p.analysis.summary}</>;
-  if (p.aiRecommended) return <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800" title={p.tierWhy}>AI recommended ({p.tierWhy})</span>;
+  if (p.aiRecommended) return <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800" title={p.tierWhy}>Analysis recommended ({p.tierWhy})</span>;
   return <span className="text-gray-400">Not reviewed</span>;
 }
 
-/** PRs grouped by repo, dependencies on the PR's own line. Used for merged and open PRs ("open" adds draft/review/age). */
+const prTenants = (p: DeliveryPr) => p.tenants;
+
+/** What a collapsed tenant group says about its PRs: how many, in which repos, and (merged PRs) over how many days. */
+const prSummary = (prs: DeliveryPr[], open?: boolean) => {
+  const repos = [...new Set(prs.map(p => p.repo))];
+  const days = [...new Set(prs.map(p => p.day).filter(Boolean))] as string[];
+  const parts = [`${prs.length} PR${prs.length === 1 ? '' : 's'} in ${repos.length} repo${repos.length === 1 ? '' : 's'} (${repos.join(', ')})`];
+  if (open) { const d = prs.filter(p => p.isDraft).length; if (d) parts.push(`${d} draft${d === 1 ? '' : 's'}`); }
+  else if (days.length) parts.push(`${days.length} day${days.length === 1 ? '' : 's'}`);
+  return parts.join(' · ');
+};
+
+/** PRs grouped by tenant (across repos), dependencies on the PR's own line. Used for merged and open PRs ("open" adds draft/review/age). */
 export default function PrTable({ rows, open, empty, onChanged }: { rows: DeliveryPr[]; open?: boolean; empty: string; onChanged: () => void }) {
   const [shown, setShown] = useState<DeliveryPr | null>(null);
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const { jobs, start } = useAnalyze(onChanged);
+  const review = useCodeReview(onChanged);
+  const startReview = (p: DeliveryPr) => review.start([{ repo: p.repo, number: p.number }]);
 
-  const byRepo = useMemo(() => {
-    const m = new Map<string, DeliveryPr[]>();
-    for (const p of rows) m.set(p.repo, [...(m.get(p.repo) || []), p]);
-    return [...m.entries()];
-  }, [rows]);
   // keep the open modal in sync with refreshed rows
   const current = shown ? rows.find(r => r.id === shown.id) || shown : null;
-  const toggle = (repo: string) => setCollapsed(prev => { const n = new Set(prev); n.has(repo) ? n.delete(repo) : n.add(repo); return n; });
 
   if (rows.length === 0) return <div className="p-8 text-center text-gray-400">{empty}</div>;
   return (
-    <div className="space-y-3">
-      {byRepo.map(([repo, prs]) => (
-        <div key={repo} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-          <button onClick={() => toggle(repo)} className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 text-left">
-            <span className="text-gray-400">{collapsed.has(repo) ? '▶' : '▼'}</span>
-            <span className="font-semibold text-gray-800">{repo}</span>
-            <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{prs.length}</span>
-          </button>
-          {!collapsed.has(repo) && (
+    <>
+      <TenantGroupList items={rows} tenantsOf={prTenants} unit="PR" summary={prs => prSummary(prs, open)}>
+        {prs => (
             <table className="w-full text-sm">
               <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
                 <tr><th className="px-3 py-1.5">PR</th><th className="px-3 py-1.5">Ticket</th><th className="px-3 py-1.5">What it builds</th><th className="px-3 py-1.5">Understanding</th><th className="px-3 py-1.5"></th></tr>
@@ -139,7 +159,7 @@ export default function PrTable({ rows, open, empty, onChanged }: { rows: Delive
                 {prs.map(p => (
                   <tr key={p.id} className="border-t border-gray-100 align-top hover:bg-gray-50">
                     <td className="px-3 py-2 whitespace-nowrap">
-                      <a href={p.url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline font-medium">#{p.number}</a>
+                      <a href={p.url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline font-medium">{p.repo} #{p.number}</a>
                       {open && p.isDraft && <span className="ml-1.5 text-[11px] px-1.5 py-0.5 rounded bg-gray-200 text-gray-700">draft</span>}
                       <div className="text-xs text-gray-400">
                         {open ? `opened ${dateOf(p.createdAt || '')} · ${ageDays(p.createdAt || '')}d` : `${dateOf(p.mergedAt || '')} ${timeOf(p.mergedAt || '')}`}
@@ -169,18 +189,19 @@ export default function PrTable({ rows, open, empty, onChanged }: { rows: Delive
                     <td className="px-3 py-2 whitespace-nowrap">
                       <div className="flex flex-col items-start gap-1.5">
                         <button onClick={() => setShown(p)} className="text-blue-600 hover:underline text-sm">Details</button>
-                        {(!p.analysis || p.rulesOnly) && <AnalyzeButton p={p} job={jobs[p.id]} onStart={start} />}
-                        {p.analysis && !p.rulesOnly && jobs[p.id]?.state === 'running' && <span className="text-xs text-blue-700">⏳ Analyzing…</span>}
+                        {p.open
+                          ? !p.isDraft && <CodeReviewButton p={p} job={review.jobs[prId(p)]} onStart={startReview} />
+                          : (!p.analysis || p.rulesOnly) && <AnalyzeButton p={p} job={jobs[p.id]} onStart={start} />}
+                        {!p.open && p.analysis && !p.rulesOnly && jobs[p.id]?.state === 'running' && <span className="text-xs text-blue-700">⏳ Analyzing…</span>}
                       </div>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          )}
-        </div>
-      ))}
-      {current && <PrModal p={current} job={jobs[current.id]} onStart={start} onClose={() => setShown(null)} />}
-    </div>
+        )}
+      </TenantGroupList>
+      {current && <PrModal p={current} job={jobs[current.id]} onStart={start} reviewJob={review.jobs[prId(current)]} onReview={startReview} onClose={() => setShown(null)} />}
+    </>
   );
 }

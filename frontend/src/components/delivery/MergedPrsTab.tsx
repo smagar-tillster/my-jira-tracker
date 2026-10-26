@@ -38,7 +38,7 @@ export default function MergedPrsTab({ refreshKey }: { meta: DeliveryMeta; refre
           <input type="date" value={to || range?.to || ''} onChange={e => setTo(e.target.value)} className="px-2 py-1 border border-gray-300 rounded-lg text-sm" />
         </label>
         {custom && <button onClick={() => { setFrom(''); setTo(''); }} className="px-3 py-1.5 rounded-lg text-sm bg-gray-100 text-gray-700 hover:bg-gray-200">Today</button>}
-        {pending > 0 && <span className="text-xs bg-amber-50 text-amber-800 border border-amber-200 rounded px-2 py-1">{pending} complex PR{pending === 1 ? '' : 's'}: AI analysis recommended</span>}
+        {pending > 0 && <span className="text-xs bg-amber-50 text-amber-800 border border-amber-200 rounded px-2 py-1">{pending} complex PR{pending === 1 ? '' : 's'}: analysis recommended</span>}
         <span className="text-sm text-gray-500 ml-auto">{rows.length} PR{rows.length === 1 ? '' : 's'} in {repos} repo{repos === 1 ? '' : 's'} · merged by date; each run adds PRs since the previous run</span>
       </div>
       <div className="flex-1 overflow-auto p-4">

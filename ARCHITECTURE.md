@@ -20,6 +20,7 @@ Browser (React/TS, Vite)  --REST/HTTP-->  Express API  --REST (axios+token)-->  
   - `views/` — `ListView.tsx`, `CalendarView.tsx`, `GanttView.tsx` render issues in different layouts.
   - `shell/` — `AppDrawer` (searchable app launcher), `TabStrip`, `NotificationBell` (placeholder).
   - `apps/` — `ReportViewer` (lists and renders HTML reports from a backend folder), `EmbeddedApp` (iframe, used for the fleet monitoring page), `ComingSoon`.
+  - `PrReviews.tsx` — the PR Reviews app: read, edit, skip and post the drafts. The header bell shows how many are waiting.
   - Accomplishments, Config Viewer and Menu Compare are placeholders.
 - **Data access**: `src/services/api.ts` is the single axios client (base URL from `VITE_API_URL`); `src/services/dataProcessor.ts` handles client-side filter/sort/group logic.
 
@@ -32,6 +33,7 @@ Browser (React/TS, Vite)  --REST/HTTP-->  Express API  --REST (axios+token)-->  
   - `accomplishments.js` — manual accomplishment entries.
   - `delivery.js` — Release & PRs data and on-demand refresh.
   - `hub.js` — lists and serves the HTML reports behind the report apps (path-restricted to the configured folders).
+  - `reviews.js` — PR review drafts: `/reviews/queue` and `/reviews/packet/...` give a scheduled Claude session its work, `POST /reviews/drafts` saves a draft, and the user-confirmed `.../post` is the only route that writes to GitHub (same-machine only, comment-only, refuses stale or already-posted drafts). Logic in `backend/delivery/lib/reviews.mjs`; the review instructions are in `skills/pr-review/SKILL.md`.
 - **Services** (`src/services/`) hold the actual logic per domain: `jiraService` (Jira Cloud REST calls + auth), `tagService`, `importantService`, `mydayService`, `feteamService`, `sprintSummaryService`.
 - **Persistence**: `src/db/database.js` opens a single SQLite file (`tracker.db`) in WAL mode at `DATA_DIR` (env var, defaults to `backend/data/`). Tables: `issue_tags`, `issue_important`, `issue_myday`, `feteam_members`, `client_regions`, `accomplishments`. `src/db/migrate.js` one-time-migrates older JSON files into SQLite on startup.
 
