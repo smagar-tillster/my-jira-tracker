@@ -18,11 +18,40 @@ export const cleanTenants = (list: readonly string[] | null | undefined): string
 
 export interface TenantGroup<T> { tenant: string; items: T[] }
 
+/** How the tenant groups are ordered. Used as an Array.sort comparator. */
+export type GroupOrder<T> = (a: TenantGroup<T>, b: TenantGroup<T>) => number;
+
+const byName = (a: { tenant: string }, b: { tenant: string }) => a.tenant.localeCompare(b.tenant, 'en', { sensitivity: 'base' });
+/** Positive when only `a` is the fallback tenant (it sorts after), negative when only `b` is, 0 otherwise: real tenants come first. */
+const fallbackLast = (a: { tenant: string }, b: { tenant: string }) => (a.tenant === FALLBACK_TENANT ? 1 : 0) - (b.tenant === FALLBACK_TENANT ? 1 : 0);
+
+/** Alphabetical, fallback tenant last (the default). */
+export const alphabetical = <T>(): GroupOrder<T> => (a, b) => fallbackLast(a, b) || byName(a, b);
+
+/** Largest group first, ties alphabetical, fallback tenant last. */
+export const byCount = <T>(): GroupOrder<T> => (a, b) => fallbackLast(a, b) || b.items.length - a.items.length || byName(a, b);
+
 /**
- * One group per tenant, alphabetical, with the fallback tenant last. An item that names several tenants is listed under each of
- * them (so a tenant's group is complete), and counted once in `unique`.
+ * Tenants with something not ready come first, the one with the most not-ready items on top; then the tenants that are all ready,
+ * largest first. The fallback tenant is only pushed down within its own kind, so a not-ready item under it is never buried
+ * below the ready tenants.
  */
-export const groupByTenant = <T>(items: readonly T[], tenantsOf: (item: T) => readonly string[] | null | undefined): { groups: TenantGroup<T>[]; unique: number } => {
+export const byNotReady = <T>(notReady: (items: T[]) => number): GroupOrder<T> => (a, b) => {
+  const na = notReady(a.items);
+  const nb = notReady(b.items);
+  if ((na > 0) !== (nb > 0)) return na > 0 ? -1 : 1;
+  return fallbackLast(a, b) || nb - na || b.items.length - a.items.length || byName(a, b);
+};
+
+/**
+ * One group per tenant, ordered by `order` (alphabetical with the fallback tenant last by default). An item that names several
+ * tenants is listed under each of them (so a tenant's group is complete), and counted once in `unique`.
+ */
+export const groupByTenant = <T>(
+  items: readonly T[],
+  tenantsOf: (item: T) => readonly string[] | null | undefined,
+  order: GroupOrder<T> = alphabetical<T>(),
+): { groups: TenantGroup<T>[]; unique: number } => {
   const byTenant = new Map<string, TenantGroup<T>>();
   for (const item of items) {
     for (const t of cleanTenants(tenantsOf(item))) {
@@ -32,10 +61,6 @@ export const groupByTenant = <T>(items: readonly T[], tenantsOf: (item: T) => re
       byTenant.set(key, g);
     }
   }
-  const groups = [...byTenant.values()].sort((a, b) => {
-    const fa = a.tenant === FALLBACK_TENANT ? 1 : 0;
-    const fb = b.tenant === FALLBACK_TENANT ? 1 : 0;
-    return fa - fb || a.tenant.localeCompare(b.tenant, 'en', { sensitivity: 'base' });
-  });
+  const groups = [...byTenant.values()].sort(order);
   return { groups, unique: items.length };
 };

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { DeliveryRelease } from '../../services/api';
 import { Modal, Section, StatusDot, TicketLink, dayLabel } from './shared';
 import TenantGroupList from './TenantGroupList';
+import { byCount, byNotReady } from './tenantGrouping';
 
 const envBadge = (env: string) => (
   <span className={`px-2 py-0.5 rounded text-xs font-medium ${/PROD/i.test(env) ? 'bg-orange-100 text-orange-800' : 'bg-sky-100 text-sky-800'}`}>{env || '—'}</span>
@@ -51,6 +52,12 @@ function ReleaseModal({ r, onClose }: { r: DeliveryRelease; onClose: () => void 
 
 const releaseTenants = (r: DeliveryRelease) => [r.tenant];
 
+// To Release Today: tenants with something not ready on top (red); Released: the tenant with the most release tickets first.
+const notReadyCount = (items: DeliveryRelease[]) => items.filter(r => !r.ready).length;
+const notReadyFirst = byNotReady<DeliveryRelease>(notReadyCount);
+const mostFirst = byCount<DeliveryRelease>();
+const hasNotReady = (items: DeliveryRelease[]) => notReadyCount(items) > 0;
+
 /** What a collapsed tenant group says about its releases, across every day in the filter. */
 const groupSummary = (rows: DeliveryRelease[], showStatus?: boolean) => {
   const notReady = rows.filter(r => !r.ready).length;
@@ -65,7 +72,9 @@ export default function ReleaseTable({ rows, showStatus, empty }: { rows: Delive
   if (rows.length === 0) return <div className="p-8 text-center text-gray-400">{empty}</div>;
   return (
     <>
-      <TenantGroupList items={rows} tenantsOf={releaseTenants} unit="release ticket" summary={items => groupSummary(items, showStatus)}>
+      <TenantGroupList items={rows} tenantsOf={releaseTenants} unit="release ticket" summary={items => groupSummary(items, showStatus)}
+        order={showStatus ? notReadyFirst : mostFirst} orderLabel={showStatus ? 'tenants with tickets not ready first' : 'most release tickets first'}
+        alert={showStatus ? hasNotReady : undefined}>
         {items => <ReleaseRows rows={items} showStatus={showStatus} onOpen={setOpen} />}
       </TenantGroupList>
       {open && <ReleaseModal r={open} onClose={() => setOpen(null)} />}
