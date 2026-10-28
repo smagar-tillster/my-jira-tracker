@@ -3,6 +3,7 @@ import { AnalyzeJob, DeliveryPr, GenerateJob, deliveryApi, generateBusy } from '
 import { Modal, Section } from './shared';
 import { jobText, prId, useCodeReview } from './useCodeReview';
 import TenantGroupList from './TenantGroupList';
+import { byCount } from './tenantGrouping';
 
 const RISK: Record<string, string> = { low: 'bg-green-100 text-green-800', medium: 'bg-yellow-100 text-yellow-800', high: 'bg-red-100 text-red-800' };
 const TONE: Record<string, string> = { ok: 'bg-green-100 text-green-800', warn: 'bg-red-100 text-red-800', info: 'bg-blue-100 text-blue-800' };
@@ -137,6 +138,9 @@ const prSummary = (prs: DeliveryPr[], open?: boolean) => {
 };
 
 /** PRs grouped by tenant (across repos), dependencies on the PR's own line. Used for merged and open PRs ("open" adds draft/review/age). */
+// The tenant with the most PRs first.
+const mostFirst = byCount<DeliveryPr>();
+
 export default function PrTable({ rows, open, empty, onChanged }: { rows: DeliveryPr[]; open?: boolean; empty: string; onChanged: () => void }) {
   const [shown, setShown] = useState<DeliveryPr | null>(null);
   const { jobs, start } = useAnalyze(onChanged);
@@ -149,7 +153,7 @@ export default function PrTable({ rows, open, empty, onChanged }: { rows: Delive
   if (rows.length === 0) return <div className="p-8 text-center text-gray-400">{empty}</div>;
   return (
     <>
-      <TenantGroupList items={rows} tenantsOf={prTenants} unit="PR" summary={prs => prSummary(prs, open)}>
+      <TenantGroupList items={rows} tenantsOf={prTenants} unit="PR" summary={prs => prSummary(prs, open)} order={mostFirst} orderLabel="most PRs first">
         {prs => (
             <table className="w-full text-sm">
               <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
