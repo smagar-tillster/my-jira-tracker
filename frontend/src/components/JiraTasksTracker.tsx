@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, memo } from 'react';
 import ShimmerLoading from './ShimmerLoading';
 import { JiraIssue, Column, SortConfig, GroupConfig, JiraSprint } from '../types';
 import { filterIssues, sortIssues, groupIssues, mergeIssueSources } from '../services/dataProcessor';
+import { orderGroups } from '../utils/statusBuckets';
 import { parseLocalDate } from '../utils/dateUtils';
 import { useIssueFiltering } from '../hooks/useIssueFiltering';
 import { jiraApi } from '../services/api';
@@ -40,6 +41,16 @@ const DEFAULT_COLUMNS: Column[] = [
   { key: 'timeSpent',      label: 'Σ Time Spent',      sortable: true,  filterable: false, type: 'text',    width: 120 },
   { key: 'originalEstimate', label: 'Σ Original Est.', sortable: true,  filterable: false, type: 'text',    width: 150 },
 ];
+
+// Columns shown in the List table. The others stay defined above, so their filters, sorting and group-by keep working; they are just
+// not shown (Source, Created, Status Category, Fix Version, Parent Summary, time tracking).
+const LIST_COLUMN_WIDTHS: Record<string, number> = {
+  important: 70, issueType: 92, key: 135, summary: 686, status: 195, assignee: 200,
+  dueDate: 96, releaseDate: 96, plannedUatDate: 96, client: 104, components: 140, sprint: 170,
+};
+const LIST_COLUMNS: Column[] = DEFAULT_COLUMNS
+  .filter(c => c.key in LIST_COLUMN_WIDTHS)
+  .map(c => ({ ...c, width: LIST_COLUMN_WIDTHS[c.key] }));
 
 const GROUPABLE_COLUMN_KEYS = ['issueType','status','assignee','dueDate','releaseDate','plannedUatDate','client','fixVersions','source'] as const;
 const GROUPABLE_COLUMNS = DEFAULT_COLUMNS.filter(col => GROUPABLE_COLUMN_KEYS.includes(col.key as any));
@@ -126,7 +137,7 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
   );
 
   // ── UI state ──────────────────────────────────────────────────────────────
-  const [visibleColumns] = useState<Column[]>(DEFAULT_COLUMNS);
+  const [visibleColumns] = useState<Column[]>(LIST_COLUMNS);
   const [sortConfig, setSortConfig]   = useState<SortConfig>({ column: 'dueDate', direction: 'desc' });
   const [groupConfig, setGroupConfig] = useState<GroupConfig>({ column: null, direction: 'asc' });
   const [viewMode, setViewMode]       = useState<'list' | 'calendar' | 'region'>('list');
@@ -327,7 +338,9 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
       debouncedSearch
     );
     const s = sortIssues(f, sortConfig);
-    const g = groupIssues(s, groupConfig.column);
+    const grouped = groupIssues(s, groupConfig.column);
+    // Assignees with the fewest aligned tickets first (who has room)
+    const g = groupConfig.column === 'assignee' ? orderGroups(grouped, 'aligned-asc') : grouped;
     return { filteredIssues: f, sortedIssues: s, groupedIssues: g };
   }, [mergedIssues, effectiveSprintIssues, myIssues, sourceFilter, showImportantOnly, showMyDayOnly, showUrgentOnly, showAttentionOnly, showNoDueDate, showFETeamOnly, showNoSubtasks, feTeamMembers, filters, effectiveSCFilter, debouncedSearch, sortConfig, groupConfig]);
 
@@ -364,17 +377,19 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
       )}
       {!fullScreenMode && (
         <div className="bg-white border-b border-gray-200 p-4">
-          <div className="space-y-3">
+          <div className="grid gap-x-3 gap-y-3" style={{ gridTemplateColumns: 'minmax(0, 1fr) 232px' }}>
 
-            {/* Row 1 – Search */}
-            <div className="flex gap-3 items-center">
+            {/* Row 1 – Search (left) and Jira Filter (right) */}
+            <div className="min-w-0">
               <input
                 type="text"
                 placeholder="Search by key, summary, assignee, type..."
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
+            </div>
+            <div>
               <JiraFilterDropdown
                 sprints={sprintOptions}
                 selected={selectedSprintNames}
@@ -386,7 +401,7 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
             </div>
 
             {/* Row 2 – Source pill + view mode + quick filters */}
-            <div className="flex gap-2 items-center flex-wrap">
+            <div className="flex gap-1.5 items-center flex-wrap min-w-0 col-start-1">
               {/* Source filter pills */}
               <div className="flex rounded-lg border border-gray-300 overflow-hidden text-sm font-medium">
                 {(['all', 'sprint', 'me'] as SourceFilter[]).map(s => (
@@ -471,8 +486,27 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
               )}
             </div>
 
+            {/* Under the Jira Filter: No Sub tasks, Refresh and Full Screen on one line, the issue count below */}
+            <div className="col-start-2 row-start-2 row-span-2 flex flex-col gap-3 items-end">
+              <div className="flex gap-1.5 items-center">
+                <button onClick={() => setShowNoSubtasks(!showNoSubtasks)}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${showNoSubtasks ? 'bg-indigo-600 text-white' : 'bg-indigo-100 text-indigo-800 hover:bg-indigo-200'}`}>
+                  📋 No Sub tasks
+                </button>
+                <button onClick={() => { usingCustomSprintQuery ? handleGetData() : onRefreshSprint(); onRefreshMe(); }}
+                  title="Refresh" aria-label="Refresh"
+                  className="px-2.5 py-1.5 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600">🔄</button>
+                <button onClick={() => setFullScreenMode(true)}
+                  title="Full Screen" aria-label="Full Screen"
+                  className="px-2.5 py-1.5 bg-gray-700 text-white rounded-lg text-sm hover:bg-gray-800">⛶</button>
+              </div>
+              <span className="text-sm text-gray-600 whitespace-nowrap">
+                {sortedIssues.length} / {mergedIssues.length} issues
+              </span>
+            </div>
+
             {/* Row 3 – Status counts + dropdown filters */}
-            <div className="flex flex-wrap gap-2 items-center relative z-40">
+            <div className="flex flex-wrap gap-1.5 items-center relative z-40 min-w-0 col-start-1">
               {Object.entries(statusCounts).map(([cat, count]) => {
                 const isActive = effectiveSCFilter.includes(cat);
                 const colors: Record<string, [string, string]> = {
@@ -553,25 +587,10 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
                 openDropdown={openDropdown} onOpen={handleDropdownOpen}
                 isSelected={isFilterSelected} onToggle={togglePendingFilter} countFn={v => countOcc('components', v)} />
 
-              {/* No Subtasks filter */}
-              <button onClick={() => setShowNoSubtasks(!showNoSubtasks)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${showNoSubtasks ? 'bg-indigo-600 text-white' : 'bg-indigo-100 text-indigo-800 hover:bg-indigo-200'}`}>
-                📋 No Sub tasks
-              </button>
-
               {(Object.keys(filters).length > 0 || searchTerm) && (
                 <button onClick={clearAllFilters} className="px-3 py-1.5 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600">Clear Filters</button>
               )}
 
-              <div className="flex gap-2 ml-auto items-center">
-                <button onClick={() => { usingCustomSprintQuery ? handleGetData() : onRefreshSprint(); onRefreshMe(); }}
-                  className="px-3 py-1.5 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600">🔄 Refresh</button>
-                <button onClick={() => setFullScreenMode(true)}
-                  className="px-3 py-1.5 bg-gray-700 text-white rounded-lg text-sm hover:bg-gray-800">⛶ Full Screen</button>
-                <span className="text-sm text-gray-600 whitespace-nowrap">
-                  {sortedIssues.length} / {mergedIssues.length} issues
-                </span>
-              </div>
             </div>
           </div>
         </div>
@@ -589,6 +608,7 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
       <div className="flex-1 overflow-auto">
         {viewMode === 'list' ? (
           <ListView groupedIssues={groupedIssues} visibleColumns={visibleColumns}
+            showGroupCounts={!!groupConfig.column && groupConfig.column !== 'status'}
             sortConfig={sortConfig} onSort={handleSort} onToggleFilterValue={toggleFilterValue}
             feTeamMembers={feTeamMembers} onToggleFETeam={toggleFETeamMember} />
         ) : viewMode === 'calendar' ? (
@@ -690,10 +710,10 @@ const JiraFilterDropdown: React.FC<JiraFilterDropdownProps> = ({
     : `Current Sprint${currentSprint ? ` (${currentSprint.name})` : ''}`;
 
   return (
-    <div className="relative z-50 jira-filter-dropdown">
+    <div className="relative z-50 jira-filter-dropdown w-full">
       <button onClick={() => setIsOpen(o => !o)}
         title={label}
-        className={`flex items-center gap-1 px-3 py-2 rounded-lg text-sm font-medium border whitespace-nowrap max-w-[280px] ${
+        className={`flex items-center gap-1 px-3 py-2 rounded-lg text-sm font-medium border whitespace-nowrap w-full ${
           usingCustomQuery ? 'bg-indigo-100 text-indigo-800 border-indigo-300' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
         }`}>
         <span className="truncate">📅 Jira Filter: {label}</span>

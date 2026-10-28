@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { JiraIssue, Column, SortConfig } from '../../types';
 import { jiraApi } from '../../services/api';
 import { parseLocalDate } from '../../utils/dateUtils';
+import { bucketOf, countBuckets, BUCKET_PILL, BUCKET_HINT } from '../../utils/statusBuckets';
 
 interface ListViewProps {
   groupedIssues: Map<string, JiraIssue[]>;
@@ -14,7 +15,12 @@ interface ListViewProps {
   // Defaults to expanding the first group (matches the main List page). Pass false to start
   // every group collapsed instead (e.g. client sub-groups nested under a Region).
   defaultExpandFirst?: boolean;
+  // Show the Blocked / Aligned counts on each group line. Off for the plain "All Issues" list and when grouping by status.
+  showGroupCounts?: boolean;
 }
+
+// Summary can shrink to this share of its width on a narrow screen; the other columns keep their width and the table scrolls sideways.
+const SUMMARY_MIN_RATIO = 0.82;
 
 const ListView: React.FC<ListViewProps> = ({
   groupedIssues,
@@ -25,6 +31,7 @@ const ListView: React.FC<ListViewProps> = ({
   feTeamMembers,
   onToggleFETeam,
   defaultExpandFirst = true,
+  showGroupCounts = false,
 }) => {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
     new Set(defaultExpandFirst ? [...groupedIssues.keys()].slice(0, 1) : [])
@@ -39,9 +46,7 @@ const ListView: React.FC<ListViewProps> = ({
     const map = new Map<string, string>();
     for (const issues of groupedIssues.values()) {
       for (const issue of issues) {
-        if (issue.statusCategory === 'Done' ||
-            issue.status === 'Ready for QA' ||
-            issue.status === 'In QA') {
+        if (bucketOf(issue) === 'done') {
           map.set(issue.key, '');
           continue;
         }
@@ -71,8 +76,9 @@ const ListView: React.FC<ListViewProps> = ({
     if (columnType === 'date' && value) {
       const date = parseLocalDate(value);
       if (!date) return '—';
+      // Compact: the year is only shown when it is not the current one
       return date.toLocaleDateString('en-US', {
-        year: 'numeric',
+        ...(date.getFullYear() === new Date().getFullYear() ? {} : { year: 'numeric' as const }),
         month: 'short',
         day: 'numeric',
       });
@@ -85,16 +91,6 @@ const ListView: React.FC<ListViewProps> = ({
     if (!seconds || seconds === 0) return '0h';
     const hours = Math.round(seconds / 3600 * 100) / 100;
     return `${hours}h`;
-  };
-
-  const getStatusColor = (statusCategory: string): string => {
-    const statusMap: { [key: string]: string } = {
-      todo: 'bg-gray-100 text-gray-800',
-      inprogress: 'bg-blue-100 text-blue-800',
-      done: 'bg-green-100 text-green-800',
-      'in-progress': 'bg-blue-100 text-blue-800',
-    };
-    return statusMap[statusCategory.toLowerCase()] || 'bg-gray-100 text-gray-800';
   };
 
   const [importantStates, setImportantStates] = React.useState<Record<string, boolean>>({});
@@ -118,7 +114,7 @@ const ListView: React.FC<ListViewProps> = ({
               issue.important = newValue;
               await jiraApi.setIssueImportant(issue.key, newValue);
             }}
-            className={`w-5 text-center text-lg cursor-pointer hover:scale-110 transition-all ${isImportant ? 'opacity-100 grayscale-0' : 'opacity-30 grayscale hover:opacity-60'}`}
+            className={`w-5 text-center text-[15.1px] leading-none cursor-pointer hover:scale-110 transition-all ${isImportant ? 'opacity-100 grayscale-0' : 'opacity-30 grayscale hover:opacity-60'}`}
             title={isImportant ? "Remove Imp" : "Mark Imp"}
           >⭐</button>
           <button
@@ -129,7 +125,7 @@ const ListView: React.FC<ListViewProps> = ({
               issue.myDay = newValue;
               await jiraApi.setIssueMyDay(issue.key, newValue);
             }}
-            className={`w-5 text-center text-lg cursor-pointer hover:scale-110 transition-all ${isMyDay ? 'opacity-100 grayscale-0' : 'opacity-30 grayscale hover:opacity-60'}`}
+            className={`w-5 text-center text-[15.1px] leading-none cursor-pointer hover:scale-110 transition-all ${isMyDay ? 'opacity-100 grayscale-0' : 'opacity-30 grayscale hover:opacity-60'}`}
             title={isMyDay ? "Remove from My Day" : "Add to My Day"}
           >☀️</button>
         </div>
@@ -143,7 +139,7 @@ const ListView: React.FC<ListViewProps> = ({
           href={issue.url}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-blue-600 hover:text-blue-800 font-semibold hover:underline text-sm"
+          className="text-blue-600 hover:text-blue-800 font-medium hover:underline text-[14px]"
           onClick={(e) => e.stopPropagation()}
         >
           {value}
@@ -167,17 +163,13 @@ const ListView: React.FC<ListViewProps> = ({
               onToggleFETeam(assigneeName);
             }
           }}
-          className="w-full text-left hover:bg-purple-50 rounded p-1 transition-colors"
-          title={isFETeam ? "Click to remove from FE Team" : "Click to add to FE Team"}
+          className="w-full text-left hover:bg-purple-50 rounded px-1 transition-colors flex items-center gap-1 min-w-0"
+          title={`${formatCellValue(value, column.type)}\n${isFETeam ? 'Click to remove from FE Team' : 'Click to add to FE Team'}`}
         >
-          <div className="flex flex-col gap-1">
-            <span className="text-sm text-gray-700">{formatCellValue(value, column.type)}</span>
-            {isFETeam && (
-              <span className="bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full text-xs font-medium inline-block w-fit">
-                👥 FE Team
-              </span>
-            )}
-          </div>
+          <span className="truncate text-[14px] text-gray-700">{formatCellValue(value, column.type)}</span>
+          {isFETeam && (
+            <span className="shrink-0 bg-purple-100 text-purple-800 px-1.5 rounded-full text-[10.8px] font-medium">👥 FE</span>
+          )}
         </button>
       );
     }
@@ -186,11 +178,11 @@ const ListView: React.FC<ListViewProps> = ({
     if (column.key === 'client' && value) {
       const clients = String(value).split(',').map(c => c.trim());
       return (
-        <div className="flex flex-wrap gap-1">
+        <div className="flex gap-1 overflow-hidden">
           {clients.map((client, i) => (
             <span
               key={i}
-              className="bg-gray-100 px-2 py-1 rounded text-xs font-medium"
+              className="bg-gray-100 px-1.5 rounded text-[13px] font-medium shrink-0"
             >
               {client}
             </span>
@@ -201,19 +193,19 @@ const ListView: React.FC<ListViewProps> = ({
 
     // Special handling for time tracking columns - display in hours
     if (column.key === 'timeSpent' || column.key === 'originalEstimate') {
-      return <span className="text-sm text-gray-700">{formatTimeValue(Number(value) || 0)}</span>;
+      return <span className="text-[15.1px] text-gray-700">{formatTimeValue(Number(value) || 0)}</span>;
     }
 
     switch (column.type) {
       case 'status':
         return (
-          <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(issue.statusCategory)}`}>
+          <span className={`px-2 py-0.5 rounded-full text-[13px] leading-5 font-medium whitespace-nowrap ${BUCKET_PILL[bucketOf(issue)]}`}>
             {formatCellValue(value, column.type)}
           </span>
         );
 
       case 'date':
-        return <span className="text-sm text-gray-700">{formatCellValue(value, column.type)}</span>;
+        return <span className="text-[14px] text-gray-700">{formatCellValue(value, column.type)}</span>;
 
       case 'url':
         return (
@@ -221,7 +213,7 @@ const ListView: React.FC<ListViewProps> = ({
             href={issue.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-blue-600 hover:text-blue-800 underline text-sm"
+            className="text-blue-600 hover:text-blue-800 underline text-[15.1px]"
           >
             {formatCellValue(value, column.type)}
           </a>
@@ -230,10 +222,10 @@ const ListView: React.FC<ListViewProps> = ({
       case 'array':
         // Default array rendering
         return (
-          <div className="flex flex-wrap gap-1">
+          <div className="flex gap-1 overflow-hidden">
             {Array.isArray(value) &&
               value.map((v, i) => (
-                <span key={i} className="bg-gray-200 text-gray-800 px-2 py-1 rounded text-xs">
+                <span key={i} className="bg-gray-200 text-gray-800 px-1.5 rounded text-[13px] shrink-0">
                   {v}
                 </span>
               ))}
@@ -241,105 +233,122 @@ const ListView: React.FC<ListViewProps> = ({
         );
 
       default:
-        return <span className="text-sm text-gray-700">{formatCellValue(value, column.type)}</span>;
+        return <span className="text-[14px] text-gray-700">{formatCellValue(value, column.type)}</span>;
     }
   };
 
+  // Full text on hover for cells that can be clipped
+  const cellTitle = (issue: JiraIssue, column: Column): string | undefined => {
+    const v = issue[column.key];
+    if (v == null || v === '') return undefined;
+    if (column.type === 'date') {
+      const d = parseLocalDate(String(v));
+      return d ? d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : undefined;
+    }
+    if (column.key === 'key' || column.key === 'important') return undefined;
+    const full = Array.isArray(v) ? v.join(', ') : String(v);
+    // Assignee has its own click (FE Team), explained on the name itself
+    return column.filterable && column.key !== 'assignee' ? `${full}\nClick to filter by this value` : full;
+  };
+
+  // Summary takes the spare width; every other column is fixed, so the single header and all rows line up.
+  const colStyle = (column: Column): React.CSSProperties => {
+    const w = Number(column.width) || 150;
+    return column.key === 'summary'
+      ? { flex: `1 1 ${w}px`, minWidth: Math.round(w * SUMMARY_MIN_RATIO) }
+      : { width: w, minWidth: w, maxWidth: w, flexShrink: 0 };
+  };
+  const HEADER_H = 38; // px; group lines stick just below the header
+  // The table never gets narrower than its columns (Summary can shrink to 82% of its width); wider screens give the extra to Summary.
+  const minTotal = visibleColumns.reduce((n, c) => n + (c.key === 'summary' ? Math.round((Number(c.width) || 150) * SUMMARY_MIN_RATIO) : Number(c.width) || 150), 0);
+
+  const countPill = (label: string, n: number, kind: 'blocked' | 'aligned') => (
+    <span
+      title={BUCKET_HINT[kind]}
+      className={`inline-flex justify-between w-[75px] px-2 rounded-full text-[11.5px] ${
+        n === 0 ? 'text-gray-400'
+          : kind === 'blocked' ? 'bg-white text-gray-800 ring-1 ring-gray-400'
+          : 'bg-orange-200 text-orange-900'}`}
+    >
+      <span>{label}</span><b className="font-semibold">{n}</b>
+    </span>
+  );
+
   return (
-    <div className="bg-white">
-      {Array.from(groupedIssues.entries()).map(([groupKey, issues]) => (
-        <div key={groupKey} className="border-b border-gray-200">
-          {/* Group Header */}
+    <div className="bg-gray-200 pb-2" style={{ minWidth: minTotal }}>
+      {/* One header row for the whole list */}
+      <div className="flex bg-gray-800 sticky top-0 z-20" style={{ height: HEADER_H, minWidth: minTotal }}>
+        {visibleColumns.map((column) => (
           <div
-            onClick={() => toggleGroupExpansion(groupKey)}
-            className="bg-gray-50 px-6 py-1.5 cursor-pointer hover:bg-gray-100 transition-colors flex items-center gap-3 sticky top-0 z-10"
+            key={column.key}
+            className={`px-2 text-[14.4px] font-semibold text-white border-r border-gray-700 last:border-r-0 flex items-center gap-1.5 ${column.key === 'important' ? 'justify-center' : ''}`}
+            style={colStyle(column)}
+            title={column.label}
           >
-            <span className="text-gray-400 text-sm">
-              {expandedGroups.has(groupKey) ? '▼' : '▶'}
-            </span>
-            <span className="font-semibold text-gray-700 text-sm">
-              {groupKey} ({issues.length})
-            </span>
+            {column.sortable && (
+              <button onClick={() => onSort(column.key)} className="text-gray-300 hover:text-white" title={`Sort by ${column.label}`}>
+                {sortConfig.column === column.key ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '⇅'}
+              </button>
+            )}
+            <span className="truncate">{column.label}</span>
           </div>
+        ))}
+      </div>
 
-          {/* Group Items */}
-          {expandedGroups.has(groupKey) && (
-            <div>
-              {/* Table Header */}
-              <div className="flex bg-gray-800 border-b-2 border-gray-900 sticky top-0 z-20 shadow-md" style={{ minWidth: 'max-content' }}>
-                {visibleColumns.map((column) => (
-                  <div
-                    key={column.key}
-                    className={`px-4 py-1.5 text-sm font-bold text-white border-r border-gray-700 last:border-r-0 ${column.key === 'important' ? 'text-center' : 'text-left'}`}
-                    style={{ width: column.width || '150px', minWidth: column.width || '150px', maxWidth: column.width || '150px', flexShrink: 0 }}
-                  >
-                    <div className={`flex items-center gap-2 ${column.key === 'important' ? 'justify-center' : ''}`}>
-                      {column.sortable && (
-                        <button
-                          onClick={() => onSort(column.key)}
-                          className="text-gray-300 hover:text-white font-bold"
-                          title={`Sort by ${column.label}`}
-                        >
-                          {sortConfig.column === column.key ? (
-                            sortConfig.direction === 'asc' ? '↑' : '↓'
-                          ) : (
-                            '⇅'
-                          )}
-                        </button>
-                      )}
-                      <span>{column.label}</span>
-                    </div>
-                  </div>
-                ))}
+      {Array.from(groupedIssues.entries()).map(([groupKey, issues]) => {
+        const counts = showGroupCounts ? countBuckets(issues) : null;
+        return (
+          <div key={groupKey} className="mt-2 rounded-lg overflow-clip bg-white shadow-sm">
+            {/* Group line: arrow, group name (total), then the Blocked and Aligned counts */}
+            <div
+              onClick={() => toggleGroupExpansion(groupKey)}
+              className={`bg-gray-100 border-l-4 cursor-pointer hover:bg-gray-200 transition-colors sticky z-10 ${expandedGroups.has(groupKey) ? 'border-indigo-500' : 'border-gray-300'}`}
+              style={{ top: HEADER_H }}
+            >
+              <div className="sticky left-0 flex items-center gap-3 px-3 py-[5px] w-max">
+                <span className="text-gray-600 text-[11.5px] w-4">{expandedGroups.has(groupKey) ? '▼' : '▶'}</span>
+                <span className="font-semibold text-gray-900 text-[13.4px] truncate" style={{ width: showGroupCounts ? 230 : undefined, maxWidth: 460 }} title={groupKey}>
+                  {groupKey} <span className="font-normal text-gray-500">({issues.length})</span>
+                </span>
+                {counts && (<>{countPill('Blocked', counts.blocked, 'blocked')}{countPill('Aligned', counts.aligned, 'aligned')}</>)}
               </div>
-
-              {/* Table Rows */}
-              {issues.map((issue, index) => {
-                  const baseBg = rowBgColors.get(issue.key) || (index % 2 === 0 ? 'bg-white' : 'bg-gray-50');
-                return (
-                  <div
-                    key={issue.id}
-                    className={`flex border-b border-gray-100 hover:opacity-90 transition-colors ${baseBg}`}
-                    style={{ minWidth: 'max-content' }}
-                  >
-                    {visibleColumns.map((column) => (
-                      <div
-                        key={`${issue.id}-${column.key}`}
-                        className="px-4 py-3 border-r border-gray-100 last:border-r-0 text-sm"
-                        style={{ 
-                          width: column.width || '150px',
-                          minWidth: column.width || '150px',
-                          maxWidth: column.width || '150px',
-                          flexShrink: 0,
-                          ...(column.key === 'summary' ? { 
-                            whiteSpace: 'normal', 
-                            wordBreak: 'break-word',
-                            overflowWrap: 'break-word'
-                          } : {})
-                        }}
-                      >
-                        {column.filterable ? (
-                          <button
-                            onClick={() =>
-                              onToggleFilterValue(column.key, String(issue[column.key] || ''))
-                            }
-                            className="w-full text-left hover:underline hover:text-blue-600"
-                            title={`Filter by ${String(issue[column.key])}`}
-                          >
-                            {renderCell(issue, column)}
-                          </button>
-                        ) : (
-                          renderCell(issue, column)
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                );
-              })}
             </div>
-          )}
-        </div>
-      ))}
+
+            {/* Rows */}
+            {expandedGroups.has(groupKey) && issues.map((issue, index) => {
+              const baseBg = index % 2 === 0 ? 'bg-white' : 'bg-gray-50';
+              const keyTint = rowBgColors.get(issue.key) || ''; // urgent (red) / attention (orange): only the Issue Key cell is coloured
+              return (
+                <div
+                  key={issue.id}
+                  className={`flex items-center border-b border-gray-100 hover:opacity-90 transition-colors ${baseBg}`}
+                  style={{ minWidth: minTotal }}
+                >
+                  {visibleColumns.map((column) => (
+                    <div
+                      key={`${issue.id}-${column.key}`}
+                      className={`px-2 py-[5.5px] border-r border-gray-100 last:border-r-0 text-[14px] leading-[22px] overflow-hidden whitespace-nowrap text-ellipsis ${column.key === 'key' ? keyTint : ''}`}
+                      style={colStyle(column)}
+                      title={cellTitle(issue, column)}
+                    >
+                      {column.filterable ? (
+                        <button
+                          onClick={() => onToggleFilterValue(column.key, String(issue[column.key] || ''))}
+                          className="w-full text-left hover:underline hover:text-blue-600 block truncate"
+                        >
+                          {renderCell(issue, column)}
+                        </button>
+                      ) : (
+                        renderCell(issue, column)
+                      )}
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
     </div>
   );
 };
