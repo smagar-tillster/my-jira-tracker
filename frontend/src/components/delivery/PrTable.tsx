@@ -155,14 +155,14 @@ export default function PrTable({ rows, open, empty, onChanged }: { rows: Delive
     <>
       <TenantGroupList items={rows} tenantsOf={prTenants} unit="PR" summary={prs => prSummary(prs, open)} order={mostFirst} orderLabel="most PRs first">
         {prs => (
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
-                <tr><th className="px-3 py-1.5">PR</th><th className="px-3 py-1.5">Ticket</th><th className="px-3 py-1.5">What it builds</th><th className="px-3 py-1.5">Understanding</th><th className="px-3 py-1.5"></th></tr>
+            <table className="w-full table-fixed text-[14px] leading-[22px] [overflow-wrap:anywhere]">
+              <thead className="bg-gray-50 text-left text-[13px] font-semibold text-gray-600 border-b border-gray-200">
+                <tr><th className="px-2 py-[7px] w-[170px]">PR</th><th className="px-2 py-[7px] w-[170px]">Ticket</th><th className="px-2 py-[7px]">What it builds</th><th className="px-2 py-[7px] w-[30%]">Understanding</th><th className="px-2 py-[7px] w-[160px]"></th></tr>
               </thead>
               <tbody>
                 {prs.map(p => (
-                  <tr key={p.id} className="border-t border-gray-100 align-top hover:bg-gray-50">
-                    <td className="px-3 py-2 whitespace-nowrap">
+                  <tr key={p.id} className="border-t border-gray-100 align-middle hover:bg-gray-50">
+                    <td className="px-2 py-[5.5px] whitespace-nowrap">
                       <a href={p.url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline font-medium">{p.repo} #{p.number}</a>
                       {open && p.isDraft && <span className="ml-1.5 text-[11px] px-1.5 py-0.5 rounded bg-gray-200 text-gray-700">draft</span>}
                       <div className="text-xs text-gray-400">
@@ -170,13 +170,13 @@ export default function PrTable({ rows, open, empty, onChanged }: { rows: Delive
                       </div>
                       {open && p.reviewDecision && REVIEW[p.reviewDecision] && <span className={`text-[11px] px-1.5 py-0.5 rounded ${REVIEW[p.reviewDecision][1]}`}>{REVIEW[p.reviewDecision][0]}</span>}
                     </td>
-                    <td className="px-3 py-2 whitespace-nowrap">
+                    <td className="px-2 py-[5.5px] whitespace-nowrap">
                       {p.tickets.map(t => <div key={t.key}><a href={t.url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">{t.key}</a></div>)}
                       {p.tickets.length === 0 && <span className="text-gray-400">—</span>}
                       {p.tenants.length > 0 && <div className="text-xs text-gray-500">{p.tenants.join(', ')}</div>}
                     </td>
-                    <td className="px-3 py-2 max-w-md">
-                      <div className="font-medium text-gray-800">{p.line1}</div>
+                    <td className="px-2 py-[5.5px]">
+                      <div className="font-medium text-gray-800" title={p.line1}>{p.line1}</div>
                       {p.line2 && <div className="text-xs text-gray-500 mt-0.5">{p.line2}</div>}
                       {p.dependsOn.length > 0 && (
                         <div className="flex flex-wrap gap-1 mt-1.5">
@@ -189,8 +189,8 @@ export default function PrTable({ rows, open, empty, onChanged }: { rows: Delive
                         </div>
                       )}
                     </td>
-                    <td className="px-3 py-2 max-w-sm text-xs text-gray-700"><Understanding p={p} /></td>
-                    <td className="px-3 py-2 whitespace-nowrap">
+                    <td className="px-2 py-[5.5px] text-xs text-gray-700"><Understanding p={p} /></td>
+                    <td className="px-2 py-[5.5px] whitespace-nowrap">
                       <div className="flex flex-col items-start gap-1.5">
                         <button onClick={() => setShown(p)} className="text-blue-600 hover:underline text-sm">Details</button>
                         {p.open

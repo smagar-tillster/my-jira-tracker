@@ -57,6 +57,15 @@ export const jira = async (method, url, body) => {
   return text ? JSON.parse(text) : {};
 };
 
+/** Jira Software (agile) API: boards and sprints. Same credentials, different base path. */
+export const jiraAgile = async (method, url) => {
+  if (!JIRA_HOST || !ENV.JIRA_EMAIL || !ENV.JIRA_API_TOKEN) throw new Error('Missing JIRA_HOST / JIRA_EMAIL / JIRA_API_TOKEN (set in env or backend/.env)');
+  const res = await fetch(`${JIRA_HOST}/rest/agile/1.0${url}`, { method, headers: { Authorization: AUTH, Accept: 'application/json' } });
+  const text = await res.text();
+  if (!res.ok) throw new Error(`Jira agile ${method} ${url} -> ${res.status}: ${text.slice(0, 300)}`);
+  return text ? JSON.parse(text) : {};
+};
+
 export const SEARCH_FIELDS = [
   'summary', 'status', 'issuetype', 'priority', 'assignee', 'duedate', 'fixVersions', 'components',
   'labels', 'created', 'updated', 'parent', 'statuscategorychangedate', FIELDS.client, FIELDS.uat, FIELDS.sprint,
