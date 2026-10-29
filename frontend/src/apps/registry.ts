@@ -22,14 +22,13 @@ export const APPS: AppDef[] = [
   { id: 'quickAnalysis', name: 'Quick Analysis',        icon: '🔍', section: 'apps', description: 'Concerns across releases and sprints', keywords: ['concerns', 'risk', 'overdue'] },
   { id: 'releases',      name: 'Release & PRs',         icon: '📦', section: 'apps', description: 'What was released, what is next, and PRs', keywords: ['release', 'pull request', 'delivery'] },
   { id: 'prReviews',     name: 'PR Reviews',            icon: '📝', section: 'apps', description: 'Code review drafts for open PRs: read, then post', keywords: ['review', 'pull request', 'github', 'comments', 'drafts'] },
-  { id: 'monitoring',    name: 'Monitoring Dashboard',  icon: '📡', section: 'apps', description: 'Hosted fleet monitoring', keywords: ['fleet', 'kiosk', 'health'] },
+  { id: 'monitoring',    name: 'Monitoring',            icon: '📡', section: 'apps', description: 'Fleet health and New Relic conditions', keywords: ['fleet', 'kiosk', 'health', 'newrelic', 'new relic', 'alerts', 'conditions', 'nr'] },
   { id: 'mytester',      name: 'MyTester',              icon: '🧪', section: 'apps', description: 'Test reports', keywords: ['test', 'qa', 'report'] },
   { id: 'defects',       name: 'Defects',               icon: '🐞', section: 'apps', description: 'Defect reports', keywords: ['bugs', 'report'] },
   { id: 'accomplishments', name: 'Accomplishments',     icon: '🏆', section: 'apps', description: 'Sprint highlights and manual entries', comingSoon: true, keywords: ['wins', 'highlights'] },
 
   { id: 'configViewer',  name: 'Config Viewer',         icon: '⚙️', section: 'tools', description: 'Browse tenant configuration', comingSoon: true, keywords: ['tenant', 'json'] },
   { id: 'menuCompare',   name: 'Menu Compare',          icon: '🍔', section: 'tools', description: 'Compare menus between environments', comingSoon: true, keywords: ['diff', 'menu'] },
-  { id: 'newrelic',      name: 'New Relic Conditions',  icon: '🔔', section: 'tools', description: 'Monitoring and alert conditions report', keywords: ['alerts', 'monitoring', 'nr'] },
 ];
 
 export const APP_BY_ID: Record<string, AppDef> = Object.fromEntries(APPS.map(a => [a.id, a]));

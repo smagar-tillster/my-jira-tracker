@@ -6,10 +6,10 @@ import AppDrawer from './components/shell/AppDrawer';
 import TabStrip from './components/shell/TabStrip';
 import NotificationBell, { BellItem } from './components/shell/NotificationBell';
 import PrReviews from './components/PrReviews';
-import EmbeddedApp from './components/apps/EmbeddedApp';
+import MonitoringApp from './components/apps/MonitoringApp';
 import ReportViewer from './components/apps/ReportViewer';
 import ComingSoon from './components/apps/ComingSoon';
-import { APP_BY_ID, FLEET_URL } from './apps/registry';
+import { APP_BY_ID } from './apps/registry';
 import { jiraApi, reviewsApi } from './services/api';
 import { JiraIssue } from './types';
 
@@ -241,13 +241,11 @@ function App() {
       case 'prReviews':
         return <PrReviews />;
       case 'monitoring':
-        return <EmbeddedApp title={app.name} url={FLEET_URL} />;
+        return <MonitoringApp />;
       case 'mytester':
         return <ReportViewer source="mytester" title={app.name} />;
       case 'defects':
         return <ReportViewer source="defects" title={app.name} />;
-      case 'newrelic':
-        return <ReportViewer source="newrelic-conditions" title={app.name} />;
       default:
         return app?.comingSoon ? <ComingSoon icon={app.icon} name={app.name} description={app.description} /> : null;
     }
