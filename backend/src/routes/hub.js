@@ -12,6 +12,8 @@ const SOURCES = {
   'newrelic-conditions': {
     label: 'New Relic Conditions',
     dir: process.env.REPORTS_DIR_NEWRELIC || path.join(DATABASES_DIR, 'MyTracker', 'monitoring'),
+    // The Monitoring tab already says what the page is, so the report's own title bar is hidden (the file is not changed).
+    hideCss: '.hero{display:none!important}',
   },
   mytester: {
     label: 'MyTester',
@@ -137,6 +139,10 @@ router.get('/hub/:source/file/*', async (req, res) => {
     if (REPORT_EXTS.has(ext)) {
       // Reports may run their own scripts, but without access to this app's origin or API session.
       headers['Content-Security-Policy'] = 'sandbox allow-scripts allow-popups allow-downloads allow-modals';
+    }
+    if (source.hideCss && REPORT_EXTS.has(ext)) {
+      const html = (await fs.readFile(fileReal, 'utf8')).replace(/<\/head>/i, `<style>${source.hideCss}</style></head>`);
+      return res.set({ ...headers, 'Content-Type': 'text/html; charset=UTF-8' }).send(html);
     }
     res.sendFile(fileReal, { dotfiles: 'deny', headers });
   } catch {
