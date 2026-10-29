@@ -86,12 +86,12 @@ function ReleaseRows({ rows, showStatus, onOpen }: { rows: DeliveryRelease[]; sh
   const setOpen = onOpen;
   return (
     <>
-      <table className="w-full text-[14px] leading-[22px]">
+      <table className="w-full table-fixed text-[14px] leading-[22px] [overflow-wrap:anywhere]">
         <thead className="bg-gray-50 text-left text-[13px] font-semibold text-gray-600 border-b border-gray-200">
           <tr>
-            <th className="px-2 py-[7px]">Date</th><th className="px-2 py-[7px]">Env</th>
-            <th className="px-2 py-[7px]">Components{showStatus ? '' : ' released'} (version)</th><th className="px-2 py-[7px]">Release ticket</th>
-            {showStatus && <th className="px-2 py-[7px]">Status</th>}<th className="px-2 py-[7px]"></th>
+            <th className="px-2 py-[7px] w-[110px]">Date</th><th className="px-2 py-[7px] w-[130px]">Env</th>
+            <th className="px-2 py-[7px]">Components{showStatus ? '' : ' released'} (version)</th><th className="px-2 py-[7px] w-[200px]">Release ticket</th>
+            {showStatus && <th className="px-2 py-[7px] w-[130px]">Status</th>}<th className="px-2 py-[7px] w-[70px]"></th>
           </tr>
         </thead>
         <tbody>
