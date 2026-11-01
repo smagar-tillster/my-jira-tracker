@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnalyzeJob, DeliveryPr, GenerateJob, deliveryApi, generateBusy } from '../../services/api';
-import { Modal, Section } from './shared';
+import { ListControls, Modal, Section } from './shared';
+import { filterRows } from './search';
 import { jobText, prId, useCodeReview } from './useCodeReview';
 import TenantGroupList from './TenantGroupList';
 import { byCount } from './tenantGrouping';
@@ -126,6 +127,20 @@ function Understanding({ p }: { p: DeliveryPr }) {
 }
 
 const prTenants = (p: DeliveryPr) => p.tenants;
+const prRepo = (p: DeliveryPr) => [p.repo];
+const GROUPS = [
+  { id: 'client' as const, label: 'Client', hint: 'One group per tenant (a PR for several tenants appears under each)' },
+  { id: 'repo' as const, label: 'Repo', hint: 'One group per repository' },
+];
+type GroupBy = typeof GROUPS[number]['id'];
+
+/** What a collapsed repo group says: how many PRs, for which tenants, and drafts (open PRs). */
+const repoSummary = (prs: DeliveryPr[], open?: boolean) => {
+  const tenants = [...new Set(prs.flatMap(p => p.tenants))].sort();
+  const parts = [`${prs.length} PR${prs.length === 1 ? '' : 's'}${tenants.length ? ` for ${tenants.length} tenant${tenants.length === 1 ? '' : 's'} (${tenants.slice(0, 6).join(', ')}${tenants.length > 6 ? ', …' : ''})` : ''}`];
+  if (open) { const d = prs.filter(p => p.isDraft).length; if (d) parts.push(`${d} draft${d === 1 ? '' : 's'}`); }
+  return parts.join(' · ');
+};
 
 /** What a collapsed tenant group says about its PRs: how many, in which repos, and (merged PRs) over how many days. */
 const prSummary = (prs: DeliveryPr[], open?: boolean) => {
@@ -146,6 +161,10 @@ export default function PrTable({ rows, open, empty, onChanged }: { rows: Delive
   const { jobs, start } = useAnalyze(onChanged);
   const review = useCodeReview(onChanged);
   const startReview = (p: DeliveryPr) => review.start([{ repo: p.repo, number: p.number }]);
+  const [groupBy, setGroupBy] = useState<GroupBy>('client');
+  const [query, setQuery] = useState('');
+  const visible = useMemo(() => filterRows(rows, query), [rows, query]);
+  const byClient = groupBy === 'client';
 
   // keep the open modal in sync with refreshed rows
   const current = shown ? rows.find(r => r.id === shown.id) || shown : null;
@@ -153,7 +172,10 @@ export default function PrTable({ rows, open, empty, onChanged }: { rows: Delive
   if (rows.length === 0) return <div className="p-8 text-center text-gray-400">{empty}</div>;
   return (
     <>
-      <TenantGroupList items={rows} tenantsOf={prTenants} unit="PR" summary={prs => prSummary(prs, open)} order={mostFirst} orderLabel="most PRs first">
+      <ListControls groups={GROUPS} groupBy={groupBy} onGroupBy={setGroupBy} query={query} onQuery={setQuery} shown={visible.length} total={rows.length} unit="PR" />
+      {visible.length === 0 ? <div className="p-8 text-center text-gray-400">Nothing matches &ldquo;{query.trim()}&rdquo;.</div> : (
+      <TenantGroupList items={visible} tenantsOf={byClient ? prTenants : prRepo} unit="PR" summary={prs => byClient ? prSummary(prs, open) : repoSummary(prs, open)}
+        groupLabel={byClient ? 'tenant' : 'repo'} expandAll={!!query.trim()} order={mostFirst} orderLabel="most PRs first">
         {prs => (
             <table className="w-full table-fixed text-[14px] leading-[22px] [overflow-wrap:anywhere]">
               <thead className="bg-gray-50 text-left text-[13px] font-semibold text-gray-600 border-b border-gray-200">
@@ -205,6 +227,7 @@ export default function PrTable({ rows, open, empty, onChanged }: { rows: Delive
             </table>
         )}
       </TenantGroupList>
+      )}
       {current && <PrModal p={current} job={jobs[current.id]} onStart={start} reviewJob={review.jobs[prId(current)]} onReview={startReview} onClose={() => setShown(null)} />}
     </>
   );

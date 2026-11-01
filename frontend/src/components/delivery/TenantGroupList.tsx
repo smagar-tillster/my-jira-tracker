@@ -1,4 +1,4 @@
-import { ReactNode, useMemo, useState } from 'react';
+import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { FALLBACK_TENANT, GroupOrder, groupByTenant } from './tenantGrouping';
 
 /**
@@ -6,9 +6,10 @@ import { FALLBACK_TENANT, GroupOrder, groupByTenant } from './tenantGrouping';
  * `unit` names one item in the count ("release ticket", "PR").
  * `order` sets the tenant order (alphabetical by default) and `orderLabel` says so in the note above the list; pass both from a
  * module-level constant so the grouping is not rebuilt on every render. `alert` marks a tenant line in red (for example a tenant
- * with something not ready).
+ * with something not ready). `groupLabel` names what the groups are ("tenant" by default, or "repo", "component"); `fallback` is the group for
+ * an item with none. `expandAll` opens every group (and keeps them open as the list changes), used while searching.
  */
-export default function TenantGroupList<T>({ items, tenantsOf, summary, unit, children, order, orderLabel = 'alphabetical', alert }: {
+export default function TenantGroupList<T>({ items, tenantsOf, summary, unit, children, order, orderLabel = 'alphabetical', alert, groupLabel = 'tenant', fallback = FALLBACK_TENANT, expandAll = false }: {
   items: T[];
   tenantsOf: (item: T) => readonly string[] | null | undefined;
   summary: (items: T[], tenant: string) => ReactNode;
@@ -17,9 +18,14 @@ export default function TenantGroupList<T>({ items, tenantsOf, summary, unit, ch
   order?: GroupOrder<T>;
   orderLabel?: string;
   alert?: (items: T[], tenant: string) => boolean;
+  groupLabel?: string;
+  fallback?: string;
+  expandAll?: boolean;
 }) {
-  const { groups } = useMemo(() => groupByTenant(items, tenantsOf, order), [items, tenantsOf, order]);
+  const { groups } = useMemo(() => groupByTenant(items, tenantsOf, order, fallback), [items, tenantsOf, order, fallback]);
   const [open, setOpen] = useState<Set<string>>(new Set());
+  // while searching, every matching group is open; a group can still be closed by hand until the list changes again
+  useEffect(() => { if (expandAll) setOpen(new Set(groups.map(g => g.tenant))); }, [expandAll, groups]);
   const toggle = (t: string) => setOpen(prev => { const n = new Set(prev); if (n.has(t)) n.delete(t); else n.add(t); return n; });
   const allOpen = groups.length > 0 && groups.every(g => open.has(g.tenant));
   const several = items.filter(i => (tenantsOf(i) || []).filter(t => t && t.trim()).length > 1).length;
@@ -28,9 +34,9 @@ export default function TenantGroupList<T>({ items, tenantsOf, summary, unit, ch
     <div>
       <div className="flex items-center gap-3 text-xs text-gray-500 pb-2">
         <span>
-          {groups.length} tenant{groups.length === 1 ? '' : 's'} · {items.length} {unit}{items.length === 1 ? '' : 's'}.
-          Grouped by tenant, {orderLabel}{several > 0 ? `; ${several} ${several === 1 ? 'names' : 'name'} more than one tenant and ${several === 1 ? 'is' : 'are'} listed under each` : ''}.
-          Anything without a clear tenant is under {FALLBACK_TENANT}.
+          {groups.length} {groupLabel}{groups.length === 1 ? '' : 's'} · {items.length} {unit}{items.length === 1 ? '' : 's'}.
+          Grouped by {groupLabel}, {orderLabel}{several > 0 ? `; ${several} ${several === 1 ? 'names' : 'name'} more than one ${groupLabel} and ${several === 1 ? 'is' : 'are'} listed under each` : ''}.
+          {groupLabel !== 'repo' && <>Anything without a clear {groupLabel} is under {fallback}.</>}
         </span>
         <button onClick={() => setOpen(allOpen ? new Set() : new Set(groups.map(g => g.tenant)))} className="ml-auto text-blue-600 hover:underline whitespace-nowrap">
           {allOpen ? 'Collapse all' : 'Expand all'}

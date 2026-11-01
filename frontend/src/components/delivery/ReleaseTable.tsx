@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { DeliveryRelease } from '../../services/api';
-import { Modal, Section, StatusDot, TicketLink, dayLabel } from './shared';
+import { ListControls, Modal, Section, StatusDot, TicketLink, dayLabel } from './shared';
+import { filterRows } from './search';
 import TenantGroupList from './TenantGroupList';
 import { byCount, byNotReady } from './tenantGrouping';
 
@@ -51,6 +52,13 @@ function ReleaseModal({ r, onClose }: { r: DeliveryRelease; onClose: () => void 
 }
 
 const releaseTenants = (r: DeliveryRelease) => [r.tenant];
+// A release ticket lists the components it ships, so "component" is the second way to group (a ticket shows under each of its components).
+const releaseComponents = (r: DeliveryRelease) => r.components.map(c => c.name);
+const GROUPS = [
+  { id: 'client' as const, label: 'Client', hint: 'One group per tenant' },
+  { id: 'component' as const, label: 'Component', hint: 'One group per component shipped (a ticket appears under each of its components)' },
+];
+type GroupBy = typeof GROUPS[number]['id'];
 
 // To Release Today: tenants with something not ready on top (red); Released: the tenant with the most release tickets first.
 const notReadyCount = (items: DeliveryRelease[]) => items.filter(r => !r.ready).length;
@@ -69,26 +77,36 @@ const groupSummary = (rows: DeliveryRelease[], showStatus?: boolean) => {
 
 export default function ReleaseTable({ rows, showStatus, empty }: { rows: DeliveryRelease[]; showStatus?: boolean; empty: string }) {
   const [open, setOpen] = useState<DeliveryRelease | null>(null);
+  const [groupBy, setGroupBy] = useState<GroupBy>('client');
+  const [query, setQuery] = useState('');
+  const shown = useMemo(() => filterRows(rows, query), [rows, query]);
   if (rows.length === 0) return <div className="p-8 text-center text-gray-400">{empty}</div>;
+  const byClient = groupBy === 'client';
   return (
     <>
-      <TenantGroupList items={rows} tenantsOf={releaseTenants} unit="release ticket" summary={items => groupSummary(items, showStatus)}
-        order={showStatus ? notReadyFirst : mostFirst} orderLabel={showStatus ? 'tenants with tickets not ready first' : 'most release tickets first'}
-        alert={showStatus ? hasNotReady : undefined}>
-        {items => <ReleaseRows rows={items} showStatus={showStatus} onOpen={setOpen} />}
-      </TenantGroupList>
+      <ListControls groups={GROUPS} groupBy={groupBy} onGroupBy={setGroupBy} query={query} onQuery={setQuery} shown={shown.length} total={rows.length} unit="release ticket" />
+      {shown.length === 0 ? <div className="p-8 text-center text-gray-400">Nothing matches &ldquo;{query.trim()}&rdquo;.</div> : (
+        <TenantGroupList items={shown} tenantsOf={byClient ? releaseTenants : releaseComponents} unit="release ticket" summary={items => groupSummary(items, showStatus)}
+          groupLabel={byClient ? 'tenant' : 'component'} fallback={byClient ? undefined : '(no component)'} expandAll={!!query.trim()}
+          order={byClient ? (showStatus ? notReadyFirst : mostFirst) : mostFirst}
+          orderLabel={byClient && showStatus ? 'tenants with tickets not ready first' : 'most release tickets first'}
+          alert={showStatus ? hasNotReady : undefined}>
+          {items => <ReleaseRows rows={items} showStatus={showStatus} showTenant={!byClient} onOpen={setOpen} />}
+        </TenantGroupList>
+      )}
       {open && <ReleaseModal r={open} onClose={() => setOpen(null)} />}
     </>
   );
 }
 
-function ReleaseRows({ rows, showStatus, onOpen }: { rows: DeliveryRelease[]; showStatus?: boolean; onOpen: (r: DeliveryRelease) => void }) {
+function ReleaseRows({ rows, showStatus, showTenant, onOpen }: { rows: DeliveryRelease[]; showStatus?: boolean; showTenant?: boolean; onOpen: (r: DeliveryRelease) => void }) {
   const setOpen = onOpen;
   return (
     <>
       <table className="w-full table-fixed text-[14px] leading-[22px] [overflow-wrap:anywhere]">
         <thead className="bg-gray-50 text-left text-[13px] font-semibold text-gray-600 border-b border-gray-200">
           <tr>
+            {showTenant && <th className="px-2 py-[7px] w-[110px]">Tenant</th>}
             <th className="px-2 py-[7px] w-[110px]">Date</th><th className="px-2 py-[7px] w-[130px]">Env</th>
             <th className="px-2 py-[7px]">Components{showStatus ? '' : ' released'} (version)</th><th className="px-2 py-[7px] w-[200px]">Release ticket</th>
             {showStatus && <th className="px-2 py-[7px] w-[130px]">Status</th>}<th className="px-2 py-[7px] w-[70px]"></th>
@@ -97,6 +115,7 @@ function ReleaseRows({ rows, showStatus, onOpen }: { rows: DeliveryRelease[]; sh
         <tbody>
           {rows.map(r => (
             <tr key={r.id} className="border-t border-gray-100 hover:bg-gray-50 align-middle">
+              {showTenant && <td className="px-2 py-[5.5px] font-medium text-gray-800" title={r.tenant}>{r.tenant}</td>}
               <td className="px-2 py-[5.5px] whitespace-nowrap text-gray-600">{dayLabel(r.date)}</td>
               <td className="px-2 py-[5.5px]">{envBadge(r.env)}</td>
               <td className="px-2 py-[5.5px]">
