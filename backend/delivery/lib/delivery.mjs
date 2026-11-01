@@ -86,9 +86,10 @@ export const buildDeliveryData = ({ ledger, prLedger, openRecords = [], sprintIs
   const todayRows = releases.filter((r) => r.date === day);
   const toRelease = [...todayRows, ...pendingRows({ sprintIssues, todayRows, day, ...helpers })].sort((x, y) => Number(x.ready) - Number(y.ready) || x.tenant.localeCompare(y.tenant));
   // each PR also says which release tickets carry its ticket (tenant, env, date): the trace from a change to where it went
-  const withShipped = (p) => ({ ...p, ...shippedFor(ledger, p.keys) });
-  const prs = Object.values(prLedger.prs || {}).map(prRow).map(withShipped).sort((x, y) => String(y.mergedAt).localeCompare(String(x.mergedAt)));
-  const openPrs = openRecords.map(prRow).map(withShipped).sort((x, y) => String(y.createdAt).localeCompare(String(x.createdAt)));
+  // only releases dated on or after the merge day count; with PRs for the same ticket in other repos the link is approximate
+  const withShipped = (p, r) => ({ ...p, ...shippedFor(ledger, p.keys, { since: p.open ? null : p.day, shared: (r.siblings || []).length > 0 }) });
+  const prs = Object.values(prLedger.prs || {}).map((r) => withShipped(prRow(r), r)).sort((x, y) => String(y.mergedAt).localeCompare(String(x.mergedAt)));
+  const openPrs = openRecords.map((r) => withShipped(prRow(r), r)).sort((x, y) => String(y.createdAt).localeCompare(String(x.createdAt)));
   const pendingAi = prs.filter((p) => p.day === day && p.aiRecommended).length;
   const lastReleasedDay = releases.filter((r) => r.released && r.date <= day).map((r) => r.date).sort().pop() || null;
   const uniq = (a) => [...new Set(a)].filter(Boolean).sort();

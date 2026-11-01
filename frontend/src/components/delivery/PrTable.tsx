@@ -151,13 +151,13 @@ const SHIP_TONE: Record<string, string> = { prod: 'bg-green-100 text-green-800',
 function Shipped({ p }: { p: DeliveryPr }) {
   if (p.open) return null;
   const rows = p.shipped || [];
-  if (!rows.length) return <div className="text-[11px] text-gray-400 mt-0.5" title="No release ticket lists this PR's ticket yet">not in a release yet</div>;
+  if (!rows.length) return <div className="text-[11px] text-gray-400 mt-0.5" title="No release ticket dated on or after the merge lists this PR's ticket">not in a release yet</div>;
   return (
     <div className="flex flex-wrap gap-1 mt-0.5">
       {rows.slice(0, 3).map(r => (
         <span key={r.key} className={`text-[11px] px-1.5 py-px rounded ${SHIP_TONE[r.released ? (/PROD/i.test(r.env) ? 'prod' : 'uat') : 'planned']}`}
-          title={`${r.key} · ${r.tenant} · ${r.env} · ${r.date} · ${r.released ? 'released' : r.status}`}>
-          {/PROD/i.test(r.env) ? 'PROD' : 'UAT'} {r.tenant} {r.date.slice(5)}{r.released ? ' ✓' : ''}
+          title={`${r.key} · ${r.tenant} · ${r.env} · ${r.date} · ${r.released ? 'released' : r.status}${p.shippedApprox ? ' · by ticket: it also has PRs in other repos, so this PR may not be in this release' : ''}`}>
+          {p.shippedApprox ? '~' : ''}{/PROD/i.test(r.env) ? 'PROD' : 'UAT'} {r.tenant} {r.date.slice(5)}{r.released ? ' ✓' : ''}
         </span>
       ))}
       {rows.length > 3 && <span className="text-[11px] text-gray-500" title={rows.slice(3).map(r => `${r.key} ${r.tenant} ${r.env} ${r.date}`).join('\n')}>+{rows.length - 3} more</span>}

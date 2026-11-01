@@ -283,6 +283,8 @@ export interface DeliveryPr {
   /** Release tickets that carry this PR's ticket, newest first, and the furthest they got. */
   shipped?: { key: string; tenant: string; env: string; date: string; released: boolean; status: string }[];
   shippedState?: 'prod' | 'uat' | 'planned' | 'none';
+  /** The link is by ticket and the ticket also has PRs in other repos, so this PR may not be in every release listed. */
+  shippedApprox?: boolean;
 }
 export interface AnalyzeJob { id: string; state: 'running' | 'done' | 'queued' | 'failed'; startedAt: string; finishedAt: string | null; message: string }
 export interface DeliveryMeta {

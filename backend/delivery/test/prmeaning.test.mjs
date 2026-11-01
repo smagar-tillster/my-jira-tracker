@@ -38,21 +38,42 @@ const ledger = { releases: {
   'NGK-502': { key: 'NGK-502', tenant: 'KFC-MX', env: 'UAT/LAB', date: '2026-10-28', done: false, status: 'In QA', tickets: [{ key: 'NGK-3' }] },
 } };
 
-test('shipped lists every release carrying the ticket, newest first, and reports the furthest state', () => {
-  const a = shippedFor(ledger, ['NGK-1']);
+test('shipped lists every release carrying the ticket from the merge day on, newest first, and reports the furthest state', () => {
+  const a = shippedFor(ledger, ['NGK-1'], { since: '2026-10-01' });
   assert.deepEqual(a.shipped.map((r) => r.key), ['NGK-501', 'NGK-500']);
   assert.equal(a.shippedState, 'prod');
-  assert.equal(shippedFor(ledger, ['NGK-2']).shippedState, 'uat');
-  const c = shippedFor(ledger, ['NGK-3']);
+  assert.equal(shippedFor(ledger, ['NGK-2'], { since: '2026-10-01' }).shippedState, 'uat');
+  const c = shippedFor(ledger, ['NGK-3'], { since: '2026-10-01' });
   assert.equal(c.shippedState, 'planned');
   assert.equal(c.shipped[0].released, false);
-  assert.deepEqual(shippedFor(ledger, ['NGK-99']), { shipped: [], shippedState: 'none' });
-  assert.deepEqual(shippedFor(ledger, []), { shipped: [], shippedState: 'none' });
-  assert.deepEqual(shippedFor({}, ['NGK-1']), { shipped: [], shippedState: 'none' });
+  assert.deepEqual(shippedFor(ledger, ['NGK-99'], { since: '2026-10-01' }), { shipped: [], shippedState: 'none', shippedApprox: false });
+  assert.equal(shippedFor(ledger, [], { since: '2026-10-01' }).shippedState, 'none');
+  assert.equal(shippedFor({}, ['NGK-1'], { since: '2026-10-01' }).shippedState, 'none');
+});
+
+test('a release dated before the PR merged cannot contain it', () => {
+  // NGK-1 went out 10-20 (UAT) and 10-22 (PROD). A PR for the same ticket merged on 10-21 is only in the 10-22 one.
+  const r = shippedFor(ledger, ['NGK-1'], { since: '2026-10-21' });
+  assert.deepEqual(r.shipped.map((x) => x.key), ['NGK-501']);
+  // merged after every release: shipped nowhere yet
+  assert.deepEqual(shippedFor(ledger, ['NGK-1'], { since: '2026-10-25' }), { shipped: [], shippedState: 'none', shippedApprox: false });
+  // the release day itself counts (the merge can land the same day)
+  assert.equal(shippedFor(ledger, ['NGK-1'], { since: '2026-10-22' }).shipped.length, 1);
+});
+
+test('an open PR (no merge day) has shipped nowhere, even if its ticket is in a release', () => {
+  assert.deepEqual(shippedFor(ledger, ['NGK-1']), { shipped: [], shippedState: 'none', shippedApprox: false });
+  assert.deepEqual(shippedFor(ledger, ['NGK-1'], { since: null }), { shipped: [], shippedState: 'none', shippedApprox: false });
+});
+
+test('the result is approximate when the ticket also has PRs in other repos, but only if something is linked', () => {
+  assert.equal(shippedFor(ledger, ['NGK-1'], { since: '2026-10-01', shared: true }).shippedApprox, true);
+  assert.equal(shippedFor(ledger, ['NGK-1'], { since: '2026-10-01', shared: false }).shippedApprox, false);
+  assert.equal(shippedFor(ledger, ['NGK-99'], { since: '2026-10-01', shared: true }).shippedApprox, false);
 });
 
 test('a PR with several tickets gets each release once', () => {
-  const r = shippedFor(ledger, ['NGK-1', 'NGK-2']);
+  const r = shippedFor(ledger, ['NGK-1', 'NGK-2'], { since: '2026-10-01' });
   assert.equal(r.shipped.filter((x) => x.key === 'NGK-500').length, 1);
   assert.equal(r.shipped.length, 2);
 });

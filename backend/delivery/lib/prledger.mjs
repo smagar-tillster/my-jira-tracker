@@ -34,7 +34,10 @@ export const prMd = (r, releases = null) => {
   L.push(`- Meaning (${m.source === 'analysis' ? 'AI-assisted, verify' : `from the ${m.source.replace('-', ' ')}`}): ${m.text}`);
   const types = [...new Set((r.tickets || []).map((t) => t.type).filter(Boolean))];
   L.push(`- Type: ${isDefectFix(r.tickets) ? 'DEFECT FIX' : 'not a defect fix'}${types.length ? ` (ticket type ${types.join(', ')})` : ' (ticket type not known)'}`);
-  if (releases) { const sh = shippedFor(releases, r.keys); L.push(`- Shipped: ${sh.shipped.length ? sh.shipped.map((x) => `${x.key} ${x.tenant} ${x.env} ${x.date} ${x.released ? 'released' : x.status}`).join('; ') : 'not in any release ticket yet'}`); }
+  if (releases) {
+    const sh = shippedFor(releases, r.keys, { since: String(r.mergedAt || '').slice(0, 10) || null, shared: (r.siblings || []).length > 0 });
+    L.push(`- Shipped${sh.shippedApprox ? ' (by ticket; the ticket also has PRs in other repos, so this PR may not be in every release)' : ''}: ${sh.shipped.length ? sh.shipped.map((x) => `${x.key} ${x.tenant} ${x.env} ${x.date} ${x.released ? 'released' : x.status}`).join('; ') : 'not in a release dated on or after the merge'}`);
+  }
   if (a) L.push(`- Risk (AI-assisted): ${a.risk}`);
   L.push('');
   L.push('## Change understanding' + (a ? ' (AI-assisted reading of the diff and ticket; verify)' : ''));

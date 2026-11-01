@@ -1,7 +1,7 @@
 // What a PR in the ledger means and where it went. Plain functions with no imports so they can be tested with node directly.
 //   meaningOf   one short line on what changed and why, with where it came from (so a guess is never shown as a fact)
 //   isDefectFix a PR whose Jira ticket is a Defect, Bug or Incident (decided by the ticket type, not by words in the title)
-//   shippedFor  the release tickets that carry the PR's ticket: tenant, environment, date, and whether the release is done
+//   shippedFor  the release tickets that carry the PR's ticket and are dated on or after its merge: tenant, environment, date, released or not
 
 const DEFECT_TYPE = /^(defect|bug|incident)$/i;
 export const isDefectType = (type) => DEFECT_TYPE.test(String(type ?? '').trim());
@@ -33,19 +33,24 @@ export const meaningOf = (r) => {
 const isProd = (env) => /PROD/i.test(String(env || ''));
 
 /**
- * Releases that list any of `keys`, newest first, one row per release ticket. `state` is the furthest it got:
+ * Release tickets that carry the PR's ticket, newest first, one row per release ticket. A release counts only when it is dated on or
+ * after the day the PR merged: a release that went out before the merge cannot contain it. `since` is that day (YYYY-MM-DD); without
+ * one (an open PR) nothing has shipped. `state` is the furthest it got:
  *   prod (a PROD release is done) > uat (a UAT/LAB release is done) > planned (in a release that is not done yet) > none
+ * The link is by ticket, not by commit: when the ticket also has PRs in other repos (`shared`), the release may carry only some of them,
+ * so the result is marked `approx`.
  */
-export const shippedFor = (ledger, keys) => {
+export const shippedFor = (ledger, keys, { since = null, shared = false } = {}) => {
   const want = new Set((keys || []).filter(Boolean));
   const rows = [];
-  if (want.size) {
+  if (want.size && since) {
     for (const rec of Object.values(ledger?.releases || {})) {
       if (!(rec.tickets || []).some((t) => want.has(t.key))) continue;
+      if (String(rec.date || '') < since) continue;
       rows.push({ key: rec.key, tenant: rec.tenant || '', env: rec.env || '', date: rec.date || '', released: !!rec.done, status: rec.status || '' });
     }
   }
   rows.sort((x, y) => String(y.date).localeCompare(String(x.date)) || x.key.localeCompare(y.key));
   const state = rows.some((r) => r.released && isProd(r.env)) ? 'prod' : rows.some((r) => r.released) ? 'uat' : rows.length ? 'planned' : 'none';
-  return { shipped: rows, shippedState: state };
+  return { shipped: rows, shippedState: state, shippedApprox: !!shared && rows.length > 0 };
 };
