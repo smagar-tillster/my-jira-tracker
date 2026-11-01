@@ -30,7 +30,7 @@ const noData = (res) => res.status(404).json({ success: false, error: 'No delive
 router.get('/delivery/meta', (req, res) => {
   const d = loadData();
   if (!d) return noData(res);
-  res.json({ success: true, data: { generatedAt: d.generatedAt, day: d.day, window: d.window, lastReleasedDay: d.lastReleasedDay, tenants: d.tenants, envs: d.envs, timing: d.timing || null,
+  res.json({ success: true, data: { generatedAt: d.generatedAt, day: d.day, window: d.window, lastReleasedDay: d.lastReleasedDay, tenants: d.tenants, envs: d.envs, timing: d.timing || null, prsGeneratedAt: d.prsGeneratedAt || null, prsTiming: d.prsTiming || null,
     counts: { releases: d.releases.length, toRelease: d.toRelease.length, prsToday: d.prs.filter((p) => p.day === d.day).length, prsPendingAi: d.pendingAi || 0, openPrs: (d.openPrs || []).length } } });
 });
 
@@ -68,20 +68,25 @@ router.get('/delivery/open-prs', (req, res) => {
   res.json({ success: true, data: { rows: d.openPrs || [] } });
 });
 
-// ---- Run latest report: one at a time. Not --no-save, so every run covers PRs merged since the previous run and moves that marker forward.
-let job = { state: 'idle', startedAt: null, finishedAt: null, log: [] };
+// ---- Run latest report / Fetch latest PRs: one at a time (both write the same data file).
+// The full run is not --no-save, so it covers PRs merged since the previous run and moves that marker forward.
+// "PRs only" (--prs-only) skips the Jira sprint and release sync, so it is much quicker, and it leaves the marker alone.
+let job = { state: 'idle', kind: null, startedAt: null, finishedAt: null, log: [] };
 
-router.post('/delivery/refresh', (req, res) => {
+const startJob = (res, kind, extraArgs = []) => {
   if (job.state === 'running') return res.status(409).json({ success: false, error: 'A report is already running', data: job });
-  job = { state: 'running', startedAt: new Date().toISOString(), finishedAt: null, log: [] };
-  const child = spawn(process.execPath, [path.join(DELIVERY_DIR, 'scripts', 'daily.mjs')], { cwd: DELIVERY_DIR, env: NODE_ENV() });
+  job = { state: 'running', kind, startedAt: new Date().toISOString(), finishedAt: null, log: [] };
+  const child = spawn(process.execPath, [path.join(DELIVERY_DIR, 'scripts', 'daily.mjs'), ...extraArgs], { cwd: DELIVERY_DIR, env: NODE_ENV() });
   const keep = (buf) => { job.log.push(...String(buf).split('\n').filter(Boolean)); job.log = job.log.slice(-40); };
   child.stdout.on('data', keep);
   child.stderr.on('data', keep);
   child.on('error', (e) => { job.state = 'failed'; job.finishedAt = new Date().toISOString(); job.log.push(`Could not start: ${e.message}`); });
   child.on('close', (code) => { job.finishedAt = new Date().toISOString(); job.state = code === 0 ? 'done' : 'failed'; });
   res.status(202).json({ success: true, data: job });
-});
+};
+
+router.post('/delivery/refresh', (req, res) => startJob(res, 'full'));
+router.post('/delivery/refresh-prs', (req, res) => startJob(res, 'prs', ['--prs-only']));
 
 router.get('/delivery/refresh/status', (req, res) => res.json({ success: true, data: job }));
 

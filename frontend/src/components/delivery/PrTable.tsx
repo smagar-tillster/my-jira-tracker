@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnalyzeJob, DeliveryPr, GenerateJob, deliveryApi, generateBusy } from '../../services/api';
 import { ListControls, Modal, Section } from './shared';
 import { filterRows } from './search';
+import { useRefresh } from './RefreshContext';
 import { jobText, prId, useCodeReview } from './useCodeReview';
 import TenantGroupList from './TenantGroupList';
 import { byCount } from './tenantGrouping';
@@ -126,6 +127,24 @@ function Understanding({ p }: { p: DeliveryPr }) {
   return <span className="text-gray-400">Not reviewed</span>;
 }
 
+/** "Fetch latest PRs": re-reads GitHub for the PR lists only (no Jira sprint or release sync), so it is much quicker than the full report. */
+function FetchPrsButton() {
+  const r = useRefresh();
+  if (!r) return null;
+  const mine = r.running && r.job?.kind === 'prs';
+  const at = r.prsAt ? new Date(r.prsAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : null;
+  return (
+    <>
+      <button onClick={r.fetchPrs} disabled={r.running}
+        title={r.running && !mine ? 'The full report is running; PRs refresh with it' : 'Re-reads GitHub for open and merged PRs only. Quicker than the full report; releases are not refreshed.'}
+        className="px-3 py-1 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap">
+        {mine ? '⏳ Fetching PRs…' : '⟳ Fetch latest PRs'}
+      </button>
+      {at && <span className="text-xs text-gray-500">PRs as of {at}</span>}
+    </>
+  );
+}
+
 const prTenants = (p: DeliveryPr) => p.tenants;
 const prRepo = (p: DeliveryPr) => [p.repo];
 const GROUPS = [
@@ -169,10 +188,15 @@ export default function PrTable({ rows, open, empty, onChanged }: { rows: Delive
   // keep the open modal in sync with refreshed rows
   const current = shown ? rows.find(r => r.id === shown.id) || shown : null;
 
-  if (rows.length === 0) return <div className="p-8 text-center text-gray-400">{empty}</div>;
+  if (rows.length === 0) return (
+    <>
+      <div className="flex items-center gap-3 mb-2"><FetchPrsButton /></div>
+      <div className="p-8 text-center text-gray-400">{empty}</div>
+    </>
+  );
   return (
     <>
-      <ListControls groups={GROUPS} groupBy={groupBy} onGroupBy={setGroupBy} query={query} onQuery={setQuery} shown={visible.length} total={rows.length} unit="PR" />
+      <ListControls groups={GROUPS} groupBy={groupBy} onGroupBy={setGroupBy} query={query} onQuery={setQuery} shown={visible.length} total={rows.length} unit="PR" extra={<FetchPrsButton />} />
       {visible.length === 0 ? <div className="p-8 text-center text-gray-400">Nothing matches &ldquo;{query.trim()}&rdquo;.</div> : (
       <TenantGroupList items={visible} tenantsOf={byClient ? prTenants : prRepo} unit="PR" summary={prs => byClient ? prSummary(prs, open) : repoSummary(prs, open)}
         groupLabel={byClient ? 'tenant' : 'repo'} expandAll={!!query.trim()} order={mostFirst} orderLabel="most PRs first">

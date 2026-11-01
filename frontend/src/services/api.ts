@@ -283,8 +283,11 @@ export interface DeliveryMeta {
   window?: { sinceLabel: string; untilLabel: string };
   counts: { releases: number; toRelease: number; prsToday: number; prsPendingAi: number; openPrs: number };
   timing: { totalSec: number; stages: Record<string, number> } | null;
+  /** When the PR lists were last fetched on their own ("Fetch latest PRs"); null until then. */
+  prsGeneratedAt?: string | null;
+  prsTiming?: { totalSec: number } | null;
 }
-export interface RefreshJob { state: 'idle' | 'running' | 'done' | 'failed'; startedAt: string | null; finishedAt: string | null; log: string[] }
+export interface RefreshJob { state: 'idle' | 'running' | 'done' | 'failed'; kind?: 'full' | 'prs' | null; startedAt: string | null; finishedAt: string | null; log: string[] }
 
 const csv = (a?: string[]) => (a && a.length ? a.join(',') : undefined);
 
@@ -300,6 +303,7 @@ export const deliveryApi = {
   analyzePr: async (repo: string, number: number): Promise<AnalyzeJob> => (await apiClient.post(`/delivery/prs/${repo}/${number}/analyze`)).data.data,
   analyzeStatus: async (): Promise<Record<string, AnalyzeJob>> => (await apiClient.get('/delivery/prs/analyze/status')).data.data,
   refresh: async (): Promise<RefreshJob> => (await apiClient.post('/delivery/refresh')).data.data,
+  refreshPrs: async (): Promise<RefreshJob> => (await apiClient.post('/delivery/refresh-prs')).data.data,
   refreshStatus: async (): Promise<RefreshJob> => (await apiClient.get('/delivery/refresh/status')).data.data,
 };
 
