@@ -3,6 +3,11 @@ import fs from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
+import crypto from 'crypto';
+import { buildDigest, defaultRange } from '../../delivery/lib/prdigest.mjs';
+import { runClaude, buildDigestPrompt } from '../../delivery/lib/reviewgen.mjs';
+import { reviewConfig, redactSecrets } from '../../delivery/lib/reviews.mjs';
+import { sameMachineOnly } from './reviews.js';
 
 // Release & PRs data for the My Tracker tabs. The data file is written by backend/delivery/scripts/daily.mjs
 // (the "Run latest report" button below); this route only filters it. Read-only for Jira and GitHub.
@@ -66,6 +71,39 @@ router.get('/delivery/open-prs', (req, res) => {
   const d = loadData();
   if (!d) return noData(res);
   res.json({ success: true, data: { rows: d.openPrs || [] } });
+});
+
+// ---- Weekly digest: "what is happening in the stack", by rules from the data above (no model). ?from=&to= (default: the last 7 days).
+const digestFor = (d, q) => {
+  const range = defaultRange(d.day);
+  const from = isDay(q.from) ? q.from : range.from;
+  const to = isDay(q.to) ? q.to : (isDay(q.from) ? q.from : range.to);
+  return buildDigest({ prs: d.prs, openPrs: d.openPrs || [], from, to });
+};
+router.get('/delivery/digest', (req, res) => {
+  const d = loadData();
+  if (!d) return noData(res);
+  res.json({ success: true, data: digestFor(d, req.query) });
+});
+
+// POST /api/delivery/digest/summary {from,to}: a short written note that only restates the digest. One model call, kept per range and
+// reused until the facts change (so reopening the tab or asking again costs nothing).
+const SUMMARY_DIR = path.join(DATA_DIR, 'pr-digest');
+router.post('/delivery/digest/summary', sameMachineOnly, async (req, res) => {
+  const d = loadData();
+  if (!d) return noData(res);
+  const dg = digestFor(d, req.body || {});
+  const input = JSON.stringify(dg).slice(0, 30000);
+  const hash = crypto.createHash('sha256').update(input).digest('hex').slice(0, 16);
+  const file = path.join(SUMMARY_DIR, `${dg.window.from}_${dg.window.to}.json`);
+  try { const kept = JSON.parse(fs.readFileSync(file, 'utf8')); if (kept.hash === hash && !req.body?.refresh) return res.json({ success: true, data: { ...kept, cached: true } }); } catch { /* none kept yet */ }
+  const cfg = reviewConfig();
+  const r = await runClaude({ prompt: buildDigestPrompt(), input, model: cfg.models.light, timeoutMs: cfg.claudeTimeoutMs });
+  if (!r.ok || !r.text.trim()) return res.status(502).json({ success: false, error: `The model call failed: ${String(r.reason || 'no answer').slice(0, 200)}` });
+  const out = { hash, text: redactSecrets(r.text.trim()).text, model: `${cfg.models.light} (claude CLI)`, createdAt: new Date().toISOString(), window: dg.window };
+  fs.mkdirSync(SUMMARY_DIR, { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(out, null, 2));
+  res.json({ success: true, data: { ...out, cached: false } });
 });
 
 // ---- Run latest report / Fetch latest PRs: one at a time (both write the same data file).

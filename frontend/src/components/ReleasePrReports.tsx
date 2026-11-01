@@ -4,9 +4,10 @@ import ReleasedTab from './delivery/ReleasedTab';
 import ToReleaseTab from './delivery/ToReleaseTab';
 import MergedPrsTab from './delivery/MergedPrsTab';
 import OpenPrsTab from './delivery/OpenPrsTab';
+import DigestTab from './delivery/DigestTab';
 import { RefreshContext } from './delivery/RefreshContext';
 
-type SubTab = 'released' | 'toRelease' | 'prs' | 'open';
+type SubTab = 'released' | 'toRelease' | 'prs' | 'open' | 'digest';
 
 /** Release & PRs: live data (no stored reports). "Run latest report" re-reads Jira and GitHub on demand; nothing is scheduled. */
 export default function ReleasePrReports() {
@@ -61,6 +62,7 @@ export default function ReleasePrReports() {
     { id: 'toRelease', label: '⏰ To Release Today', count: meta?.counts.toRelease },
     { id: 'prs', label: '🔀 Merged PRs', count: meta?.counts.prsToday },
     { id: 'open', label: '📬 Open PRs', count: meta?.counts.openPrs },
+    { id: 'digest', label: '📰 Weekly digest' },
   ];
 
   return (
@@ -105,6 +107,7 @@ export default function ReleasePrReports() {
         {meta && tab === 'toRelease' && <ToReleaseTab meta={meta} refreshKey={refreshKey} />}
         {meta && tab === 'prs' && <MergedPrsTab meta={meta} refreshKey={refreshKey} />}
         {meta && tab === 'open' && <OpenPrsTab meta={meta} refreshKey={refreshKey} />}
+        {meta && tab === 'digest' && <DigestTab meta={meta} refreshKey={refreshKey} />}
       </div>
     </div>
     </RefreshContext.Provider>

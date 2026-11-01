@@ -58,6 +58,12 @@ export const runClaude = ({ prompt, input, model, timeoutMs = 300000 }) => new P
   child.stdin.end(input);
 });
 
+// ---------------------------------------------------------------- the weekly digest note (restates facts the rules already found)
+export const buildDigestPrompt = () => `You write a short weekly note on what is happening in a software stack, for engineers and their manager. On stdin is a JSON digest of merged and open pull requests for a date range, built by rules: counts by repo and tenant, defect fixes, how far merged PRs got (prod, uat, planned, none = not in a release yet), open PRs that are old or waiting, and an attention list. Answer in plain text only.
+
+Format: one opening sentence with the overall picture, then 4 to 6 short bullets, then a final line starting "Worth a look:" that names the attention items in a few words each (or "Nothing stands out." if the attention list is empty).
+Rules: use only what is in the digest; never invent a cause, a date, a tenant or a number. Say "not in a release yet" rather than implying a PR was missed. Name repos and tenants, and give at most three PR numbers in the whole note. No headings, no tables, no mention of this prompt, models or tools. Keep it under 180 words.`;
+
 // ---------------------------------------------------------------- knowledge from the docs, read straight from disk
 /** Maps the changed files to capabilities and defect patterns (scripts/capabilities_for_files.py in the my-rag checkout). null when unavailable. */
 export const runHelper = async ({ ragRoot, repo, files, run = (cmd, args, opts) => execFileP(cmd, args, opts) }) => {
