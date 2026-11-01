@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-const { flattenText, matchesQuery, filterRows, queryTerms, prSearchText } = await import('../../../frontend/src/components/delivery/search.ts');
+const { flattenText, matchesQuery, filterRows, queryTerms, prSearchText, quickFindPrs } = await import('../../../frontend/src/components/delivery/search.ts');
 const { groupByTenant, cleanTenants } = await import('../../../frontend/src/components/delivery/tenantGrouping.ts');
 
 const pr = (over = {}) => ({
@@ -72,4 +72,25 @@ test('a PR number must match whole: #39 does not find #394, but a bare word stil
   const rows = [pr({ number: 5, repo: 'r', title: 'See #50 for context', line1: 'x', keys: [], tickets: [] }), pr({ number: 50, repo: 'r', title: 'y', line1: 'y', keys: [], tickets: [] })];
   assert.deepEqual(filterRows(rows, '#50', prSearchText).map(r => r.number), [5, 50]); // a title that names #50 matches too
   assert.deepEqual(filterRows(rows, '#5', prSearchText).map(r => r.number), [5]);
+});
+
+// ---- PR Reviews page: quick find in "Open PRs without a review"
+test('quick find: a number matches PR numbers by prefix, other words match repo or title', () => {
+  const items = [
+    { repo: 'kiosk-web-service', number: 419, title: 'NGK-87781 spring7 java25' },
+    { repo: 'kiosk-ui', number: 4190, title: 'Fix banner' },
+    { repo: 'kiosk-ui', number: 41, title: 'Cart tweak' },
+    { repo: 'kiosk-menu-service', number: 264, title: 'NGK-87781 upgrade to Spring7' },
+  ];
+  const nums = (q) => quickFindPrs(items, q).map(i => i.number);
+  assert.deepEqual(nums(''), [419, 4190, 41, 264]);
+  assert.deepEqual(nums('#419'), [419, 4190]);        // typing narrows as you go
+  assert.deepEqual(nums('419'), [419, 4190]);         // the # is optional
+  assert.deepEqual(nums('#41'), [419, 4190, 41]);
+  assert.deepEqual(nums('#2'), [264]);
+  assert.deepEqual(nums('#9'), []);
+  assert.deepEqual(nums('ui #41'), [4190, 41]);       // a repo word narrows further
+  assert.deepEqual(nums('spring7'), [419, 264]);
+  assert.deepEqual(nums('NGK-87781 menu'), [264]);
+  assert.deepEqual(quickFindPrs(items, '   '), items);
 });

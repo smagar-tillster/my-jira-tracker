@@ -39,3 +39,16 @@ export const filterRows = <T>(rows: readonly T[], query: string, textOf: (row: T
 /** What the PR lists search: the PR column (repo, #number), the ticket(s) and the title shown under "What it builds". Nothing else, so a tenant or file name does not add noise. */
 export const prSearchText = (p: { repo: string; number: number; title?: string; line1?: string; keys?: string[]; tickets?: { key: string }[] }): string =>
   [p.repo, `#${p.number}`, `${p.repo}#${p.number}`, `${p.repo} #${p.number}`, ...(p.keys || []), ...(p.tickets || []).map(t => t.key), p.title || '', p.line1 || ''].join(' ');
+
+/**
+ * Quick find for the "Open PRs without a review" list. A word that is a number (394 or #394) matches PRs whose number starts with it, so
+ * typing 41 shows #41x as you go; any other word must appear in the repo name or the title. Every word must match. Blank keeps the list.
+ */
+export const quickFindPrs = <T extends { number: number; repo: string; title: string }>(items: readonly T[], query: string): T[] => {
+  const terms = queryTerms(query);
+  if (!terms.length) return items as T[];
+  return items.filter(i => {
+    const text = `${i.repo} ${i.title}`.toLowerCase();
+    return terms.every(t => /^#?\d+$/.test(t) ? String(i.number).startsWith(t.replace('#', '')) : text.includes(t.replace(/^#/, '')));
+  });
+};
