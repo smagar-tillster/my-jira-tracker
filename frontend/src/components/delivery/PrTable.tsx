@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnalyzeJob, DeliveryPr, GenerateJob, deliveryApi, generateBusy } from '../../services/api';
 import { ListControls, Modal, Section } from './shared';
-import { filterRows } from './search';
+import { filterRows, prSearchText } from './search';
 import { useRefresh } from './RefreshContext';
 import { jobText, prId, useCodeReview } from './useCodeReview';
 import TenantGroupList from './TenantGroupList';
@@ -182,7 +182,10 @@ export default function PrTable({ rows, open, empty, onChanged }: { rows: Delive
   const startReview = (p: DeliveryPr) => review.start([{ repo: p.repo, number: p.number }]);
   const [groupBy, setGroupBy] = useState<GroupBy>('client');
   const [query, setQuery] = useState('');
-  const visible = useMemo(() => filterRows(rows, query), [rows, query]);
+  const [cmd, setCmd] = useState({ open: false, n: 0 });
+  const [allOpen, setAllOpen] = useState(false);
+  const toggleAll = () => setCmd(c => ({ open: !allOpen, n: c.n + 1 }));
+  const visible = useMemo(() => filterRows(rows, query, prSearchText), [rows, query]);
   const byClient = groupBy === 'client';
 
   // keep the open modal in sync with refreshed rows
@@ -196,9 +199,9 @@ export default function PrTable({ rows, open, empty, onChanged }: { rows: Delive
   );
   return (
     <>
-      <ListControls groups={GROUPS} groupBy={groupBy} onGroupBy={setGroupBy} query={query} onQuery={setQuery} shown={visible.length} total={rows.length} unit="PR" extra={<FetchPrsButton />} />
+      <ListControls groups={GROUPS} groupBy={groupBy} onGroupBy={setGroupBy} query={query} onQuery={setQuery} shown={visible.length} total={rows.length} unit="PR" extra={<FetchPrsButton />} allOpen={allOpen} onToggleAll={toggleAll} placeholder="Search PR #, ticket or title…" />
       {visible.length === 0 ? <div className="p-8 text-center text-gray-400">Nothing matches &ldquo;{query.trim()}&rdquo;.</div> : (
-      <TenantGroupList items={visible} tenantsOf={byClient ? prTenants : prRepo} unit="PR" summary={prs => byClient ? prSummary(prs, open) : repoSummary(prs, open)}
+      <TenantGroupList command={cmd} onAllOpenChange={setAllOpen} items={visible} tenantsOf={byClient ? prTenants : prRepo} unit="PR" summary={prs => byClient ? prSummary(prs, open) : repoSummary(prs, open)}
         groupLabel={byClient ? 'tenant' : 'repo'} expandAll={!!query.trim()} order={mostFirst} orderLabel="most PRs first">
         {prs => (
             <table className="w-full table-fixed text-[14px] leading-[22px] [overflow-wrap:anywhere]">

@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useMemo, useState } from 'react';
+import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { FALLBACK_TENANT, GroupOrder, groupByTenant } from './tenantGrouping';
 
 /**
@@ -9,7 +9,7 @@ import { FALLBACK_TENANT, GroupOrder, groupByTenant } from './tenantGrouping';
  * with something not ready). `groupLabel` names what the groups are ("tenant" by default, or "repo", "component"); `fallback` is the group for
  * an item with none. `expandAll` opens every group (and keeps them open as the list changes), used while searching.
  */
-export default function TenantGroupList<T>({ items, tenantsOf, summary, unit, children, order, orderLabel = 'alphabetical', alert, groupLabel = 'tenant', fallback = FALLBACK_TENANT, expandAll = false }: {
+export default function TenantGroupList<T>({ items, tenantsOf, summary, unit, children, order, orderLabel = 'alphabetical', alert, groupLabel = 'tenant', fallback = FALLBACK_TENANT, expandAll = false, command, onAllOpenChange }: {
   items: T[];
   tenantsOf: (item: T) => readonly string[] | null | undefined;
   summary: (items: T[], tenant: string) => ReactNode;
@@ -21,13 +21,21 @@ export default function TenantGroupList<T>({ items, tenantsOf, summary, unit, ch
   groupLabel?: string;
   fallback?: string;
   expandAll?: boolean;
+  /** Opens or closes every group each time `n` changes (the Expand all / Collapse all button lives with the page's other controls). */
+  command?: { open: boolean; n: number };
+  /** Tells the page whether every group is open, so its button can say Collapse all or Expand all. */
+  onAllOpenChange?: (allOpen: boolean) => void;
 }) {
   const { groups } = useMemo(() => groupByTenant(items, tenantsOf, order, fallback), [items, tenantsOf, order, fallback]);
   const [open, setOpen] = useState<Set<string>>(new Set());
   // while searching, every matching group is open; a group can still be closed by hand until the list changes again
   useEffect(() => { if (expandAll) setOpen(new Set(groups.map(g => g.tenant))); }, [expandAll, groups]);
+  const groupsRef = useRef(groups);
+  groupsRef.current = groups;
+  useEffect(() => { if (command && command.n > 0) setOpen(command.open ? new Set(groupsRef.current.map(g => g.tenant)) : new Set()); }, [command?.n]); // eslint-disable-line react-hooks/exhaustive-deps
   const toggle = (t: string) => setOpen(prev => { const n = new Set(prev); if (n.has(t)) n.delete(t); else n.add(t); return n; });
   const allOpen = groups.length > 0 && groups.every(g => open.has(g.tenant));
+  useEffect(() => { onAllOpenChange?.(allOpen); }, [allOpen, onAllOpenChange]);
   const several = items.filter(i => (tenantsOf(i) || []).filter(t => t && t.trim()).length > 1).length;
 
   return (
@@ -38,9 +46,6 @@ export default function TenantGroupList<T>({ items, tenantsOf, summary, unit, ch
           Grouped by {groupLabel}, {orderLabel}{several > 0 ? `; ${several} ${several === 1 ? 'names' : 'name'} more than one ${groupLabel} and ${several === 1 ? 'is' : 'are'} listed under each` : ''}.
           {groupLabel !== 'repo' && <>Anything without a clear {groupLabel} is under {fallback}.</>}
         </span>
-        <button onClick={() => setOpen(allOpen ? new Set() : new Set(groups.map(g => g.tenant)))} className="ml-auto text-blue-600 hover:underline whitespace-nowrap">
-          {allOpen ? 'Collapse all' : 'Expand all'}
-        </button>
       </div>
       {/* Same look as the Tasks list: gray strip with one card per tenant (overflow-clip keeps the card corners round) */}
       <div className="bg-gray-200 rounded-lg px-2 pb-2">

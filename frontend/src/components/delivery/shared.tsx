@@ -83,15 +83,18 @@ export const TicketLink = ({ k, url }: { k: string | null; url: string | null })
   k && url ? <a href={url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline font-medium">{k}</a> : <span className="text-gray-400">—</span>;
 
 /** Search box and a "Group by" switch for the delivery lists. `groups` are the ways to group, the first is the default. */
-export function ListControls<G extends string>({ groups, groupBy, onGroupBy, query, onQuery, shown, total, unit, extra }: {
+export function ListControls<G extends string>({ groups, groupBy, onGroupBy, query, onQuery, shown, total, unit, extra, allOpen, onToggleAll, placeholder }: {
   groups: { id: G; label: string; hint?: string }[]; groupBy: G; onGroupBy: (g: G) => void;
   query: string; onQuery: (q: string) => void; shown: number; total: number; unit: string; extra?: ReactNode;
+  /** Whether every group is open, and the click handler: shows Expand all or Collapse all. */
+  allOpen?: boolean; onToggleAll?: () => void;
+  placeholder?: string;
 }) {
   return (
     <div className="flex items-center gap-3 flex-wrap mb-2">
       <div className="relative">
         <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none">🔍</span>
-        <input value={query} onChange={e => onQuery(e.target.value)} placeholder="Search anything in the list…" aria-label="Search"
+        <input value={query} onChange={e => onQuery(e.target.value)} placeholder={placeholder || 'Search anything in the list…'} aria-label="Search"
           className="w-72 pl-8 pr-7 py-1.5 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300" />
         {query && <button onClick={() => onQuery('')} title="Clear search" aria-label="Clear search" className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700">✕</button>}
       </div>
@@ -104,6 +107,11 @@ export function ListControls<G extends string>({ groups, groupBy, onGroupBy, que
           ))}
         </div>
       </div>
+      {onToggleAll && (
+        <button onClick={onToggleAll} className="px-3 py-1 rounded-lg text-sm font-medium bg-white ring-1 ring-gray-300 text-gray-700 hover:bg-gray-100 whitespace-nowrap">
+          {allOpen ? '▲ Collapse all' : '▼ Expand all'}
+        </button>
+      )}
       {extra}
       {query.trim() && <span className="text-sm text-gray-500">{shown} of {total} {unit}{total === 1 ? '' : 's'} match</span>}
     </div>

@@ -15,17 +15,27 @@ export const flattenText = (value: unknown, depth = 0): string => {
 /** Lowercase words of a query; blank gives none. */
 export const queryTerms = (query: string): string[] => query.toLowerCase().split(/\s+/).filter(Boolean);
 
-/** True when every word of the query appears somewhere in the row (any field, any case). A blank query matches everything. */
-export const matchesQuery = (row: unknown, query: string): boolean => {
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** One word of the query against a row's lowercase text. A word that ends in a PR number (#394, kiosk-ui#394) must end there, so #39 does not match #394. */
+const hit = (text: string, term: string): boolean =>
+  /#\d+$/.test(term) ? new RegExp(`${escapeRe(term)}(?=\\s|$)`).test(text) : text.includes(term);
+
+/** True when every word of the query appears in the row's text (any case). A blank query matches everything. `textOf` picks which fields count (default: all of them). */
+export const matchesQuery = (row: unknown, query: string, textOf: (row: never) => string = flattenText): boolean => {
   const terms = queryTerms(query);
   if (!terms.length) return true;
-  const text = flattenText(row).toLowerCase();
-  return terms.every(t => text.includes(t));
+  const text = textOf(row as never).toLowerCase();
+  return terms.every(t => hit(text, t));
 };
 
 /** The rows that match, keeping their order. Builds each row's text once. */
-export const filterRows = <T>(rows: readonly T[], query: string): T[] => {
+export const filterRows = <T>(rows: readonly T[], query: string, textOf: (row: T) => string = flattenText): T[] => {
   const terms = queryTerms(query);
   if (!terms.length) return rows as T[];
-  return rows.filter(r => { const text = flattenText(r).toLowerCase(); return terms.every(t => text.includes(t)); });
+  return rows.filter(r => { const text = textOf(r).toLowerCase(); return terms.every(t => hit(text, t)); });
 };
+
+/** What the PR lists search: the PR column (repo, #number), the ticket(s) and the title shown under "What it builds". Nothing else, so a tenant or file name does not add noise. */
+export const prSearchText = (p: { repo: string; number: number; title?: string; line1?: string; keys?: string[]; tickets?: { key: string }[] }): string =>
+  [p.repo, `#${p.number}`, `${p.repo}#${p.number}`, `${p.repo} #${p.number}`, ...(p.keys || []), ...(p.tickets || []).map(t => t.key), p.title || '', p.line1 || ''].join(' ');

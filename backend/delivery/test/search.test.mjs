@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-const { flattenText, matchesQuery, filterRows, queryTerms } = await import('../../../frontend/src/components/delivery/search.ts');
+const { flattenText, matchesQuery, filterRows, queryTerms, prSearchText } = await import('../../../frontend/src/components/delivery/search.ts');
 const { groupByTenant, cleanTenants } = await import('../../../frontend/src/components/delivery/tenantGrouping.ts');
 
 const pr = (over = {}) => ({
@@ -45,4 +45,31 @@ test('grouping by repo or component puts an item with none under the named fallb
   assert.deepEqual(groups.map(g => [g.tenant, g.items.map(i => i.id)]), [['(no component)', [2]], ['Menu', [1, 3]], ['Skumap', [1]]]);
   assert.deepEqual(cleanTenants([], '(none)'), ['(none)']);
   assert.deepEqual(cleanTenants([]), ['Tillster-All']); // the default is unchanged
+});
+
+// ---- PR lists: search only the PR column, the ticket and the title
+test('PR search covers #number, repo, ticket and title, and nothing else', () => {
+  const p = pr({ number: 394, repo: 'kiosk-web-service', title: 'NGK-84570: Use previous caltotal cache', line1: 'Use previous caltotal cache', line2: 'Hidden detail about zebra', keys: ['NGK-84570'], tickets: [{ key: 'NGK-84570' }], tenants: ['BK-US'] });
+  const hit = (q) => matchesQuery(p, q, prSearchText);
+  assert.equal(hit('#394'), true);
+  assert.equal(hit('kiosk-web-service#394'), true);
+  assert.equal(hit('kiosk-web-service #394'), true);
+  assert.equal(hit('ngk-84570'), true);
+  assert.equal(hit('caltotal cache'), true);          // words from the title, in any order
+  assert.equal(hit('web-service'), true);             // part of the repo name
+  assert.equal(hit('zebra'), false);                  // the description line is not searched
+  assert.equal(hit('bk-us'), false);                  // neither is the tenant
+  assert.equal(hit('banner.js'), false);              // nor the file list
+  assert.equal(hit('dev1'), false);                   // nor the author
+});
+
+test('a PR number must match whole: #39 does not find #394, but a bare word still matches inside text', () => {
+  const p = pr({ number: 394, repo: 'r', title: 'Fix', line1: 'Fix', keys: [], tickets: [] });
+  assert.equal(matchesQuery(p, '#39', prSearchText), false);
+  assert.equal(matchesQuery(p, '#3940', prSearchText), false);
+  assert.equal(matchesQuery(p, '#394', prSearchText), true);
+  assert.equal(matchesQuery(pr({ number: 12, repo: 'r', title: 'Fix', line1: 'Fix', keys: [], tickets: [] }), '#1', prSearchText), false);
+  const rows = [pr({ number: 5, repo: 'r', title: 'See #50 for context', line1: 'x', keys: [], tickets: [] }), pr({ number: 50, repo: 'r', title: 'y', line1: 'y', keys: [], tickets: [] })];
+  assert.deepEqual(filterRows(rows, '#50', prSearchText).map(r => r.number), [5, 50]); // a title that names #50 matches too
+  assert.deepEqual(filterRows(rows, '#5', prSearchText).map(r => r.number), [5]);
 });

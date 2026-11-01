@@ -79,14 +79,17 @@ export default function ReleaseTable({ rows, showStatus, empty }: { rows: Delive
   const [open, setOpen] = useState<DeliveryRelease | null>(null);
   const [groupBy, setGroupBy] = useState<GroupBy>('client');
   const [query, setQuery] = useState('');
+  const [cmd, setCmd] = useState({ open: false, n: 0 });
+  const [allOpen, setAllOpen] = useState(false);
+  const toggleAll = () => setCmd(c => ({ open: !allOpen, n: c.n + 1 }));
   const shown = useMemo(() => filterRows(rows, query), [rows, query]);
   if (rows.length === 0) return <div className="p-8 text-center text-gray-400">{empty}</div>;
   const byClient = groupBy === 'client';
   return (
     <>
-      <ListControls groups={GROUPS} groupBy={groupBy} onGroupBy={setGroupBy} query={query} onQuery={setQuery} shown={shown.length} total={rows.length} unit="release ticket" />
+      <ListControls groups={GROUPS} groupBy={groupBy} onGroupBy={setGroupBy} query={query} onQuery={setQuery} shown={shown.length} total={rows.length} unit="release ticket" allOpen={allOpen} onToggleAll={toggleAll} />
       {shown.length === 0 ? <div className="p-8 text-center text-gray-400">Nothing matches &ldquo;{query.trim()}&rdquo;.</div> : (
-        <TenantGroupList items={shown} tenantsOf={byClient ? releaseTenants : releaseComponents} unit="release ticket" summary={items => groupSummary(items, showStatus)}
+        <TenantGroupList command={cmd} onAllOpenChange={setAllOpen} items={shown} tenantsOf={byClient ? releaseTenants : releaseComponents} unit="release ticket" summary={items => groupSummary(items, showStatus)}
           groupLabel={byClient ? 'tenant' : 'component'} fallback={byClient ? undefined : '(no component)'} expandAll={!!query.trim()}
           order={byClient ? (showStatus ? notReadyFirst : mostFirst) : mostFirst}
           orderLabel={byClient && showStatus ? 'tenants with tickets not ready first' : 'most release tickets first'}
