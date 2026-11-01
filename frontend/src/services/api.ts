@@ -276,6 +276,13 @@ export interface DeliveryPr {
   dependsOn: DeliveryDependency[]; files: { name: string; add: number; del: number }[];
   rulesOnly: boolean; aiRecommended: boolean; tier: 'simple' | 'standard' | 'complex' | null; tierWhy: string;
   open: boolean; isDraft: boolean; createdAt: string | null; updatedAt: string | null; reviewDecision: string;
+  /** One short line on what changed, and where it came from: an AI-assisted reading, the PR description, the ticket, or just the title. */
+  meaning?: string; meaningSource?: 'analysis' | 'pr-description' | 'ticket' | 'title';
+  /** The Jira ticket is a Defect, Bug or Incident. */
+  defectFix?: boolean;
+  /** Release tickets that carry this PR's ticket, newest first, and the furthest they got. */
+  shipped?: { key: string; tenant: string; env: string; date: string; released: boolean; status: string }[];
+  shippedState?: 'prod' | 'uat' | 'planned' | 'none';
 }
 export interface AnalyzeJob { id: string; state: 'running' | 'done' | 'queued' | 'failed'; startedAt: string; finishedAt: string | null; message: string }
 export interface DeliveryMeta {

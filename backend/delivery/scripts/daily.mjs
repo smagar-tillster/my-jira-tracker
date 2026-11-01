@@ -248,7 +248,7 @@ const openRecords = openPrs.map((p) => {
   const t = tierOf({ files: p.deps.files, bumps: p.deps.bumps, refs: p.deps.refs });
   const analysis = loadAnalysis(p.repo, p.number) || (t.tier === 'simple' ? rulesEntry({ repo: p.repo, number: p.number, ticket: p.keys[0], files: p.deps.files, bumps: p.deps.bumps, today: DAY }) : null); // simple entries stay in memory: an open PR can still change
   const rec = { id: `${p.repo}#${p.number}`, repo: p.repo, component: compOf(p.repo), number: p.number, url: p.url, title: p.title, line1: p.line1, line2: p.line2, author: p.author, mergedAt: null,
-    createdAt: p.createdAt, updatedAt: p.updatedAt, isDraft: p.isDraft, reviewDecision: p.reviewDecision, keys: p.keys, tickets: p.keys.map((k) => ({ key: k, summary: kmap.get(k)?.summary || '' })),
+    createdAt: p.createdAt, updatedAt: p.updatedAt, isDraft: p.isDraft, reviewDecision: p.reviewDecision, keys: p.keys, tickets: p.keys.map((k) => ({ key: k, summary: kmap.get(k)?.summary || '', type: kmap.get(k)?.type || '' })),
     tenants: [...new Set(p.keys.flatMap((k) => (kmap.get(k)?.clients || []).map(normTenant)))], files: p.deps.files, bumps: p.deps.bumps, refs: p.deps.refs, siblings: p.deps.siblings,
     links: p.keys.flatMap((k) => (openLinkMap.get(k) || []).filter((l) => /blocked by|depends on/i.test(l.rel))), declared: [], needsOther: [], analysis, tier: t.tier, tierWhy: t.why };
   if (!rec.tenants.length) rec.tenants = inferTenants(rec, knownTen);
@@ -258,14 +258,22 @@ lap('GitHub: open PRs + Jira');
 
 // PR ledger: record every merged PR with its tickets, tenants, dependency facts and change understanding (for later questions / RAG)
 const prLedger = loadPrLedger();
+// Ledger entries from before ticket types were kept have none: look those tickets up once, so defect fixes can be told apart.
+// A ticket Jira no longer returns gets an empty type, so it is not asked for again. If Jira cannot be read the entries stay as they are.
+try {
+  const untyped = [...new Set(Object.values(prLedger.prs).flatMap((r) => (r.tickets || []).filter((t) => t.type === undefined).map((t) => t.key)))];
+  const typeOf = new Map();
+  for (const c of chunk(untyped, 80)) for (const t of (await search(`key in (${c.join(',')})`)).map(mapIssue)) typeOf.set(t.key, t.type || '');
+  for (const r of Object.values(prLedger.prs)) for (const t of r.tickets || []) if (t.type === undefined) t.type = typeOf.get(t.key) ?? '';
+} catch (e) { console.error(`Ticket types not looked up this run: ${String(e.message || e).split('\n')[0]}`); }
 for (const r of mergedByRepo) for (const p of r.prs) {
   const td = p.ticketDeps;
   upsertPr(prLedger, { id: `${p.repo}#${p.number}`, repo: p.repo, component: compOf(p.repo), number: p.number, url: p.url, title: p.title, line1: p.line1, line2: p.line2, author: p.author, mergedAt: p.mergedAt, day: p.day, keys: p.keys,
-    tickets: p.keys.map((k) => ({ key: k, summary: kmap.get(k)?.summary || '' })), tenants: [...new Set(p.keys.flatMap((k) => (kmap.get(k)?.clients || []).map(normTenant)))],
+    tickets: p.keys.map((k) => ({ key: k, summary: kmap.get(k)?.summary || '', type: kmap.get(k)?.type || '' })), tenants: [...new Set(p.keys.flatMap((k) => (kmap.get(k)?.clients || []).map(normTenant)))],
     files: p.deps.files, bumps: p.deps.bumps, refs: p.deps.refs, siblings: p.deps.siblings, links: td.flatMap((t) => t.blockers), declared: td.flatMap((t) => t.declared), needsOther: td.flatMap((t) => t.needsOther), analysis: p.analysis, tier: p.tier, tierWhy: p.tierWhy }, DAY);
 }
 const knownTenants = [...new Set(Object.values(ledgerNow.releases || {}).flatMap((r) => r.tenants))];
-const prLedgerInfo = savePrLedger(prLedger, DAY, knownTenants);
+const prLedgerInfo = savePrLedger(prLedger, DAY, knownTenants, ledgerNow);
 const prRag = a['rag-dir'] ? copyPrsToRag(String(a['rag-dir']).replace(/^~/, os.homedir())) : null;
 
 // ---------------------------------------------------------------- outputs

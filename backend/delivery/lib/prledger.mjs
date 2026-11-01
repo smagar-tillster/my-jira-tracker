@@ -4,6 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { DATA_DIR } from './paths.mjs';
+import { isDefectFix, meaningOf, shippedFor } from './prmeaning.mjs';
 
 export const PR_DIR = path.join(DATA_DIR, 'prs');
 const LEDGER = path.join(PR_DIR, 'ledger.json');
@@ -21,7 +22,7 @@ export const upsertPr = (ledger, rec, onDay) => {
 const cell = (s) => String(s ?? '').replace(/\|/g, '/').replace(/\n/g, ' ');
 const bullets = (arr) => (arr || []).map((s) => `- ${s}`);
 
-export const prMd = (r) => {
+export const prMd = (r, releases = null) => {
   const a = r.analysis;
   const files = [...(r.files || [])].sort((x, y) => (y.add + y.del) - (x.add + x.del));
   const L = [`# ${r.repo}#${r.number} — ${r.line1} (merged ${String(r.mergedAt).slice(0, 10)})`, ''];
@@ -29,6 +30,11 @@ export const prMd = (r) => {
   L.push(`- Tickets: ${(r.tickets || []).map((t) => `${t.key}${t.summary ? ` (${t.summary})` : ''}`).join('; ') || 'none'}`);
   L.push(`- Tenants: ${(r.tenants || []).join(', ') || 'not set on the ticket'} · component (repo): ${r.component}`);
   L.push(`- What it builds: ${r.line1}${r.line2 ? `. ${r.line2}` : ''}`);
+  const m = meaningOf(r);
+  L.push(`- Meaning (${m.source === 'analysis' ? 'AI-assisted, verify' : `from the ${m.source.replace('-', ' ')}`}): ${m.text}`);
+  const types = [...new Set((r.tickets || []).map((t) => t.type).filter(Boolean))];
+  L.push(`- Type: ${isDefectFix(r.tickets) ? 'DEFECT FIX' : 'not a defect fix'}${types.length ? ` (ticket type ${types.join(', ')})` : ' (ticket type not known)'}`);
+  if (releases) { const sh = shippedFor(releases, r.keys); L.push(`- Shipped: ${sh.shipped.length ? sh.shipped.map((x) => `${x.key} ${x.tenant} ${x.env} ${x.date} ${x.released ? 'released' : x.status}`).join('; ') : 'not in any release ticket yet'}`); }
   if (a) L.push(`- Risk (AI-assisted): ${a.risk}`);
   L.push('');
   L.push('## Change understanding' + (a ? ' (AI-assisted reading of the diff and ticket; verify)' : ''));
@@ -60,14 +66,14 @@ export const inferTenants = (r, known) => {
   return out;
 };
 
-export const savePrLedger = (ledger, today, knownTenants = []) => {
+export const savePrLedger = (ledger, today, knownTenants = [], releases = null) => {
   fs.mkdirSync(PR_MD_DIR, { recursive: true });
   ledger.updated = today;
   for (const r of Object.values(ledger.prs)) if (!(r.tenants || []).length && knownTenants.length) r.tenants = inferTenants(r, knownTenants);
   for (const r of Object.values(ledger.prs)) if (!r.analysis) r.analysis = loadAnalysis(r.repo, r.number); // pick up analyses written since
   fs.writeFileSync(LEDGER, JSON.stringify(ledger, null, 2));
   const all = Object.values(ledger.prs).sort((x, y) => String(y.mergedAt).localeCompare(String(x.mergedAt)));
-  for (const r of all) fs.writeFileSync(path.join(PR_MD_DIR, `${r.repo}__${r.number}.md`), prMd(r));
+  for (const r of all) fs.writeFileSync(path.join(PR_MD_DIR, `${r.repo}__${r.number}.md`), prMd(r, releases));
   const idx = ['# Merged PR ledger', '', `Updated ${today}. ${all.length} merged PRs tracked; ${all.filter((r) => r.analysis).length} have an AI-assisted change understanding.`, '',
     '| Merged | PR | Tickets | Tenants | What it builds | Understanding | Risk |', '|---|---|---|---|---|---|---|'];
   for (const r of all) idx.push(`| ${String(r.mergedAt).slice(0, 10)} | ${r.repo}#${r.number} | ${cell(r.keys.join(', '))} | ${cell((r.tenants || []).join(', '))} | ${cell(r.line1)} | ${cell(r.analysis ? r.analysis.summary.slice(0, 160) : 'pending')} | ${r.analysis?.risk || '-'} |`);

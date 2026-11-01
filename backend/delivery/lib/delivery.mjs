@@ -5,6 +5,7 @@
 import { componentList, explainRelease, canonComponent } from './releases.mjs';
 import { jiraUrl } from './jira.mjs';
 import { normTier } from './triage.mjs';
+import { isDefectFix, meaningOf, shippedFor } from './prmeaning.mjs';
 
 const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 export const isReadyTicket = (t) => t.statusCategory === 'Done' || t.status === 'Ready for QA'; // repo rule: Ready for QA counts as done
@@ -74,6 +75,7 @@ export const prRow = (r) => {
     risk: r.analysis && r.analysis.ai !== false ? r.analysis.risk : null, analysis: r.analysis || null,
     rulesOnly: r.analysis?.ai === false, tier: normTier(r.tier), tierWhy: r.tierWhy || '', aiRecommended: !r.analysis && normTier(r.tier) === 'complex',
     dependsOn, files: r.files || [], declared: r.declared || [], needsOther: r.needsOther || [],
+    meaning: meaningOf(r).text, meaningSource: meaningOf(r).source, defectFix: isDefectFix(r.tickets),
     // open PRs only
     open: !r.mergedAt, isDraft: !!r.isDraft, createdAt: r.createdAt || null, updatedAt: r.updatedAt || null, reviewDecision: r.reviewDecision || '',
   };
@@ -83,8 +85,10 @@ export const buildDeliveryData = ({ ledger, prLedger, openRecords = [], sprintIs
   const releases = Object.values(ledger.releases || {}).map(releaseRow).sort((x, y) => y.date.localeCompare(x.date) || x.tenant.localeCompare(y.tenant) || x.env.localeCompare(y.env));
   const todayRows = releases.filter((r) => r.date === day);
   const toRelease = [...todayRows, ...pendingRows({ sprintIssues, todayRows, day, ...helpers })].sort((x, y) => Number(x.ready) - Number(y.ready) || x.tenant.localeCompare(y.tenant));
-  const prs = Object.values(prLedger.prs || {}).map(prRow).sort((x, y) => String(y.mergedAt).localeCompare(String(x.mergedAt)));
-  const openPrs = openRecords.map(prRow).sort((x, y) => String(y.createdAt).localeCompare(String(x.createdAt)));
+  // each PR also says which release tickets carry its ticket (tenant, env, date): the trace from a change to where it went
+  const withShipped = (p) => ({ ...p, ...shippedFor(ledger, p.keys) });
+  const prs = Object.values(prLedger.prs || {}).map(prRow).map(withShipped).sort((x, y) => String(y.mergedAt).localeCompare(String(x.mergedAt)));
+  const openPrs = openRecords.map(prRow).map(withShipped).sort((x, y) => String(y.createdAt).localeCompare(String(x.createdAt)));
   const pendingAi = prs.filter((p) => p.day === day && p.aiRecommended).length;
   const lastReleasedDay = releases.filter((r) => r.released && r.date <= day).map((r) => r.date).sort().pop() || null;
   const uniq = (a) => [...new Set(a)].filter(Boolean).sort();
