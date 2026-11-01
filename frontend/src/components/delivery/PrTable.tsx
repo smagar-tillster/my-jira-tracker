@@ -3,6 +3,7 @@ import { AnalyzeJob, DeliveryPr, GenerateJob, deliveryApi, generateBusy } from '
 import { ListControls, Modal, Section } from './shared';
 import { filterRows, prSearchText } from './search';
 import { useRefresh } from './RefreshContext';
+import DefectRowButton from './DefectRow';
 import { jobText, prId, useCodeReview } from './useCodeReview';
 import TenantGroupList from './TenantGroupList';
 import { byCount } from './tenantGrouping';
@@ -268,6 +269,7 @@ export default function PrTable({ rows, open, empty, onChanged }: { rows: Delive
                           ? !p.isDraft && <CodeReviewButton p={p} job={review.jobs[prId(p)]} onStart={startReview} />
                           : (!p.analysis || p.rulesOnly) && <AnalyzeButton p={p} job={jobs[p.id]} onStart={start} />}
                         {!p.open && p.analysis && !p.rulesOnly && jobs[p.id]?.state === 'running' && <span className="text-xs text-blue-700">⏳ Analyzing…</span>}
+                        <DefectRowButton p={p} />
                       </div>
                     </td>
                   </tr>

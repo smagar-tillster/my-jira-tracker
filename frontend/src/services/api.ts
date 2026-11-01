@@ -271,7 +271,7 @@ export interface DeliveryRelease {
 export interface DeliveryDependency { type: string; tone: 'ok' | 'warn' | 'info'; text: string; url?: string }
 export interface DeliveryPr {
   id: string; repo: string; component: string; number: number; url: string; title: string; line1: string; line2: string; author: string; mergedAt: string | null; day: string | null;
-  keys: string[]; tickets: { key: string; summary: string; url: string }[]; tenants: string[]; risk: 'low' | 'medium' | 'high' | null;
+  keys: string[]; tickets: { key: string; summary: string; url: string; type?: string }[]; tenants: string[]; risk: 'low' | 'medium' | 'high' | null;
   analysis: { summary: string; how: string[]; dependencies: string[]; confirm: string[]; risk: string; basis: string; generatedAt: string; ai?: boolean } | null;
   dependsOn: DeliveryDependency[]; files: { name: string; add: number; del: number }[];
   rulesOnly: boolean; aiRecommended: boolean; tier: 'simple' | 'standard' | 'complex' | null; tierWhy: string;
@@ -296,6 +296,15 @@ export interface DeliveryMeta {
   prsGeneratedAt?: string | null;
   prsTiming?: { totalSec: number } | null;
 }
+export interface DigestPrRef { id: string; url: string; line1: string; repo: string; number: number; tenants: string[]; day: string | null; keys: string[] }
+export interface Digest {
+  window: { from: string; to: string }; headline: string;
+  attention: { level: 'warn' | 'info'; text: string; prs: DigestPrRef[] }[];
+  merged: { total: number; byRepo: { name: string; count: number }[]; byTenant: { name: string; count: number }[];
+    defectFixes: (DigestPrRef & { shippedState: string })[]; shipped: { prod: number; uat: number; planned: number; none: number } };
+  open: { total: number; drafts: number; waitingForReview: number; stale: (DigestPrRef & { ageDays: number })[]; blocked: number; defectFixes: number; byRepo: { name: string; count: number }[] };
+}
+export interface DigestSummary { text: string; model: string; createdAt: string; cached: boolean }
 export interface RefreshJob { state: 'idle' | 'running' | 'done' | 'failed'; kind?: 'full' | 'prs' | null; startedAt: string | null; finishedAt: string | null; log: string[] }
 
 const csv = (a?: string[]) => (a && a.length ? a.join(',') : undefined);
@@ -311,6 +320,11 @@ export const deliveryApi = {
   openPrs: async (): Promise<{ rows: DeliveryPr[] }> => (await apiClient.get('/delivery/open-prs')).data.data,
   analyzePr: async (repo: string, number: number): Promise<AnalyzeJob> => (await apiClient.post(`/delivery/prs/${repo}/${number}/analyze`)).data.data,
   analyzeStatus: async (): Promise<Record<string, AnalyzeJob>> => (await apiClient.get('/delivery/prs/analyze/status')).data.data,
+  /** What is happening in the stack for a range (default: the last 7 days), by rules. */
+  digest: async (from?: string, to?: string): Promise<Digest> => (await apiClient.get('/delivery/digest', { params: { from, to } })).data.data,
+  /** A short written note that only restates the digest. One model call, reused until the facts change. */
+  digestSummary: async (from: string, to: string, refresh = false): Promise<DigestSummary> =>
+    (await apiClient.post('/delivery/digest/summary', { from, to, refresh }, { timeout: 330000 })).data.data,
   refresh: async (): Promise<RefreshJob> => (await apiClient.post('/delivery/refresh')).data.data,
   refreshPrs: async (): Promise<RefreshJob> => (await apiClient.post('/delivery/refresh-prs')).data.data,
   refreshStatus: async (): Promise<RefreshJob> => (await apiClient.get('/delivery/refresh/status')).data.data,
@@ -370,6 +384,17 @@ export interface GenerateJob {
 }
 export const generateBusy = (j?: GenerateJob) => j?.state === 'waiting' || j?.state === 'running';
 
+/** A row proposed for the defects feed (my-rag/datafeeds/defects.csv). The app only proposes; a person appends it and runs the ingest. */
+export interface DefectRowProposal {
+  repo: string; number: number; key: string; createdAt: string; model: string;
+  columns: string[]; row: Record<string, string>; csvLine: string;
+  headerFromFeed: boolean; feedFound: boolean; newTags: string[]; unsure: string[]; redacted: string[];
+  possibleRepeat: { jira_id: string; title: string; repo: string; sharedFiles: string[]; sharedTags: string[]; score: number }[];
+  /** Set instead of the fields above when the feed already has a row for the ticket. */
+  existing?: { jira_id: string; title: string; tags: string; fix_summary: string };
+}
+export interface DefectRowResult { state: 'done' | 'exists'; message: string; data: DefectRowProposal }
+
 export const reviewsApi = {
   /** Open PRs without a review for their current commit, including ones the rules would skip (their tier says so). */
   queue: async (): Promise<ReviewQueueItem[]> => (await apiClient.get('/reviews/queue', { params: { all: 1 } })).data.data,
@@ -378,6 +403,14 @@ export const reviewsApi = {
     try { return (await apiClient.post('/reviews/generate', { prs })).data.data; } catch (e) { return reviewErr(e); }
   },
   generateStatus: async (): Promise<Record<string, GenerateJob>> => (await apiClient.get('/reviews/generate/status')).data.data,
+  /** Drafts a defects-feed row from a merged defect-fix PR (one model call, so it can take a minute). Proposes only; nothing is written to the feed. */
+  defectRow: async (repo: string, number: number, key?: string): Promise<DefectRowResult> => {
+    try { return (await apiClient.post('/reviews/defect-row', { repo, number, ...(key ? { key } : {}) }, { timeout: 330000 })).data; } catch (e) { return reviewErr(e); }
+  },
+  /** The row drafted earlier for this PR, or null. */
+  savedDefectRow: async (repo: string, number: number): Promise<DefectRowProposal | null> => {
+    try { return (await apiClient.get(`/reviews/defect-row/${repo}/${number}`)).data.data; } catch (e: any) { if (e?.response?.status === 404) return null; return reviewErr(e); }
+  },
   list: async (): Promise<PrReview[]> => (await apiClient.get('/reviews')).data.data,
   summary: async (): Promise<Record<PrReviewStatus, number>> => (await apiClient.get('/reviews/summary')).data.data,
   /** Edits the overview text and/or, per line comment (matched by position), its text and whether it is included. */
