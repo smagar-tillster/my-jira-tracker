@@ -91,7 +91,7 @@ test('GET /reviews/queue returns worthwhile PRs with a tier and lists skipped on
   const calls = [];
   const gh = async (args) => {
     calls.push(args.join(' '));
-    if (args[0] === 'pr' && args[1] === 'list') return prs;
+    if (args[0] === 'pr' && args[1] === 'list') return args.includes('Tillster/kiosk-ui') ? prs : []; // other configured repos have no open PRs here
     if (args[0] === 'pr' && args[1] === 'view') return { title: 'x', body: '', files: files[Number(args[2])] || [] };
     throw new Error(`unexpected gh call: ${args.join(' ')}`);
   };
@@ -126,7 +126,7 @@ test('GET /reviews/queue holds back PRs touched in the last 30 minutes, and ?all
   const prs = [pr(10, 5), pr(11, 29), pr(12, 31), pr(13, 600)];
   const viewed = [];
   const gh = async (args) => {
-    if (args[1] === 'list') return prs;
+    if (args[1] === 'list') return args.includes('Tillster/kiosk-ui') ? prs : [];
     viewed.push(Number(args[2]));
     return { title: 'x', body: '', files: [{ path: 'src/common/services/a.js', additions: 60, deletions: 10 }, { path: 'src/common/services/b.js', additions: 30, deletions: 2 }] };
   };
