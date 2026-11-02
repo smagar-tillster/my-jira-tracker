@@ -53,11 +53,13 @@ export const parseReleaseDescription = (adf) => {
   findTables(adf, tables);
   const rowsOut = [];
   let versions = [];
+  let hadTable = false; // a release table (Tickets | Components | Version ...) was found
   for (const tb of tables) {
     const rows = (tb.content || []).filter((r) => r.type === 'tableRow');
     if (!rows.length) continue;
     const headTexts = (rows[0].content || []).map(cellText);
     if (!/ticket|tix/i.test(headTexts[0] || '')) continue; // checklist tables etc. are ignored
+    hadTable = true;
     const hdr = headTexts.map((t) => t.split('\n')[0].toLowerCase());
     headTexts.forEach((t) => { const extra = t.split('\n').slice(1).join('\n'); if (extra) versions.push(...parseVersions(extra)); });
     for (const row of rows.slice(1)) {
@@ -76,7 +78,8 @@ export const parseReleaseDescription = (adf) => {
       if (keys.length || rec.label) rowsOut.push(rec);
     }
   }
-  if (!versions.length) versions = parseVersions(text).filter((v) => /^(FE|SW|DS|DB|MS|WS|PA|TRSC|Menu|SkuMap|Kiosk|Menu Version|TCE Menu|Web Service)$/i.test(v.name));
+  // No versions in the table header: look through the rest of the description, but only when there is a release table at all (no table, no versions)
+  if (hadTable && !versions.length) versions = parseVersions(text).filter((v) => /^(FE|SW|DS|DB|MS|WS|PA|TRSC|Menu|SkuMap|Kiosk|Menu Version|TCE Menu|Web Service)$/i.test(v.name));
   const tableKeys = new Set(rowsOut.flatMap((r) => r.keys));
   const m = text.match(/NOTES:?([\s\S]*?)(?:\bTIX\b|ASSETS|RELEASE CHECKLIST|DEFINITION OF READY|This release includes|$)/i);
   let notes = m ? m[1].replace(/<\/?HR>/gi, ' ').replace(/\s+/g, ' ').trim() : '';
@@ -104,24 +107,51 @@ const splitList = (s) => {
 };
 export const fmtVersion = (v) => (v.uat || v.prod ? (v.uat && v.prod ? (v.uat === v.prod ? v.uat : `UAT ${v.uat} / PROD ${v.prod}`) : v.uat ? `UAT ${v.uat}` : `PROD ${v.prod}`) : v.value);
 
-/** Components of a release group {titleComponents, components, items, versions}: Jira field + title + per-ticket components, each with its version if one is listed. */
+/** A config key or a "key = value" setting, not a component: ui.menu.itemClickGuard.enabled, "x.y = true". PROD/config.json is the component. */
+export const isConfigKey = (s) => {
+  const t = String(s || '').trim();
+  return /^[\w-]+(\.[\w-]+){2,}$/.test(t) || /\s=\s*(true|false|null|-?\d[\w.]*|"[^"]*"|'[^']*')\s*$/i.test(t) || /^[\w.-]+\s*=\s*\S/.test(t) && /\.[A-Za-z]/.test(t.split('=')[0]);
+};
+
+/**
+ * Components of a release group {titleComponents, components, items, versions}, from these sources in this order:
+ *   1. names: the release ticket's own Jira Components field. This is the source of truth.
+ *      Only when that field is empty are names taken from the title, then from the table's Components column.
+ *   2. versions, for those names only: the table header first (final versions), then the rest of the table and description.
+ *      A version for something the Jira field does not list is not added as a component, and a component with no version shows none
+ *      (Menu, Skumap and TranslationFiles are data and have none).
+ * Config keys and "key = value" settings never count as components, wherever they appear.
+ */
 export const componentList = (g) => {
   const out = new Map(); // canonical name -> { name, versions[] }
   const add = (label, version) => {
     label = tidy(label);
-    if (!label || label.length > 40 || /^(see ticket|n\/a|none|tbd|-)$/i.test(label)) return; // template filler, not a component
+    if (!label || label.length > 40 || /^(see ticket|n\/a|none|tbd|unknown|-)$/i.test(label) || isConfigKey(label)) return null; // template filler or a setting, not a component
     const k = canon(label);
     if (!out.has(k)) out.set(k, { name: label, versions: [] });
     if (version && !out.get(k).versions.includes(version)) out.get(k).versions.push(version);
+    return k;
   };
   const addToken = (t) => { const m = String(t).match(/^(.*?)\s*(?:[=:]|\s[-–]\s)\s*v?(\d[\w.\-]*)\s*$/); if (m) add(m[1], m[2]); else add(t, ''); }; // "FE = v1.294.0-2" -> FE (1.294.0-2)
-  for (const c of g.components || []) addToken(c);
-  for (const c of splitList(g.titleComponents)) addToken(c);
-  for (const i of g.items || []) {
-    for (const c of splitList(i.component)) addToken(c);
-    for (const m of String(i.version || '').matchAll(/([A-Za-z][A-Za-z0-9 ._-]{0,24}?)\s*[:=]\s*v?(\d[\w.\-]*)/g)) add(m[1], m[2]);
+
+  // 1. names
+  for (const c of g.components || []) add(c, '');
+  const fromField = out.size > 0;
+  if (!fromField) {
+    for (const c of splitList(g.titleComponents)) addToken(c);
+    if (!out.size) for (const i of g.items || []) for (const c of splitList(i.component)) addToken(c);
   }
-  for (const v of g.versions || []) add(v.name, fmtVersion(v));
+  const attach = (name, version) => { const k = canon(name); if (version && out.has(k) && !out.get(k).versions.includes(version)) out.get(k).versions.push(version); };
+
+  // 2. versions: header first, then the whole table
+  for (const v of g.versions || []) { if (fromField) attach(v.name, fmtVersion(v)); else add(v.name, fmtVersion(v)); }
+  for (const i of g.items || []) {
+    for (const m of String(i.version || '').matchAll(/([A-Za-z][A-Za-z0-9 ._-]{0,24}?)\s*[:=]\s*v?(\d[\w.\-]*)/g)) {
+      const k = canon(m[1]);
+      if (fromField && out.has(k) && out.get(k).versions.length) continue; // the header already gave this one its final version
+      if (fromField) attach(m[1], m[2]); else add(m[1], m[2]);
+    }
+  }
   return [...out.values()].map((c) => ({ name: c.name, version: c.versions.length > 3 ? `${c.versions.slice(0, 3).join(', ')} +${c.versions.length - 3}` : c.versions.join(', ') }));
 };
 export const componentText = (list) => list.map((c) => (c.version ? `${c.name} (${c.version})` : c.name)).join(', ');
