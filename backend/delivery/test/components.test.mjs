@@ -63,3 +63,36 @@ test('with a release table, versions in the header are used, and loose lines are
   const looseOnly = { type: 'doc', content: [{ type: 'table', content: [row('Tickets', 'Components', 'Version'), row('NGK-1', 'FE', 'x')] }, p('FE: 7.8.9')] };
   assert.deepEqual(parseReleaseDescription(looseOnly).versions, [{ name: 'FE', value: '7.8.9' }]);
 });
+
+// ---- NGK-102846: versions run together in the header cell, written as "kiosk = X / kiosk = Y"
+const run = (...parts) => ({ type: 'paragraph', content: parts.map((t, i) => ({ type: 'text', text: t, ...(i % 2 ? { marks: [{ type: 'strong' }] } : {}) })) });
+const td = (...paras) => ({ type: 'tableCell', content: paras });
+const NGK_102846 = { type: 'doc', content: [{ type: 'table', content: [
+  { type: 'tableRow', content: [td(p('TIX')), td(run('ASSETS & VERSIONS', ' Current Versions Staged to UAT / PROD ', 'kiosk = 1.295.0-17-main', ' / ', 'kiosk = 1.290.0-14-main', ' ', 'rbi-loyalty-client = 1.146 /', '  ', 'rbi-loyalty-client = 1.129'))] },
+  row('NGK-98585', 'RBI Loyalty = 1.144'),
+  row('NGK-100499', 'FE = TBD'),
+  row('NGK-102322', 'FE = 1.295.0-6 PROD/config.json NGK-103302 ui.analytics.GA4.limitHandling.rateLimit.enabled = true'),
+  row('NGK-102968', 'FE = 1.295.0-3-main or v1.290.0-14-NGK-102968-hotfix PROD/config.json ‘ui.menu.itemClickGuard.enabled’ = true (default: false)'),
+] }] };
+
+test('NGK-102846: the run-together header gives UAT and PROD versions for kiosk and rbi-loyalty-client', () => {
+  const v = parseReleaseDescription(NGK_102846).versions;
+  assert.deepEqual(v, [{ name: 'kiosk', uat: '1.295.0-17-main', prod: '1.290.0-14-main' }, { name: 'rbi-loyalty-client', uat: '1.146', prod: '1.129' }]);
+});
+
+test('NGK-102846: kiosk is FE and rbi-loyalty-client is RBI Loyalty; names come from the Jira field, config keys never appear', () => {
+  const parsed = parseReleaseDescription(NGK_102846);
+  const g = { components: ['FE', 'GTM', 'PROD/config.json (AKA "Global Config" - all current PROD stores )', 'RBI Loyalty'], titleComponents: 'FE + RBI Loyalty + CONFIGS', items: parsed.rows, versions: parsed.versions };
+  assert.equal(text(g), 'FE (UAT 1.295.0-17-main / PROD 1.290.0-14-main), GTM, PROD/config.json, RBI Loyalty (UAT 1.146 / PROD 1.129)');
+});
+
+test('with no header versions, the whole table is read, including versions written in the Components cell', () => {
+  const rows = parseReleaseDescription({ type: 'doc', content: [{ type: 'table', content: [row('Tickets', 'Assets & versions'), row('NGK-1', 'RBI Loyalty = 1.144'), row('NGK-2', 'FE = 1.295.0-6 ui.menu.itemClickGuard.enabled = true'), row('NGK-3', 'FE = TBD')] }] }).rows;
+  const g = { components: ['FE', 'GTM', 'RBI Loyalty'], titleComponents: '', items: rows, versions: [] };
+  assert.equal(text(g), 'FE (1.295.0-6), GTM, RBI Loyalty (1.144)');
+});
+
+test('the existing line-by-line header format still works', () => {
+  const adf = { type: 'doc', content: [{ type: 'table', content: [row('Tickets', 'Components', 'UAT Version / PROD Version\nFE: 1.2-16 / 1.2-14\nMS: 26.166'), row('NGK-1', 'FE', 'x')] }] };
+  assert.deepEqual(parseReleaseDescription(adf).versions, [{ name: 'FE', uat: '1.2-16', prod: '1.2-14' }, { name: 'MS', value: '26.166' }]);
+});

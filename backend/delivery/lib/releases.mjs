@@ -35,9 +35,23 @@ const parseVersions = (text) => {
   const out = [];
   for (const line of String(text).split('\n')) {
     if (/^\s*(uat|prod)\b/i.test(line)) continue;
+    // "kiosk = 1.295.0-17-main / kiosk = 1.290.0-14-main": the name repeats on both sides (UAT / PROD)
+    const two = line.match(/^\s*([A-Za-z][A-Za-z0-9 ._&-]{0,28}?)\s*[:=]\s*v?(\d[\w.\-]*)\s*\/\s*([A-Za-z][A-Za-z0-9 ._&-]{0,28}?)\s*[:=]\s*v?(\d[\w.\-]*)\s*$/);
+    if (two && two[1].trim().toLowerCase() === two[3].trim().toLowerCase()) { out.push({ name: two[1].trim(), uat: two[2], prod: two[4] }); continue; }
     const m = line.match(VERSION_LINE);
     if (m) out.push(m[3] ? { name: m[1].trim(), uat: m[2], prod: m[3] } : { name: m[1].trim(), value: m[2] });
   }
+  return out;
+};
+/**
+ * Versions written inline in a header cell with no line breaks, as the template is often filled in:
+ *   "Current Versions Staged to UAT / PROD kiosk = 1.295.0-17-main / kiosk = 1.290.0-14-main rbi-loyalty-client = 1.146 / rbi-loyalty-client = 1.129"
+ * A name is one word here (kiosk, FE, rbi-loyalty-client). The first value is UAT and the second PROD, with or without the name repeated.
+ */
+const INLINE_VERSION = /(?<![\w.-])([A-Za-z][A-Za-z0-9._&-]{0,28})\s*[:=]\s*v?(\d[\w.\-]*)(?:\s*\/\s*(?:\1\s*[:=]\s*)?v?(\d[\w.\-]*))?/gi;
+const parseInlineVersions = (text) => {
+  const out = [];
+  for (const m of String(text).matchAll(INLINE_VERSION)) out.push(m[3] ? { name: m[1], uat: m[2], prod: m[3] } : { name: m[1], value: m[2] });
   return out;
 };
 const dedupeVersions = (list) => {
@@ -61,7 +75,12 @@ export const parseReleaseDescription = (adf) => {
     if (!/ticket|tix/i.test(headTexts[0] || '')) continue; // checklist tables etc. are ignored
     hadTable = true;
     const hdr = headTexts.map((t) => t.split('\n')[0].toLowerCase());
-    headTexts.forEach((t) => { const extra = t.split('\n').slice(1).join('\n'); if (extra) versions.push(...parseVersions(extra)); });
+    headTexts.forEach((t) => {
+      const extra = t.split('\n').slice(1).join('\n');
+      const lined = extra ? parseVersions(extra) : [];
+      // versions on their own lines first; if the cell has none that way, read them from the run of text
+      versions.push(...(lined.length ? lined : parseInlineVersions(t)));
+    });
     for (const row of rows.slice(1)) {
       const cells = (row.content || []).map(cellText);
       if (!cells.length) continue;
@@ -92,7 +111,8 @@ export const versionText = (v) => (v.uat || v.prod ? `${v.name} ${v.uat || '?'} 
 // ---------------------------------------------------------------- components (with versions) and a short plain-language explanation
 const ALIAS = { fe: 'fe', kiosk: 'fe', ms: 'menuservice', kioskmenuservice: 'menuservice', menuservice: 'menuservice', ws: 'webservice', kioskwebservice: 'webservice', webservice: 'webservice', mobilem8webservice: 'webservice',
   ds: 'deviceservice', deviceservice: 'deviceservice', db: 'database', mobilem8database: 'database', database: 'database', pa: 'portaladmin', kioskportaladmin: 'portaladmin', portaladminapp: 'portaladmin', portaladmin: 'portaladmin',
-  alc: 'avoltaloyaltyclient', avoltaloyaltyclient: 'avoltaloyaltyclient', trsc: 'recommender', tillsterrecommenderserviceclient: 'recommender', menuversion: 'menu', tcemenu: 'menu', menu: 'menu', skumap: 'skumap' };
+  alc: 'avoltaloyaltyclient', avoltaloyaltyclient: 'avoltaloyaltyclient', trsc: 'recommender', tillsterrecommenderserviceclient: 'recommender', menuversion: 'menu', tcemenu: 'menu', menu: 'menu', skumap: 'skumap',
+  kioskui: 'fe', rbiloyaltyclient: 'rbiloyalty', rbiloyalty: 'rbiloyalty', rbeloyaltyclient: 'rbeloyalty', rbeloyalty: 'rbeloyalty' };
 const tidy = (s) => String(s).replace(/\s*\(.*?\)\s*/g, ' ').replace(/\s+/g, ' ').replace(/\s*[-–]\s*$/, '').trim();
 const canon = (n) => { const k = tidy(n).toLowerCase().replace(/[^a-z0-9]/g, ''); return ALIAS[k] || k; };
 // split on + & ; , but not inside parentheses: "OCC (Menu Metadata - Calories, Drink Tabs), FE" -> two items
@@ -146,7 +166,8 @@ export const componentList = (g) => {
   // 2. versions: header first, then the whole table
   for (const v of g.versions || []) { if (fromField) attach(v.name, fmtVersion(v)); else add(v.name, fmtVersion(v)); }
   for (const i of g.items || []) {
-    for (const m of String(i.version || '').matchAll(/([A-Za-z][A-Za-z0-9 ._-]{0,24}?)\s*[:=]\s*v?(\d[\w.\-]*)/g)) {
+    // a row can carry its version in the Version column or inside the Components cell ("FE = 1.295.0-6")
+    for (const m of `${i.component || ''}; ${i.version || ''}`.matchAll(/([A-Za-z][A-Za-z0-9 ._-]{0,24}?)\s*[:=]\s*v?(\d[\w.\-]*)/g)) {
       const k = canon(m[1]);
       if (fromField && out.has(k) && out.get(k).versions.length) continue; // the header already gave this one its final version
       if (fromField) attach(m[1], m[2]); else add(m[1], m[2]);
