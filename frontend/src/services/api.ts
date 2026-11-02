@@ -296,15 +296,6 @@ export interface DeliveryMeta {
   prsGeneratedAt?: string | null;
   prsTiming?: { totalSec: number } | null;
 }
-export interface DigestPrRef { id: string; url: string; line1: string; repo: string; number: number; tenants: string[]; day: string | null; keys: string[] }
-export interface Digest {
-  window: { from: string; to: string }; headline: string;
-  attention: { level: 'warn' | 'info'; text: string; prs: DigestPrRef[] }[];
-  merged: { total: number; byRepo: { name: string; count: number }[]; byTenant: { name: string; count: number }[];
-    defectFixes: (DigestPrRef & { shippedState: string })[]; shipped: { prod: number; uat: number; planned: number; none: number } };
-  open: { total: number; drafts: number; waitingForReview: number; stale: (DigestPrRef & { ageDays: number })[]; blocked: number; defectFixes: number; byRepo: { name: string; count: number }[] };
-}
-export interface DigestSummary { text: string; model: string; createdAt: string; cached: boolean }
 export interface RefreshJob { state: 'idle' | 'running' | 'done' | 'failed'; kind?: 'full' | 'prs' | null; startedAt: string | null; finishedAt: string | null; log: string[] }
 
 const csv = (a?: string[]) => (a && a.length ? a.join(',') : undefined);
@@ -320,11 +311,6 @@ export const deliveryApi = {
   openPrs: async (): Promise<{ rows: DeliveryPr[] }> => (await apiClient.get('/delivery/open-prs')).data.data,
   analyzePr: async (repo: string, number: number): Promise<AnalyzeJob> => (await apiClient.post(`/delivery/prs/${repo}/${number}/analyze`)).data.data,
   analyzeStatus: async (): Promise<Record<string, AnalyzeJob>> => (await apiClient.get('/delivery/prs/analyze/status')).data.data,
-  /** What is happening in the stack for a range (default: the last 7 days), by rules. */
-  digest: async (from?: string, to?: string): Promise<Digest> => (await apiClient.get('/delivery/digest', { params: { from, to } })).data.data,
-  /** A short written note that only restates the digest. One model call, reused until the facts change. */
-  digestSummary: async (from: string, to: string, refresh = false): Promise<DigestSummary> =>
-    (await apiClient.post('/delivery/digest/summary', { from, to, refresh }, { timeout: 330000 })).data.data,
   refresh: async (): Promise<RefreshJob> => (await apiClient.post('/delivery/refresh')).data.data,
   refreshPrs: async (): Promise<RefreshJob> => (await apiClient.post('/delivery/refresh-prs')).data.data,
   refreshStatus: async (): Promise<RefreshJob> => (await apiClient.get('/delivery/refresh/status')).data.data,
