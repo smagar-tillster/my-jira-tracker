@@ -96,3 +96,20 @@ test('the existing line-by-line header format still works', () => {
   const adf = { type: 'doc', content: [{ type: 'table', content: [row('Tickets', 'Components', 'UAT Version / PROD Version\nFE: 1.2-16 / 1.2-14\nMS: 26.166'), row('NGK-1', 'FE', 'x')] }] };
   assert.deepEqual(parseReleaseDescription(adf).versions, [{ name: 'FE', uat: '1.2-16', prod: '1.2-14' }, { name: 'MS', value: '26.166' }]);
 });
+
+// ---- SW releases: the Jira field says SW and the header lists the services with their versions
+test('when the field lists SW, the services named in the header are its versions; without SW they are not shown', () => {
+  const versions = [{ name: 'mobilem8-menu-service', value: '26.166' }, { name: 'deviceservice', uat: '1.2', prod: '1.1' }, { name: 'version', value: '20261029' }];
+  assert.equal(text({ components: ['SW', 'Menu'], titleComponents: '', items: [], versions }), 'SW (menu-service 26.166, deviceservice UAT 1.2 / PROD 1.1), Menu');
+  assert.equal(text({ components: ['Menu', 'Skumap'], titleComponents: 'SW', items: [], versions }), 'Menu, Skumap');   // SW only in the title: not a component here
+});
+
+test('a long list of services is shortened like any other version list', () => {
+  const versions = ['a', 'b', 'c', 'd', 'e'].map((n, i) => ({ name: `svc-${n}`, value: `${i}.0` }));
+  assert.equal(text({ components: ['SW'], titleComponents: '', items: [], versions }), 'SW (svc-a 0.0, svc-b 1.0, svc-c 2.0 +2)');
+});
+
+test('the FE alias still applies next to SW: a header kiosk version lands on FE, the services on SW', () => {
+  const versions = [{ name: 'kiosk', uat: '1.295', prod: '1.290' }, { name: 'mobilem8-web-service', value: '3.4' }];
+  assert.equal(text({ components: ['FE', 'SW'], titleComponents: '', items: [], versions }), 'FE (UAT 1.295 / PROD 1.290), SW (web-service 3.4)');
+});

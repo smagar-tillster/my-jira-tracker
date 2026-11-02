@@ -139,7 +139,8 @@ export const isConfigKey = (s) => {
  *      Only when that field is empty are names taken from the title, then from the table's Components column.
  *   2. versions, for those names only: the table header first (final versions), then the rest of the table and description.
  *      A version for something the Jira field does not list is not added as a component, and a component with no version shows none
- *      (Menu, Skumap and TranslationFiles are data and have none).
+ *      (Menu, Skumap and TranslationFiles are data and have none). The one exception: when the field lists SW, the services named in
+ *      the header (mobilem8-menu-service, deviceservice, ...) are shown as SW's versions.
  * Config keys and "key = value" settings never count as components, wherever they appear.
  */
 export const componentList = (g) => {
@@ -164,13 +165,25 @@ export const componentList = (g) => {
   const attach = (name, version) => { const k = canon(name); if (version && out.has(k) && !out.get(k).versions.includes(version)) out.get(k).versions.push(version); };
 
   // 2. versions: header first, then the whole table
-  for (const v of g.versions || []) { if (fromField) attach(v.name, fmtVersion(v)); else add(v.name, fmtVersion(v)); }
+  const serviceVersions = []; // header versions that match no component: the services inside an SW release
+  for (const v of g.versions || []) {
+    if (!fromField) add(v.name, fmtVersion(v));
+    else if (out.has(canon(v.name))) attach(v.name, fmtVersion(v));
+    else if (!/^(version|version_label|unknown|tbd)$/i.test(v.name.trim())) serviceVersions.push(v);
+  }
   for (const i of g.items || []) {
     // a row can carry its version in the Version column or inside the Components cell ("FE = 1.295.0-6")
     for (const m of `${i.component || ''}; ${i.version || ''}`.matchAll(/([A-Za-z][A-Za-z0-9 ._-]{0,24}?)\s*[:=]\s*v?(\d[\w.\-]*)/g)) {
       const k = canon(m[1]);
       if (fromField && out.has(k) && out.get(k).versions.length) continue; // the header already gave this one its final version
       if (fromField) attach(m[1], m[2]); else add(m[1], m[2]);
+    }
+  }
+  // SW is the bundle of backend services: when the Jira field lists SW, the services named in the header (mobilem8-menu-service 26.166, deviceservice ...) are its versions
+  if (fromField && out.has('sw')) {
+    for (const v of serviceVersions) {
+      const label = `${v.name.replace(/^mobilem8-/i, '')} ${fmtVersion(v)}`;
+      if (!out.get('sw').versions.includes(label)) out.get('sw').versions.push(label);
     }
   }
   return [...out.values()].map((c) => ({ name: c.name, version: c.versions.length > 3 ? `${c.versions.slice(0, 3).join(', ')} +${c.versions.length - 3}` : c.versions.join(', ') }));
