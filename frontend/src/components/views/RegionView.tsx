@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { JiraIssue, Column, SortConfig } from '../../types';
 import { splitClients } from '../../services/dataProcessor';
-import ListView from './ListView';
+import ListView, { ListHeader, HEADER_H, minTotalOf } from './ListView';
 
 interface RegionViewProps {
   issues: JiraIssue[];
@@ -15,6 +15,7 @@ interface RegionViewProps {
 }
 
 const OTHER_REGION = 'Other';
+const REGION_H = 36; // px; the region line sticks under the column header, and the client lines under the region line
 
 const RegionView: React.FC<RegionViewProps> = ({
   issues, regions, visibleColumns, sortConfig, onSort, onToggleFilterValue, feTeamMembers, onToggleFETeam,
@@ -55,14 +56,17 @@ const RegionView: React.FC<RegionViewProps> = ({
     });
 
   return (
-    <div className="bg-white">
+    <div className="bg-white" style={{ minWidth: minTotalOf(visibleColumns) }}>
+      {/* The column header is drawn once for the whole view, not once per client */}
+      <ListHeader visibleColumns={visibleColumns} sortConfig={sortConfig} onSort={onSort} className="z-40" />
       {nested.map(({ region, count, clients }) => {
         const isExpanded = expandedRegions.has(region);
         return (
           <div key={region} className="border-b border-gray-200">
             <div
               onClick={() => toggleRegion(region)}
-              className="bg-gray-100 px-6 py-2 cursor-pointer hover:bg-gray-200 transition-colors flex items-center gap-3 sticky top-0 z-30"
+              className="bg-gray-100 px-6 cursor-pointer hover:bg-gray-200 transition-colors flex items-center gap-3 sticky z-30"
+              style={{ top: HEADER_H, height: REGION_H }}
             >
               <span className="text-gray-500 text-sm">{isExpanded ? '▼' : '▶'}</span>
               <span className="font-bold text-gray-800 text-sm">🌎 {region}</span>
@@ -74,6 +78,8 @@ const RegionView: React.FC<RegionViewProps> = ({
                 key={client}
                 groupedIssues={new Map([[client, clientIssues]])}
                 defaultExpandFirst={false}
+                showHeader={false}
+                groupStickyTop={HEADER_H + REGION_H}
                 visibleColumns={visibleColumns}
                 sortConfig={sortConfig}
                 onSort={onSort}
