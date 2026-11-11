@@ -79,6 +79,7 @@ const RegionView: React.FC<RegionViewProps> = ({
                 groupedIssues={new Map([[client, clientIssues]])}
                 defaultExpandFirst={false}
                 showHeader={false}
+                showGroupCounts
                 groupStickyTop={HEADER_H + REGION_H}
                 visibleColumns={visibleColumns}
                 sortConfig={sortConfig}
