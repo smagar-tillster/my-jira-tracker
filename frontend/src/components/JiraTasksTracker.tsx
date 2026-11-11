@@ -7,7 +7,7 @@ import { parseLocalDate } from '../utils/dateUtils';
 import { useIssueFiltering } from '../hooks/useIssueFiltering';
 import { jiraApi } from '../services/api';
 import ListView from './views/ListView';
-import CalendarView from './views/CalendarView';
+import DueDateBoard from './views/DueDateBoard';
 import RegionView from './views/RegionView';
 
 // Simple hook that returns a value that only updates after `delay` ms of no changes
@@ -140,8 +140,8 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
   const [visibleColumns] = useState<Column[]>(LIST_COLUMNS);
   const [sortConfig, setSortConfig]   = useState<SortConfig>({ column: 'dueDate', direction: 'desc' });
   const [groupConfig, setGroupConfig] = useState<GroupConfig>({ column: null, direction: 'asc' });
-  const [viewMode, setViewMode]       = useState<'list' | 'calendar' | 'region'>('list');
-  const [calendarDateType, setCalendarDateType] = useState<'dueDate' | 'releaseDate' | 'plannedUatDate'>('releaseDate');
+  const [viewMode, setViewMode]       = useState<'list' | 'board' | 'region'>('list');
+  const [boardDateType, setBoardDateType] = useState<'dueDate' | 'releaseDate' | 'plannedUatDate'>('dueDate');
   const [fullScreenMode, setFullScreenMode]     = useState(false);
   const [sourceFilter, setSourceFilter]         = useState<SourceFilter>('all');
 
@@ -426,18 +426,18 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
               <div className="h-6 w-px bg-gray-300" />
 
               {/* View mode */}
-              {(['list','calendar','region'] as const).map(mode => (
+              {(['list','board','region'] as const).map(mode => (
                 <button key={mode} onClick={() => setViewMode(mode)}
                   className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${viewMode === mode ? 'bg-indigo-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
-                  {mode === 'list' ? '📋 List' : mode === 'calendar' ? '📅 Calendar' : '🌎 Region'}
+                  {mode === 'list' ? '📋 List' : mode === 'board' ? '🗂 Due-date board' : '🌎 Region'}
                 </button>
               ))}
 
-              {viewMode === 'calendar' && (
+              {viewMode === 'board' && (
                 <>
                   {(['dueDate','releaseDate','plannedUatDate'] as const).map(dt => (
-                    <button key={dt} onClick={() => setCalendarDateType(dt)}
-                      className={`px-2 py-1 rounded text-xs font-medium transition-colors ${calendarDateType === dt ? 'bg-purple-600 text-white' : 'bg-purple-100 text-purple-800 hover:bg-purple-200'}`}>
+                    <button key={dt} onClick={() => setBoardDateType(dt)}
+                      className={`px-2 py-1 rounded text-xs font-medium transition-colors ${boardDateType === dt ? 'bg-purple-600 text-white' : 'bg-purple-100 text-purple-800 hover:bg-purple-200'}`}>
                       {dt === 'dueDate' ? 'Due Date' : dt === 'releaseDate' ? 'Release Date' : 'UAT Date'}
                     </button>
                   ))}
@@ -622,8 +622,8 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
             showGroupCounts={!!groupConfig.column && groupConfig.column !== 'status'}
             sortConfig={sortConfig} onSort={handleSort} onToggleFilterValue={toggleFilterValue}
             feTeamMembers={feTeamMembers} onToggleFETeam={toggleFETeamMember} />
-        ) : viewMode === 'calendar' ? (
-          <CalendarView issues={sortedIssues} dateType={calendarDateType} />
+        ) : viewMode === 'board' ? (
+          <DueDateBoard issues={sortedIssues} dateType={boardDateType} />
         ) : (
           <RegionView issues={sortedIssues} regions={clientRegions} visibleColumns={visibleColumns}
             sortConfig={sortConfig} onSort={handleSort} onToggleFilterValue={toggleFilterValue}
