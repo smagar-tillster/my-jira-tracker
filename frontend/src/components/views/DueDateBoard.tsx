@@ -3,7 +3,7 @@ import { JiraIssue } from '../../types';
 import { parseLocalDate } from '../../utils/dateUtils';
 import { splitClients } from '../../services/dataProcessor';
 import { bucketOf, BUCKET_PILL } from '../../utils/statusBuckets';
-import { buildBoard, chipTone, ChipTone } from '../../utils/dueBoard';
+import { buildBoard, chipTone, ChipTone, DEFAULT_TONES } from '../../utils/dueBoard';
 
 type DateType = 'dueDate' | 'releaseDate' | 'plannedUatDate';
 const DATE_LABEL: Record<DateType, string> = { dueDate: 'Due date', releaseDate: 'Release date', plannedUatDate: 'UAT date' };
@@ -30,48 +30,66 @@ const dateOfIssue = (i: JiraIssue, type: DateType): Date | null => {
 
 /**
  * Due-date board: the tickets of the current filters in four columns by the chosen date (due, release or UAT):
- * Overdue, This week, Next week and Later. Click a card to see its details underneath.
+ * Overdue, This week, Next week and Later. The legend above is a set of filters on the date chip (Done is off when the board opens).
+ * Click a card to see its details underneath.
  */
 const DueDateBoard: React.FC<{ issues: JiraIssue[]; dateType?: DateType }> = ({ issues, dateType = 'dueDate' }) => {
   const [selected, setSelected] = useState<string | null>(null);
+  const [tones, setTones] = useState<Set<ChipTone>>(new Set(DEFAULT_TONES));
   const today = useMemo(() => new Date(), []);
-  const board = useMemo(
-    () => buildBoard(issues, today, i => dateOfIssue(i, dateType), i => bucketOf(i) === 'done', i => i.key),
-    [issues, dateType, today],
-  );
+  const board = useMemo(() => buildBoard(issues, today, i => dateOfIssue(i, dateType), i => i.key), [issues, dateType, today]);
+  const toneOf = (i: JiraIssue): ChipTone => chipTone(dateOfIssue(i, dateType)!, today, bucketOf(i));
+  // how many tickets each chip color has (before the filter), shown on the legend so a switched-off color is not a mystery
+  const toneCounts = useMemo(() => {
+    const n: Record<ChipTone, number> = { aligned: 0, blocked: 0, done: 0, overdue: 0 };
+    for (const c of board.columns) for (const i of c.items) n[chipTone(dateOfIssue(i, dateType)!, today, bucketOf(i))]++;
+    return n;
+  }, [board, dateType, today]);
+  const columns = board.columns.map(c => ({ ...c, items: c.items.filter(i => tones.has(toneOf(i))) }));
+  const toggleTone = (t: ChipTone) => setTones(prev => { const n = new Set(prev); if (n.has(t)) n.delete(t); else n.add(t); return n; });
   const chosen = selected ? issues.find(i => i.key === selected) || null : null;
   // the selected ticket can have no date of the kind chosen after switching (Due, Release, UAT), so its date is optional here
   const chosenDate = chosen ? dateOfIssue(chosen, dateType) : null;
-  const total = board.columns.reduce((n, c) => n + c.items.length, 0);
+  const total = columns.reduce((n, c) => n + c.items.length, 0);
   const label = DATE_LABEL[dateType];
 
   return (
     <div className="bg-gray-100 min-h-full p-4 flex flex-col gap-3">
-      {/* Legend */}
-      <div className="flex items-center gap-4 text-xs text-gray-600 flex-wrap">
-        <span className="font-medium text-gray-700">Date chip:</span>
-        {LEGEND.map(l => (
-          <span key={l.tone} title={l.hint} className="inline-flex items-center gap-1.5">
-            <span className={`inline-block w-3 h-3 rounded ${CHIP[l.tone]}`} />{l.label}
-          </span>
-        ))}
+      {/* Date chip filters: click a color to show or hide those tickets */}
+      <div className="flex items-center gap-2 text-xs text-gray-600 flex-wrap">
+        <span className="font-medium text-gray-700 mr-1">Date chip:</span>
+        {LEGEND.map(l => {
+          const on = tones.has(l.tone);
+          return (
+            <button
+              key={l.tone}
+              onClick={() => toggleTone(l.tone)}
+              aria-pressed={on}
+              title={`${l.hint}\n${on ? 'Click to hide' : 'Click to show'}`}
+              className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full ring-1 transition-colors ${on ? 'bg-white ring-gray-300 text-gray-800' : 'bg-transparent ring-gray-200 text-gray-400 line-through'}`}
+            >
+              <span className={`inline-block w-3 h-3 rounded ${on ? CHIP[l.tone] : 'ring-1 ring-gray-300'}`} />
+              {l.label} <span className="no-underline text-gray-500">{toneCounts[l.tone]}</span>
+            </button>
+          );
+        })}
         <span className="ml-auto text-gray-500">By {label.toLowerCase()} · {total} ticket{total === 1 ? '' : 's'}</span>
       </div>
 
       {/* Columns */}
       <div className="overflow-x-auto">
         <div className="grid grid-cols-4 gap-4 min-w-[960px]">
-          {board.columns.map(col => (
+          {columns.map(col => (
             <section key={col.id} className="min-w-0">
               <div className="flex items-center justify-between px-1 pb-2">
-                <h3 className={`text-sm font-semibold ${col.id === 'overdue' && col.items.length ? 'text-red-700' : 'text-gray-700'}`}>{col.label}</h3>
+                <h3 title={col.id === 'overdue' ? 'Dated before today (a done ticket here is green: it is not late)' : undefined} className={`text-sm font-semibold ${col.id === 'overdue' && col.items.length ? 'text-red-700' : 'text-gray-700'}`}>{col.label}</h3>
                 <span className="text-sm text-gray-500">{col.items.length}</span>
               </div>
               <div className="space-y-2">
                 {col.items.length === 0 && <div className="text-xs text-gray-400 px-1 py-3">Nothing here</div>}
                 {col.items.map(issue => {
                   const date = dateOfIssue(issue, dateType)!;
-                  const tone = chipTone(date, today, bucketOf(issue));
+                  const tone = toneOf(issue);
                   const clients = splitClients(issue.client).join(', ') || 'No client';
                   const isSel = selected === issue.key;
                   return (
@@ -98,15 +116,7 @@ const DueDateBoard: React.FC<{ issues: JiraIssue[]; dateType?: DateType }> = ({ 
         </div>
       </div>
 
-      {/* Left out, said plainly */}
-      {(board.noDate > 0 || board.doneBeforeToday > 0) && (
-        <p className="text-xs text-gray-500">
-          Not shown: {[
-            board.noDate > 0 ? `${board.noDate} with no ${label.toLowerCase()}` : '',
-            board.doneBeforeToday > 0 ? `${board.doneBeforeToday} done before today` : '',
-          ].filter(Boolean).join(', ')}.
-        </p>
-      )}
+      {board.noDate > 0 && <p className="text-xs text-gray-500">Not shown: {board.noDate} with no {label.toLowerCase()}.</p>}
 
       {/* Details of the selected card */}
       {chosen && (

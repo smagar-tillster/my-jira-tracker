@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-const { columnFor, weekEnd, buildBoard, chipTone, BOARD_COLUMNS } = await import('../../../frontend/src/utils/dueBoard.ts');
+const { columnFor, weekEnd, buildBoard, chipTone, BOARD_COLUMNS, DEFAULT_TONES } = await import('../../../frontend/src/utils/dueBoard.ts');
 
 const d = (s) => new Date(`${s}T00:00:00`);
 const TUE = d('2026-11-10');   // a Tuesday
@@ -33,29 +33,33 @@ test('the time of day does not move a date between columns', () => {
 });
 
 const items = [
-  { k: 'NGK-3', date: d('2026-11-12'), done: false },
-  { k: 'NGK-2', date: d('2026-11-12'), done: false },
-  { k: 'NGK-10', date: d('2026-11-12'), done: false },
-  { k: 'NGK-1', date: d('2026-11-06'), done: false },
-  { k: 'NGK-9', date: d('2026-11-05'), done: true },     // done and past: left out
-  { k: 'NGK-8', date: d('2026-11-11'), done: true },     // done but dated ahead: stays, shown green
-  { k: 'NGK-7', date: null, done: false },
-  { k: 'NGK-6', date: d('2026-12-01'), done: false },
+  { k: 'NGK-3', date: d('2026-11-12') },
+  { k: 'NGK-2', date: d('2026-11-12') },
+  { k: 'NGK-10', date: d('2026-11-12') },
+  { k: 'NGK-1', date: d('2026-11-06') },
+  { k: 'NGK-9', date: d('2026-11-05') },     // done tickets are not special here: the chip filter decides whether they show
+  { k: 'NGK-8', date: d('2026-11-11') },
+  { k: 'NGK-7', date: null },
+  { k: 'NGK-6', date: d('2026-12-01') },
 ];
-const board = () => buildBoard(items, TUE, (t) => t.date, (t) => t.done, (t) => t.k);
+const board = () => buildBoard(items, TUE, (t) => t.date, (t) => t.k);
 
-test('the board has the four columns in order and counts what it leaves out', () => {
+test('the board has the four columns in order and counts the tickets without a date', () => {
   const b = board();
   assert.deepEqual(b.columns.map((c) => c.id), BOARD_COLUMNS.map((c) => c.id));
   assert.equal(b.noDate, 1);
-  assert.equal(b.doneBeforeToday, 1);
-  assert.deepEqual(b.columns.find((c) => c.id === 'overdue').items.map((t) => t.k), ['NGK-1']);
+  assert.deepEqual(b.columns.find((c) => c.id === 'overdue').items.map((t) => t.k), ['NGK-9', 'NGK-1']);   // oldest first
   assert.deepEqual(b.columns.find((c) => c.id === 'later').items.map((t) => t.k), ['NGK-6']);
 });
 
 test('inside a column tickets are ordered by date, then by key with numbers compared as numbers', () => {
   const week = board().columns.find((c) => c.id === 'thisWeek').items.map((t) => t.k);
   assert.deepEqual(week, ['NGK-8', 'NGK-2', 'NGK-3', 'NGK-10']);
+});
+
+test('the chip filters start with everything on except Done', () => {
+  assert.deepEqual([...DEFAULT_TONES].sort(), ['aligned', 'blocked', 'overdue']);
+  assert.ok(!DEFAULT_TONES.includes('done'));
 });
 
 test('the date chip is red when late, otherwise it follows the status bucket', () => {

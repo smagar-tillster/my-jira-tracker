@@ -1,5 +1,5 @@
 // Which column of the Due-date board a ticket lands in. Plain functions with no imports so they can be tested with node directly.
-//   Overdue    before today (tickets that are done are left out: they are not late)
+//   Overdue    before today (a done ticket dated before today sits here too; its green chip says it is not late)
 //   This week  today through the coming Sunday
 //   Next week  the following Monday through Sunday
 //   Later      after that
@@ -33,30 +33,27 @@ export interface BoardResult<T> {
   columns: { id: BoardColumnId; label: string; items: T[] }[];
   /** Tickets with no date of the chosen kind. */
   noDate: number;
-  /** Done tickets dated before today: they are not late and would only crowd the Overdue column. */
-  doneBeforeToday: number;
 }
 
 /** Sorts tickets into the four columns, each ordered by date and then by `tieBreak` (a key, for example). */
-export const buildBoard = <T>(
-  items: readonly T[], today: Date, dateOf: (t: T) => Date | null, isDone: (t: T) => boolean, tieBreak: (t: T) => string,
-): BoardResult<T> => {
+export const buildBoard = <T>(items: readonly T[], today: Date, dateOf: (t: T) => Date | null, tieBreak: (t: T) => string): BoardResult<T> => {
   const cols = new Map<BoardColumnId, T[]>(BOARD_COLUMNS.map(c => [c.id, []]));
-  let noDate = 0; let doneBeforeToday = 0;
+  let noDate = 0;
   for (const it of items) {
     const d = dateOf(it);
     if (!d) { noDate++; continue; }
-    const col = columnFor(d, today);
-    if (col === 'overdue' && isDone(it)) { doneBeforeToday++; continue; }
-    cols.get(col)!.push(it);
+    cols.get(columnFor(d, today))!.push(it);
   }
   for (const list of cols.values()) {
     list.sort((a, b) => (dateOf(a)!.getTime() - dateOf(b)!.getTime()) || tieBreak(a).localeCompare(tieBreak(b), 'en', { numeric: true }));
   }
-  return { columns: BOARD_COLUMNS.map(c => ({ ...c, items: cols.get(c.id)! })), noDate, doneBeforeToday };
+  return { columns: BOARD_COLUMNS.map(c => ({ ...c, items: cols.get(c.id)! })), noDate };
 };
 
 export type ChipTone = 'overdue' | 'done' | 'blocked' | 'aligned';
+
+/** The chip filters switched on when the board opens: everything except Done. */
+export const DEFAULT_TONES: ChipTone[] = ['aligned', 'blocked', 'overdue'];
 
 /** The color of a card's date chip: red when late, otherwise the same buckets as the status pills in the list. */
 export const chipTone = (date: Date, today: Date, bucket: 'blocked' | 'aligned' | 'done'): ChipTone =>
