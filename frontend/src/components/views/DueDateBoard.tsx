@@ -90,24 +90,36 @@ const DueDateBoard: React.FC<{ issues: JiraIssue[]; dateType?: DateType }> = ({ 
                 {col.items.map(issue => {
                   const date = dateOfIssue(issue, dateType)!;
                   const tone = toneOf(issue);
-                  const clients = splitClients(issue.client).join(', ') || 'No client';
+                  const clients = splitClients(issue.client);
                   const isSel = selected === issue.key;
+                  const pick = () => setSelected(isSel ? null : issue.key);
                   return (
-                    <button
+                    // a div, not a button: the ticket number inside is a link, and a link cannot sit inside a button
+                    <div
                       key={issue.id}
-                      onClick={() => setSelected(isSel ? null : issue.key)}
+                      role="button"
+                      tabIndex={0}
+                      onClick={pick}
+                      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } }}
                       aria-pressed={isSel}
-                      title={`${issue.key}  ${issue.summary}\n${issue.status}`}
-                      className={`w-full text-left bg-white rounded-lg shadow-sm px-3 py-2.5 border transition-colors hover:border-blue-300 ${isSel ? 'border-blue-500 ring-1 ring-blue-300' : 'border-gray-200'}`}
+                      title={`${issue.key}  ${issue.summary}`}
+                      className={`w-full text-left bg-white rounded-lg shadow-sm px-3 py-2.5 border transition-colors cursor-pointer hover:border-blue-300 focus:outline-none focus:ring-1 focus:ring-blue-300 ${isSel ? 'border-blue-500 ring-1 ring-blue-300' : 'border-gray-200'}`}
                     >
                       <div className="text-[14px] leading-5 text-gray-800 line-clamp-2">
-                        <span className="font-semibold">{issue.key}</span> {issue.summary}
+                        <a href={issue.url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
+                          title={`Open ${issue.key} in Jira`} className="font-semibold text-blue-700 hover:underline">{issue.key}</a> {issue.summary}
+                      </div>
+                      <div className="mt-1.5 flex flex-wrap gap-1">
+                        {clients.length === 0
+                          ? <span className="px-2 py-0.5 rounded-full text-xs bg-gray-50 text-gray-400 ring-1 ring-gray-200">No client</span>
+                          : clients.map(c => <span key={c} className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 ring-1 ring-gray-200">{c}</span>)}
                       </div>
                       <div className="mt-1.5 flex items-center gap-2">
-                        <span className="min-w-0 flex-1 truncate text-xs text-gray-500">{clients} · {issue.assignee || 'Unassigned'}</span>
+                        <span className="min-w-0 flex-1 truncate text-xs text-gray-500" title={issue.assignee || 'Unassigned'}>{issue.assignee || 'Unassigned'}</span>
+                        <span className="min-w-0 max-w-[50%] truncate px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-700" title={issue.status}>{issue.status}</span>
                         <span className={`shrink-0 whitespace-nowrap px-2 py-0.5 rounded text-xs font-medium ${CHIP[tone]}`}>{short(date)}</span>
                       </div>
-                    </button>
+                    </div>
                   );
                 })}
               </div>
