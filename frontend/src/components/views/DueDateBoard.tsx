@@ -31,10 +31,8 @@ const dateOfIssue = (i: JiraIssue, type: DateType): Date | null => {
 /**
  * Due-date board: the tickets of the current filters in four columns by the chosen date (due, release or UAT):
  * Overdue, This week, Next week and Later. The legend above is a set of filters on the date chip (Done is off when the board opens).
- * Click a card to see its details underneath.
  */
 const DueDateBoard: React.FC<{ issues: JiraIssue[]; dateType?: DateType }> = ({ issues, dateType = 'dueDate' }) => {
-  const [selected, setSelected] = useState<string | null>(null);
   const [tones, setTones] = useState<Set<ChipTone>>(new Set(DEFAULT_TONES));
   const today = useMemo(() => new Date(), []);
   const board = useMemo(() => buildBoard(issues, today, i => dateOfIssue(i, dateType), i => i.key), [issues, dateType, today]);
@@ -47,9 +45,6 @@ const DueDateBoard: React.FC<{ issues: JiraIssue[]; dateType?: DateType }> = ({ 
   }, [board, dateType, today]);
   const columns = board.columns.map(c => ({ ...c, items: c.items.filter(i => tones.has(toneOf(i))) }));
   const toggleTone = (t: ChipTone) => setTones(prev => { const n = new Set(prev); if (n.has(t)) n.delete(t); else n.add(t); return n; });
-  const chosen = selected ? issues.find(i => i.key === selected) || null : null;
-  // the selected ticket can have no date of the kind chosen after switching (Due, Release, UAT), so its date is optional here
-  const chosenDate = chosen ? dateOfIssue(chosen, dateType) : null;
   const total = columns.reduce((n, c) => n + c.items.length, 0);
   const label = DATE_LABEL[dateType];
 
@@ -93,9 +88,6 @@ const DueDateBoard: React.FC<{ issues: JiraIssue[]; dateType?: DateType }> = ({ 
                   const startsUndated = !date && (idx === 0 || dateOfIssue(col.items[idx - 1], dateType) !== null);
                   const tone = toneOf(issue);
                   const clients = splitClients(issue.client);
-                  const isSel = selected === issue.key;
-                  const pick = () => setSelected(isSel ? null : issue.key);
-                  // the card is a div, not a button: the ticket number inside is a link, and a link cannot sit inside a button
                   return (
                     <React.Fragment key={issue.id}>
                     {startsUndated && (
@@ -104,16 +96,11 @@ const DueDateBoard: React.FC<{ issues: JiraIssue[]; dateType?: DateType }> = ({ 
                       </div>
                     )}
                     <div
-                      role="button"
-                      tabIndex={0}
-                      onClick={pick}
-                      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } }}
-                      aria-pressed={isSel}
                       title={`${issue.key}  ${issue.summary}`}
-                      className={`w-full text-left bg-white rounded-lg shadow-sm px-3 py-2.5 border transition-colors cursor-pointer hover:border-blue-300 focus:outline-none focus:ring-1 focus:ring-blue-300 ${isSel ? 'border-blue-500 ring-1 ring-blue-300' : 'border-gray-200'}`}
+                      className="w-full text-left bg-white rounded-lg shadow-sm px-3 py-2.5 border border-gray-200"
                     >
                       <div className="text-[14px] leading-5 text-gray-800 line-clamp-2">
-                        <a href={issue.url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
+                        <a href={issue.url} target="_blank" rel="noopener noreferrer"
                           title={`Open ${issue.key} in Jira`} className="font-semibold text-blue-700 hover:underline">{issue.key}</a> {issue.summary}
                       </div>
                       <div className="mt-1.5 flex flex-wrap gap-1">
@@ -135,19 +122,6 @@ const DueDateBoard: React.FC<{ issues: JiraIssue[]; dateType?: DateType }> = ({ 
           ))}
         </div>
       </div>
-
-      {/* Details of the selected card */}
-      {chosen && (
-        <div className="mt-1 bg-white rounded-lg shadow-sm border border-gray-200 px-4 py-3">
-          <div className="text-[15px] text-gray-900">
-            <a href={chosen.url} target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-700 hover:underline">{chosen.key}</a>{' '}{chosen.summary}
-          </div>
-          <div className="mt-0.5 text-sm text-gray-600">
-            {splitClients(chosen.client).join(', ') || 'No client'} · {chosen.assignee || 'Unassigned'} · {chosen.status} · {label} {chosenDate ? short(chosenDate) : 'not set'}
-            {parseLocalDate(chosen.created) ? ` · created ${short(parseLocalDate(chosen.created)!)}` : ''}
-          </div>
-        </div>
-      )}
     </div>
   );
 };
