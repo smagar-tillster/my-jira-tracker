@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, memo } from 'react';
 import ShimmerLoading from './ShimmerLoading';
 import { JiraIssue, Column, SortConfig, GroupConfig, JiraSprint } from '../types';
 import { filterIssues, sortIssues, groupIssues, mergeIssueSources } from '../services/dataProcessor';
-import { orderGroups } from '../utils/statusBuckets';
+import { orderGroups, bucketOf } from '../utils/statusBuckets';
 import { parseLocalDate } from '../utils/dateUtils';
 import { useIssueFiltering } from '../hooks/useIssueFiltering';
 import { jiraApi } from '../services/api';
@@ -170,6 +170,7 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
   const [showNoDueDate, setShowNoDueDate]         = useState(false);
   const [showFETeamOnly, setShowFETeamOnly]       = useState(false);
   const [showNoSubtasks, setShowNoSubtasks]       = useState(false);
+  const [showUnassigned, setShowUnassigned]       = useState(false);
 
   // Dropdown search states
   const [typeSearch, setTypeSearch]           = useState('');
@@ -276,7 +277,10 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
     return Array.isArray(curr) && curr.includes(value);
   };
 
+  // Urgent and Attention look at the due date and the release date only, and never at tickets that are done (Ready for QA onward),
+  // the same rule the Issue Key tint in the list uses, so the buttons and the colors always agree.
   const isUrgent = (issue: JiraIssue): boolean => {
+    if (bucketOf(issue) === 'done') return false;
     const tomorrow = new Date(); tomorrow.setHours(0,0,0,0); tomorrow.setDate(tomorrow.getDate() + 1);
     const due = issue.dueDate ? new Date(issue.dueDate) : null;
     const rel = issue.releaseDate && issue.releaseDate !== 'NA' ? parseLocalDate(issue.releaseDate) : null;
@@ -284,6 +288,7 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
   };
 
   const needsAttention = (issue: JiraIssue): boolean => {
+    if (bucketOf(issue) === 'done') return false;
     const threeDays = new Date(); threeDays.setHours(0,0,0,0); threeDays.setDate(threeDays.getDate() + 3);
     const due = issue.dueDate ? new Date(issue.dueDate) : null;
     const rel = issue.releaseDate && issue.releaseDate !== 'NA' ? parseLocalDate(issue.releaseDate) : null;
@@ -326,10 +331,11 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
     if (showImportantOnly) r = r.filter(i => i.important);
     if (showMyDayOnly)     r = r.filter(i => i.myDay);
     if (showUrgentOnly)    r = r.filter(i => isUrgent(i));
-    if (showAttentionOnly) r = r.filter(i => needsAttention(i) && !isUrgent(i));
+    if (showAttentionOnly) r = r.filter(i => needsAttention(i)); // within 3 days, so it includes the urgent ones too
     if (showNoDueDate)     r = r.filter(i => !i.dueDate);
     if (showFETeamOnly)    r = r.filter(i => feTeamMembers.includes(i.assignee));
     if (showNoSubtasks)    r = r.filter(i => i.issueType.toLowerCase() !== 'sub-task');
+    if (showUnassigned)    r = r.filter(i => !i.assignee || i.assignee === 'Unassigned'); // Jira sends the text "Unassigned" when nobody is assigned
 
     // 3. Apply effective status filter + search — all synchronous, data is pre-loaded
     const f = filterIssues(
@@ -342,7 +348,7 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
     // Assignees with the fewest aligned tickets first (who has room)
     const g = groupConfig.column === 'assignee' ? orderGroups(grouped, 'aligned-asc') : grouped;
     return { filteredIssues: f, sortedIssues: s, groupedIssues: g };
-  }, [mergedIssues, effectiveSprintIssues, myIssues, sourceFilter, showImportantOnly, showMyDayOnly, showUrgentOnly, showAttentionOnly, showNoDueDate, showFETeamOnly, showNoSubtasks, feTeamMembers, filters, effectiveSCFilter, debouncedSearch, sortConfig, groupConfig]);
+  }, [mergedIssues, effectiveSprintIssues, myIssues, sourceFilter, showImportantOnly, showMyDayOnly, showUrgentOnly, showAttentionOnly, showNoDueDate, showFETeamOnly, showNoSubtasks, showUnassigned, feTeamMembers, filters, effectiveSCFilter, debouncedSearch, sortConfig, groupConfig]);
 
   // Pre-compute occurrence counts for dropdown options so countFn is O(1)
   const occurrenceCounts = useMemo(() => {
@@ -471,6 +477,11 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
               <button onClick={() => setShowFETeamOnly(!showFETeamOnly)}
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${showFETeamOnly ? 'bg-purple-600 text-white' : 'bg-purple-100 text-purple-800 hover:bg-purple-200'}`}>
                 👥 FE Team
+              </button>
+              <button onClick={() => setShowUnassigned(!showUnassigned)}
+                title="Tickets nobody is assigned to"
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${showUnassigned ? 'bg-indigo-600 text-white' : 'bg-indigo-100 text-indigo-800 hover:bg-indigo-200'}`}>
+                🙋 Unassigned
               </button>
 
               {/* Active filter chips */}
