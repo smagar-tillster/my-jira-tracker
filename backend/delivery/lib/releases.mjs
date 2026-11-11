@@ -35,9 +35,23 @@ const parseVersions = (text) => {
   const out = [];
   for (const line of String(text).split('\n')) {
     if (/^\s*(uat|prod)\b/i.test(line)) continue;
+    // "kiosk = 1.295.0-17-main / kiosk = 1.290.0-14-main": the name repeats on both sides (UAT / PROD)
+    const two = line.match(/^\s*([A-Za-z][A-Za-z0-9 ._&-]{0,28}?)\s*[:=]\s*v?(\d[\w.\-]*)\s*\/\s*([A-Za-z][A-Za-z0-9 ._&-]{0,28}?)\s*[:=]\s*v?(\d[\w.\-]*)\s*$/);
+    if (two && two[1].trim().toLowerCase() === two[3].trim().toLowerCase()) { out.push({ name: two[1].trim(), uat: two[2], prod: two[4] }); continue; }
     const m = line.match(VERSION_LINE);
     if (m) out.push(m[3] ? { name: m[1].trim(), uat: m[2], prod: m[3] } : { name: m[1].trim(), value: m[2] });
   }
+  return out;
+};
+/**
+ * Versions written inline in a header cell with no line breaks, as the template is often filled in:
+ *   "Current Versions Staged to UAT / PROD kiosk = 1.295.0-17-main / kiosk = 1.290.0-14-main rbi-loyalty-client = 1.146 / rbi-loyalty-client = 1.129"
+ * A name is one word here (kiosk, FE, rbi-loyalty-client). The first value is UAT and the second PROD, with or without the name repeated.
+ */
+const INLINE_VERSION = /(?<![\w.-])([A-Za-z][A-Za-z0-9._&-]{0,28})\s*[:=]\s*v?(\d[\w.\-]*)(?:\s*\/\s*(?:\1\s*[:=]\s*)?v?(\d[\w.\-]*))?/gi;
+const parseInlineVersions = (text) => {
+  const out = [];
+  for (const m of String(text).matchAll(INLINE_VERSION)) out.push(m[3] ? { name: m[1], uat: m[2], prod: m[3] } : { name: m[1], value: m[2] });
   return out;
 };
 const dedupeVersions = (list) => {
@@ -53,13 +67,20 @@ export const parseReleaseDescription = (adf) => {
   findTables(adf, tables);
   const rowsOut = [];
   let versions = [];
+  let hadTable = false; // a release table (Tickets | Components | Version ...) was found
   for (const tb of tables) {
     const rows = (tb.content || []).filter((r) => r.type === 'tableRow');
     if (!rows.length) continue;
     const headTexts = (rows[0].content || []).map(cellText);
     if (!/ticket|tix/i.test(headTexts[0] || '')) continue; // checklist tables etc. are ignored
+    hadTable = true;
     const hdr = headTexts.map((t) => t.split('\n')[0].toLowerCase());
-    headTexts.forEach((t) => { const extra = t.split('\n').slice(1).join('\n'); if (extra) versions.push(...parseVersions(extra)); });
+    headTexts.forEach((t) => {
+      const extra = t.split('\n').slice(1).join('\n');
+      const lined = extra ? parseVersions(extra) : [];
+      // versions on their own lines first; if the cell has none that way, read them from the run of text
+      versions.push(...(lined.length ? lined : parseInlineVersions(t)));
+    });
     for (const row of rows.slice(1)) {
       const cells = (row.content || []).map(cellText);
       if (!cells.length) continue;
@@ -76,7 +97,8 @@ export const parseReleaseDescription = (adf) => {
       if (keys.length || rec.label) rowsOut.push(rec);
     }
   }
-  if (!versions.length) versions = parseVersions(text).filter((v) => /^(FE|SW|DS|DB|MS|WS|PA|TRSC|Menu|SkuMap|Kiosk|Menu Version|TCE Menu|Web Service)$/i.test(v.name));
+  // No versions in the table header: look through the rest of the description, but only when there is a release table at all (no table, no versions)
+  if (hadTable && !versions.length) versions = parseVersions(text).filter((v) => /^(FE|SW|DS|DB|MS|WS|PA|TRSC|Menu|SkuMap|Kiosk|Menu Version|TCE Menu|Web Service)$/i.test(v.name));
   const tableKeys = new Set(rowsOut.flatMap((r) => r.keys));
   const m = text.match(/NOTES:?([\s\S]*?)(?:\bTIX\b|ASSETS|RELEASE CHECKLIST|DEFINITION OF READY|This release includes|$)/i);
   let notes = m ? m[1].replace(/<\/?HR>/gi, ' ').replace(/\s+/g, ' ').trim() : '';
@@ -89,7 +111,8 @@ export const versionText = (v) => (v.uat || v.prod ? `${v.name} ${v.uat || '?'} 
 // ---------------------------------------------------------------- components (with versions) and a short plain-language explanation
 const ALIAS = { fe: 'fe', kiosk: 'fe', ms: 'menuservice', kioskmenuservice: 'menuservice', menuservice: 'menuservice', ws: 'webservice', kioskwebservice: 'webservice', webservice: 'webservice', mobilem8webservice: 'webservice',
   ds: 'deviceservice', deviceservice: 'deviceservice', db: 'database', mobilem8database: 'database', database: 'database', pa: 'portaladmin', kioskportaladmin: 'portaladmin', portaladminapp: 'portaladmin', portaladmin: 'portaladmin',
-  alc: 'avoltaloyaltyclient', avoltaloyaltyclient: 'avoltaloyaltyclient', trsc: 'recommender', tillsterrecommenderserviceclient: 'recommender', menuversion: 'menu', tcemenu: 'menu', menu: 'menu', skumap: 'skumap' };
+  alc: 'avoltaloyaltyclient', avoltaloyaltyclient: 'avoltaloyaltyclient', trsc: 'recommender', tillsterrecommenderserviceclient: 'recommender', menuversion: 'menu', tcemenu: 'menu', menu: 'menu', skumap: 'skumap',
+  kioskui: 'fe', rbiloyaltyclient: 'rbiloyalty', rbiloyalty: 'rbiloyalty', rbeloyaltyclient: 'rbeloyalty', rbeloyalty: 'rbeloyalty' };
 const tidy = (s) => String(s).replace(/\s*\(.*?\)\s*/g, ' ').replace(/\s+/g, ' ').replace(/\s*[-–]\s*$/, '').trim();
 const canon = (n) => { const k = tidy(n).toLowerCase().replace(/[^a-z0-9]/g, ''); return ALIAS[k] || k; };
 // split on + & ; , but not inside parentheses: "OCC (Menu Metadata - Calories, Drink Tabs), FE" -> two items
@@ -104,24 +127,65 @@ const splitList = (s) => {
 };
 export const fmtVersion = (v) => (v.uat || v.prod ? (v.uat && v.prod ? (v.uat === v.prod ? v.uat : `UAT ${v.uat} / PROD ${v.prod}`) : v.uat ? `UAT ${v.uat}` : `PROD ${v.prod}`) : v.value);
 
-/** Components of a release group {titleComponents, components, items, versions}: Jira field + title + per-ticket components, each with its version if one is listed. */
+/** A config key or a "key = value" setting, not a component: ui.menu.itemClickGuard.enabled, "x.y = true". PROD/config.json is the component. */
+export const isConfigKey = (s) => {
+  const t = String(s || '').trim();
+  return /^[\w-]+(\.[\w-]+){2,}$/.test(t) || /\s=\s*(true|false|null|-?\d[\w.]*|"[^"]*"|'[^']*')\s*$/i.test(t) || /^[\w.-]+\s*=\s*\S/.test(t) && /\.[A-Za-z]/.test(t.split('=')[0]);
+};
+
+/**
+ * Components of a release group {titleComponents, components, items, versions}, from these sources in this order:
+ *   1. names: the release ticket's own Jira Components field. This is the source of truth.
+ *      Only when that field is empty are names taken from the title, then from the table's Components column.
+ *   2. versions, for those names only: the table header first (final versions), then the rest of the table and description.
+ *      A version for something the Jira field does not list is not added as a component, and a component with no version shows none
+ *      (Menu, Skumap and TranslationFiles are data and have none). The one exception: when the field lists SW, the services named in
+ *      the header (mobilem8-menu-service, deviceservice, ...) are shown as SW's versions.
+ * Config keys and "key = value" settings never count as components, wherever they appear.
+ */
 export const componentList = (g) => {
   const out = new Map(); // canonical name -> { name, versions[] }
   const add = (label, version) => {
     label = tidy(label);
-    if (!label || label.length > 40 || /^(see ticket|n\/a|none|tbd|-)$/i.test(label)) return; // template filler, not a component
+    if (!label || label.length > 40 || /^(see ticket|n\/a|none|tbd|unknown|-)$/i.test(label) || isConfigKey(label)) return null; // template filler or a setting, not a component
     const k = canon(label);
     if (!out.has(k)) out.set(k, { name: label, versions: [] });
     if (version && !out.get(k).versions.includes(version)) out.get(k).versions.push(version);
+    return k;
   };
   const addToken = (t) => { const m = String(t).match(/^(.*?)\s*(?:[=:]|\s[-–]\s)\s*v?(\d[\w.\-]*)\s*$/); if (m) add(m[1], m[2]); else add(t, ''); }; // "FE = v1.294.0-2" -> FE (1.294.0-2)
-  for (const c of g.components || []) addToken(c);
-  for (const c of splitList(g.titleComponents)) addToken(c);
-  for (const i of g.items || []) {
-    for (const c of splitList(i.component)) addToken(c);
-    for (const m of String(i.version || '').matchAll(/([A-Za-z][A-Za-z0-9 ._-]{0,24}?)\s*[:=]\s*v?(\d[\w.\-]*)/g)) add(m[1], m[2]);
+
+  // 1. names
+  for (const c of g.components || []) add(c, '');
+  const fromField = out.size > 0;
+  if (!fromField) {
+    for (const c of splitList(g.titleComponents)) addToken(c);
+    if (!out.size) for (const i of g.items || []) for (const c of splitList(i.component)) addToken(c);
   }
-  for (const v of g.versions || []) add(v.name, fmtVersion(v));
+  const attach = (name, version) => { const k = canon(name); if (version && out.has(k) && !out.get(k).versions.includes(version)) out.get(k).versions.push(version); };
+
+  // 2. versions: header first, then the whole table
+  const serviceVersions = []; // header versions that match no component: the services inside an SW release
+  for (const v of g.versions || []) {
+    if (!fromField) add(v.name, fmtVersion(v));
+    else if (out.has(canon(v.name))) attach(v.name, fmtVersion(v));
+    else if (!/^(version|version_label|unknown|tbd)$/i.test(v.name.trim())) serviceVersions.push(v);
+  }
+  for (const i of g.items || []) {
+    // a row can carry its version in the Version column or inside the Components cell ("FE = 1.295.0-6")
+    for (const m of `${i.component || ''}; ${i.version || ''}`.matchAll(/([A-Za-z][A-Za-z0-9 ._-]{0,24}?)\s*[:=]\s*v?(\d[\w.\-]*)/g)) {
+      const k = canon(m[1]);
+      if (fromField && out.has(k) && out.get(k).versions.length) continue; // the header already gave this one its final version
+      if (fromField) attach(m[1], m[2]); else add(m[1], m[2]);
+    }
+  }
+  // SW is the bundle of backend services: when the Jira field lists SW, the services named in the header (mobilem8-menu-service 26.166, deviceservice ...) are its versions
+  if (fromField && out.has('sw')) {
+    for (const v of serviceVersions) {
+      const label = `${v.name.replace(/^mobilem8-/i, '')} ${fmtVersion(v)}`;
+      if (!out.get('sw').versions.includes(label)) out.get('sw').versions.push(label);
+    }
+  }
   return [...out.values()].map((c) => ({ name: c.name, version: c.versions.length > 3 ? `${c.versions.slice(0, 3).join(', ')} +${c.versions.length - 3}` : c.versions.join(', ') }));
 };
 export const componentText = (list) => list.map((c) => (c.version ? `${c.name} (${c.version})` : c.name)).join(', ');

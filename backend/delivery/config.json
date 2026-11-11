@@ -6,7 +6,9 @@
     "kiosk-menu-service",
     "kiosk-device-service",
     "rbi-loyalty-client",
-    "kiosk-avolta-loyalty-client"
+    "kiosk-avolta-loyalty-client",
+    "kiosk-loyalty-api",
+    "rbe-loyalty-client"
   ],
   "sprintPrefix": "NGK Sprint",
   "component": "FE",
@@ -39,7 +41,14 @@
   },
   "review": {
     "repos": {
-      "kiosk-ui": "Tillster/kiosk-ui"
+      "kiosk-ui": "Tillster/kiosk-ui",
+      "kiosk-web-service": "Tillster/kiosk-web-service",
+      "kiosk-menu-service": "Tillster/kiosk-menu-service",
+      "kiosk-device-service": "Tillster/kiosk-device-service",
+      "rbi-loyalty-client": "Tillster/rbi-loyalty-client",
+      "kiosk-avolta-loyalty-client": "Tillster/kiosk-avolta-loyalty-client",
+      "kiosk-loyalty-api": "Tillster/kiosk-loyalty-api",
+      "rbe-loyalty-client": "Tillster/rbe-loyalty-client"
     },
     "skipAuthors": [
       "dependabot[bot]",

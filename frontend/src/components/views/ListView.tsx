@@ -17,10 +17,49 @@ interface ListViewProps {
   defaultExpandFirst?: boolean;
   // Show the Blocked / Aligned counts on each group line. Off for the plain "All Issues" list and when grouping by status.
   showGroupCounts?: boolean;
+  // Draw the column header row (default). A view that stacks several lists draws it once itself and passes false.
+  showHeader?: boolean;
+  // Where the group lines stick, in px from the top of the scroll area: just under the header by default, lower when something else sticks above them.
+  groupStickyTop?: number;
 }
 
 // Summary can shrink to this share of its width on a narrow screen; the other columns keep their width and the table scrolls sideways.
 const SUMMARY_MIN_RATIO = 0.82;
+
+// Summary takes the spare width; every other column is fixed, so the single header and all rows line up.
+export const colStyleOf = (column: Column): React.CSSProperties => {
+  const w = Number(column.width) || 150;
+  return column.key === 'summary'
+    ? { flex: `1 1 ${w}px`, minWidth: Math.round(w * SUMMARY_MIN_RATIO) }
+    : { width: w, minWidth: w, maxWidth: w, flexShrink: 0 };
+};
+export const HEADER_H = 38; // px; group lines stick just below the header
+// The table never gets narrower than its columns (Summary can shrink to 82% of its width); wider screens give the extra to Summary.
+export const minTotalOf = (cols: Column[]) =>
+  cols.reduce((n, c) => n + (c.key === 'summary' ? Math.round((Number(c.width) || 150) * SUMMARY_MIN_RATIO) : Number(c.width) || 150), 0);
+
+/** The one header row of a list. Views that stack several lists (Region) draw it once on top and turn it off in each list. */
+export const ListHeader: React.FC<{
+  visibleColumns: Column[]; sortConfig: SortConfig; onSort: (column: keyof JiraIssue) => void; className?: string;
+}> = ({ visibleColumns, sortConfig, onSort, className = 'z-20' }) => (
+  <div className={`flex bg-gray-800 sticky top-0 ${className}`} style={{ height: HEADER_H, minWidth: minTotalOf(visibleColumns) }}>
+    {visibleColumns.map((column) => (
+      <div
+        key={column.key}
+        className={`px-2 text-[14.4px] font-semibold text-white border-r border-gray-700 last:border-r-0 flex items-center gap-1.5 ${column.key === 'important' ? 'justify-center' : ''}`}
+        style={colStyleOf(column)}
+        title={column.label}
+      >
+        {column.sortable && (
+          <button onClick={() => onSort(column.key)} className="text-gray-300 hover:text-white" title={`Sort by ${column.label}`}>
+            {sortConfig.column === column.key ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '⇅'}
+          </button>
+        )}
+        <span className="truncate">{column.label}</span>
+      </div>
+    ))}
+  </div>
+);
 
 const ListView: React.FC<ListViewProps> = ({
   groupedIssues,
@@ -32,6 +71,8 @@ const ListView: React.FC<ListViewProps> = ({
   onToggleFETeam,
   defaultExpandFirst = true,
   showGroupCounts = false,
+  showHeader = true,
+  groupStickyTop = HEADER_H,
 }) => {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
     new Set(defaultExpandFirst ? [...groupedIssues.keys()].slice(0, 1) : [])
@@ -251,16 +292,8 @@ const ListView: React.FC<ListViewProps> = ({
     return column.filterable && column.key !== 'assignee' ? `${full}\nClick to filter by this value` : full;
   };
 
-  // Summary takes the spare width; every other column is fixed, so the single header and all rows line up.
-  const colStyle = (column: Column): React.CSSProperties => {
-    const w = Number(column.width) || 150;
-    return column.key === 'summary'
-      ? { flex: `1 1 ${w}px`, minWidth: Math.round(w * SUMMARY_MIN_RATIO) }
-      : { width: w, minWidth: w, maxWidth: w, flexShrink: 0 };
-  };
-  const HEADER_H = 38; // px; group lines stick just below the header
-  // The table never gets narrower than its columns (Summary can shrink to 82% of its width); wider screens give the extra to Summary.
-  const minTotal = visibleColumns.reduce((n, c) => n + (c.key === 'summary' ? Math.round((Number(c.width) || 150) * SUMMARY_MIN_RATIO) : Number(c.width) || 150), 0);
+  const colStyle = colStyleOf;
+  const minTotal = minTotalOf(visibleColumns);
 
   const countPill = (label: string, n: number, kind: 'blocked' | 'aligned') => (
     <span
@@ -276,24 +309,7 @@ const ListView: React.FC<ListViewProps> = ({
 
   return (
     <div className="bg-gray-200 pb-2" style={{ minWidth: minTotal }}>
-      {/* One header row for the whole list */}
-      <div className="flex bg-gray-800 sticky top-0 z-20" style={{ height: HEADER_H, minWidth: minTotal }}>
-        {visibleColumns.map((column) => (
-          <div
-            key={column.key}
-            className={`px-2 text-[14.4px] font-semibold text-white border-r border-gray-700 last:border-r-0 flex items-center gap-1.5 ${column.key === 'important' ? 'justify-center' : ''}`}
-            style={colStyle(column)}
-            title={column.label}
-          >
-            {column.sortable && (
-              <button onClick={() => onSort(column.key)} className="text-gray-300 hover:text-white" title={`Sort by ${column.label}`}>
-                {sortConfig.column === column.key ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '⇅'}
-              </button>
-            )}
-            <span className="truncate">{column.label}</span>
-          </div>
-        ))}
-      </div>
+      {showHeader && <ListHeader visibleColumns={visibleColumns} sortConfig={sortConfig} onSort={onSort} />}
 
       {Array.from(groupedIssues.entries()).map(([groupKey, issues]) => {
         const counts = showGroupCounts ? countBuckets(issues) : null;
@@ -303,7 +319,7 @@ const ListView: React.FC<ListViewProps> = ({
             <div
               onClick={() => toggleGroupExpansion(groupKey)}
               className={`bg-gray-100 border-l-4 cursor-pointer hover:bg-gray-200 transition-colors sticky z-10 ${expandedGroups.has(groupKey) ? 'border-indigo-500' : 'border-gray-300'}`}
-              style={{ top: HEADER_H }}
+              style={{ top: groupStickyTop }}
             >
               <div className="sticky left-0 flex items-center gap-3 px-3 py-[5px] w-max">
                 <span className="text-gray-600 text-[11.5px] w-4">{expandedGroups.has(groupKey) ? '▼' : '▶'}</span>

@@ -33,6 +33,18 @@ test('prompt carries the depth rules and the model follows the tier', () => {
   assert.equal(gen.chooseModel('deep', { models: { light: 'haiku', deep: 'sonnet' } }), 'sonnet');
 });
 
+test('a deep review of a backend repo gets service guidance, not AngularJS guidance', () => {
+  const ui = gen.buildPrompt('deep', undefined, 'kiosk-ui');
+  const svc = gen.buildPrompt('deep', undefined, 'kiosk-web-service');
+  assert.match(ui, /AngularJS 1\.6/);
+  assert.doesNotMatch(svc, /AngularJS|\$destroy/);
+  assert.match(svc, /service and client-library specifics/);
+  for (const p of [ui, svc]) assert.ok(!p.includes('{{STACK}}') && !p.includes('{{DEPTH}}'));
+  assert.equal(gen.isUiRepo('kiosk-ui'), true);
+  assert.equal(gen.isUiRepo('kiosk-ui-react'), true);
+  assert.equal(gen.isUiRepo('kiosk-menu-service'), false);
+});
+
 test('parseModelJson tolerates fences and surrounding text, and rejects the rest', () => {
   assert.deepEqual(gen.parseModelJson('```json\n{"a":1}\n```'), { a: 1 });
   assert.deepEqual(gen.parseModelJson('Here you go: {"a":{"b":2}} done'), { a: { b: 2 } });

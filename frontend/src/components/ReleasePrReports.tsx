@@ -4,6 +4,7 @@ import ReleasedTab from './delivery/ReleasedTab';
 import ToReleaseTab from './delivery/ToReleaseTab';
 import MergedPrsTab from './delivery/MergedPrsTab';
 import OpenPrsTab from './delivery/OpenPrsTab';
+import { RefreshContext } from './delivery/RefreshContext';
 
 type SubTab = 'released' | 'toRelease' | 'prs' | 'open';
 
@@ -45,7 +46,16 @@ export default function ReleasePrReports() {
     }
   };
 
+  const refreshPrs = async () => {
+    try { setJob(await deliveryApi.refreshPrs()); watch(); }
+    catch (e: unknown) {
+      if ((e as { response?: { status?: number } })?.response?.status === 409) { setJob(await deliveryApi.refreshStatus()); watch(); }
+      else setJob({ state: 'failed', kind: 'prs', startedAt: null, finishedAt: null, log: [e instanceof Error ? e.message : 'Could not start the PR fetch'] });
+    }
+  };
+
   const running = job?.state === 'running';
+  const prsAt = meta?.prsGeneratedAt || meta?.generatedAt || null;
   const tabs: { id: SubTab; label: string; count?: number }[] = [
     { id: 'released', label: '🚀 Released' },
     { id: 'toRelease', label: '⏰ To Release Today', count: meta?.counts.toRelease },
@@ -54,6 +64,7 @@ export default function ReleasePrReports() {
   ];
 
   return (
+    <RefreshContext.Provider value={{ fetchPrs: refreshPrs, job, running, prsAt }}>
     <div className="h-full flex flex-col bg-gray-50 overflow-hidden">
       <div className="bg-white border-b border-gray-200 px-4 pt-3 flex items-end gap-2">
         <span className="text-lg font-semibold text-gray-800 mr-3 pb-2">📦 Release &amp; PRs</span>
@@ -73,14 +84,14 @@ export default function ReleasePrReports() {
           <button onClick={refresh} disabled={running}
             title="Re-reads Jira and GitHub and rebuilds the data on these tabs, then moves the 'since last run' marker for merged PRs."
             className="px-3 py-1.5 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 disabled:opacity-60 disabled:cursor-not-allowed">
-            {running ? '⏳ Running…' : '▶ Run latest report'}
+            {running ? (job?.kind === 'prs' ? '⏳ Fetching PRs…' : '⏳ Running…') : '▶ Run latest report'}
           </button>
         </div>
       </div>
 
       {job && job.state !== 'idle' && job.state !== 'running' && (
         <div className={`px-4 py-2 text-sm border-b flex items-start gap-3 ${job.state === 'failed' ? 'bg-red-50 text-red-800 border-red-200' : 'bg-green-50 text-green-800 border-green-200'}`}>
-          <span className="font-medium">{job.state === 'failed' ? 'The report run failed.' : 'Latest report is ready.'}</span>
+          <span className="font-medium">{job.state === 'failed' ? (job.kind === 'prs' ? 'Fetching PRs failed.' : 'The report run failed.') : (job.kind === 'prs' ? 'Latest PRs fetched.' : 'Latest report is ready.')}</span>
           {job.state === 'failed' && job.log.length > 0 && (
             <details className="flex-1"><summary className="cursor-pointer">Run log</summary><pre className="mt-1 text-xs whitespace-pre-wrap max-h-40 overflow-auto">{job.log.join('\n')}</pre></details>
           )}
@@ -96,5 +107,6 @@ export default function ReleasePrReports() {
         {meta && tab === 'open' && <OpenPrsTab meta={meta} refreshKey={refreshKey} />}
       </div>
     </div>
+    </RefreshContext.Provider>
   );
 }

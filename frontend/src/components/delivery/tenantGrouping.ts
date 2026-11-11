@@ -4,7 +4,7 @@
 export const FALLBACK_TENANT = 'Tillster-All';
 
 /** Cleaned, de-duplicated tenant names; an empty list, a blank or "(no client)" becomes the fallback tenant. */
-export const cleanTenants = (list: readonly string[] | null | undefined): string[] => {
+export const cleanTenants = (list: readonly string[] | null | undefined, fallback: string = FALLBACK_TENANT): string[] => {
   const seen = new Set<string>();
   const out: string[] = [];
   for (const raw of list || []) {
@@ -13,7 +13,7 @@ export const cleanTenants = (list: readonly string[] | null | undefined): string
     const k = t.toLowerCase();
     if (!seen.has(k)) { seen.add(k); out.push(t); }
   }
-  return out.length ? out : [FALLBACK_TENANT];
+  return out.length ? out : [fallback];
 };
 
 export interface TenantGroup<T> { tenant: string; items: T[] }
@@ -51,10 +51,11 @@ export const groupByTenant = <T>(
   items: readonly T[],
   tenantsOf: (item: T) => readonly string[] | null | undefined,
   order: GroupOrder<T> = alphabetical<T>(),
+  fallback: string = FALLBACK_TENANT,
 ): { groups: TenantGroup<T>[]; unique: number } => {
   const byTenant = new Map<string, TenantGroup<T>>();
   for (const item of items) {
-    for (const t of cleanTenants(tenantsOf(item))) {
+    for (const t of cleanTenants(tenantsOf(item), fallback)) {
       const key = t.toLowerCase();
       const g = byTenant.get(key) || { tenant: t, items: [] };
       g.items.push(item);

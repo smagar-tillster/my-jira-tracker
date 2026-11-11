@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { PrReview, PrReviewComment, ReviewApiError, ReviewQueueItem, generateBusy, reviewsApi } from '../services/api';
 import { jobText, prId, useCodeReview } from './delivery/useCodeReview';
+import { quickFindPrs } from './delivery/search';
 
 type Filter = 'todo' | 'posted' | 'closed' | 'all';
 
@@ -86,6 +87,7 @@ const InitiatePanel: React.FC<{ onDone: () => void }> = ({ onDone }) => {
   const [err, setErr] = useState<string | null>(null);
   const [open, setOpen] = useState(true);
   const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [find, setFind] = useState('');
 
   const loadQueue = useCallback(async () => {
     setLoading(true); setErr(null);
@@ -101,17 +103,24 @@ const InitiatePanel: React.FC<{ onDone: () => void }> = ({ onDone }) => {
 
   const { jobs, start, error, busy } = useCodeReview(() => { onDone(); loadQueue(); });
 
-  const free = items.filter(i => !generateBusy(jobs[prId(i)]));
-  const chosen = items.filter(i => picked.has(prId(i)) && !generateBusy(jobs[prId(i)]));
+  // The search narrows the list; Select all and Initiate Code Review only ever act on what is shown.
+  const shown = useMemo(() => quickFindPrs(items, find), [items, find]);
+  const free = shown.filter(i => !generateBusy(jobs[prId(i)]));
+  const chosen = shown.filter(i => picked.has(prId(i)) && !generateBusy(jobs[prId(i)]));
   const toggle = (id: string) => setPicked(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const allTicked = free.length > 0 && free.every(i => picked.has(prId(i)));
   const run = async () => { await start(chosen.map(i => ({ repo: i.repo, number: i.number }))); setPicked(new Set()); };
+  // Enter on a search that finds exactly one PR ticks it, so "#419, Enter" is enough to pull it in
+  const onFindKey = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') setFind('');
+    if (e.key === 'Enter' && free.length === 1) setPicked(prev => new Set(prev).add(prId(free[0])));
+  };
 
   return (
     <div className="border-b border-gray-200 bg-gray-50">
       <button onClick={() => setOpen(o => !o)} className="w-full flex items-center gap-2 px-4 py-2 text-left hover:bg-gray-100">
         <span className="text-gray-400 text-xs">{open ? '▼' : '▶'}</span>
-        <span className="text-sm font-semibold text-gray-700">Open PRs without a review ({items.length})</span>
+        <span className="text-sm font-semibold text-gray-700">Open PRs without a review ({find.trim() ? `${shown.length} of ${items.length}` : items.length})</span>
         {busy && <span className="ml-auto text-xs text-blue-700">⏳ working…</span>}
       </button>
       {open && (
@@ -127,10 +136,16 @@ const InitiatePanel: React.FC<{ onDone: () => void }> = ({ onDone }) => {
                     onChange={() => setPicked(allTicked ? new Set() : new Set(free.map(prId)))} />
                   Select all
                 </label>
+                <div className="relative flex-1 min-w-0">
+                  <input value={find} onChange={e => setFind(e.target.value)} onKeyDown={onFindKey} placeholder="Find #number…" aria-label="Find a PR by number"
+                    className="w-full pl-2 pr-6 py-1 border border-gray-300 rounded bg-white text-xs focus:outline-none focus:ring-1 focus:ring-blue-300" />
+                  {find && <button onClick={() => setFind('')} aria-label="Clear" title="Clear" className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700">✕</button>}
+                </div>
                 <button onClick={loadQueue} disabled={loading} className="ml-auto text-gray-500 hover:text-gray-800 disabled:opacity-50">↻</button>
               </div>
               <div className="max-h-64 overflow-y-auto bg-white border border-gray-200 rounded-md divide-y divide-gray-100">
-                {items.map(i => {
+                {shown.length === 0 && <p className="px-2 py-3 text-xs text-gray-400">No open PR without a review matches &ldquo;{find.trim()}&rdquo;.</p>}
+                {shown.map(i => {
                   const id = prId(i); const j = jobs[id]; const t = jobText(j); const tier = TIER_BADGE[i.tier] || TIER_BADGE.light;
                   return (
                     <label key={id} className={`flex items-start gap-2 px-2 py-1.5 text-xs ${generateBusy(j) ? 'opacity-70' : 'cursor-pointer hover:bg-blue-50'}`}>

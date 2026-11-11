@@ -1,6 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnalyzeJob, DeliveryPr, GenerateJob, deliveryApi, generateBusy } from '../../services/api';
-import { Modal, Section } from './shared';
+import { ListControls, Modal, Section } from './shared';
+import { filterRows, prSearchText } from './search';
+import { useRefresh } from './RefreshContext';
+import DefectRowButton from './DefectRow';
 import { jobText, prId, useCodeReview } from './useCodeReview';
 import TenantGroupList from './TenantGroupList';
 import { byCount } from './tenantGrouping';
@@ -125,7 +128,59 @@ function Understanding({ p }: { p: DeliveryPr }) {
   return <span className="text-gray-400">Not reviewed</span>;
 }
 
+/** "Fetch latest PRs": re-reads GitHub for the PR lists only (no Jira sprint or release sync), so it is much quicker than the full report. */
+function FetchPrsButton() {
+  const r = useRefresh();
+  if (!r) return null;
+  const mine = r.running && r.job?.kind === 'prs';
+  const at = r.prsAt ? new Date(r.prsAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : null;
+  return (
+    <>
+      <button onClick={r.fetchPrs} disabled={r.running}
+        title={r.running && !mine ? 'The full report is running; PRs refresh with it' : 'Re-reads GitHub for open and merged PRs only. Quicker than the full report; releases are not refreshed.'}
+        className="px-3 py-1 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap">
+        {mine ? '⏳ Fetching PRs…' : '⟳ Fetch latest PRs'}
+      </button>
+      {at && <span className="text-xs text-gray-500">PRs as of {at}</span>}
+    </>
+  );
+}
+
+const SHIP_TONE: Record<string, string> = { prod: 'bg-green-100 text-green-800', uat: 'bg-sky-100 text-sky-800', planned: 'bg-amber-100 text-amber-800' };
+
+/** Where a merged PR's ticket went: the release tickets that carry it, with tenant, environment and date. */
+function Shipped({ p }: { p: DeliveryPr }) {
+  if (p.open) return null;
+  const rows = p.shipped || [];
+  if (!rows.length) return <div className="text-[11px] text-gray-400 mt-0.5" title="No release ticket dated on or after the merge lists this PR's ticket">not in a release yet</div>;
+  return (
+    <div className="flex flex-wrap gap-1 mt-0.5">
+      {rows.slice(0, 3).map(r => (
+        <span key={r.key} className={`text-[11px] px-1.5 py-px rounded ${SHIP_TONE[r.released ? (/PROD/i.test(r.env) ? 'prod' : 'uat') : 'planned']}`}
+          title={`${r.key} · ${r.tenant} · ${r.env} · ${r.date} · ${r.released ? 'released' : r.status}${p.shippedApprox ? ' · by ticket: it also has PRs in other repos, so this PR may not be in this release' : ''}`}>
+          {p.shippedApprox ? '~' : ''}{/PROD/i.test(r.env) ? 'PROD' : 'UAT'} {r.tenant} {r.date.slice(5)}{r.released ? ' ✓' : ''}
+        </span>
+      ))}
+      {rows.length > 3 && <span className="text-[11px] text-gray-500" title={rows.slice(3).map(r => `${r.key} ${r.tenant} ${r.env} ${r.date}`).join('\n')}>+{rows.length - 3} more</span>}
+    </div>
+  );
+}
+
 const prTenants = (p: DeliveryPr) => p.tenants;
+const prRepo = (p: DeliveryPr) => [p.repo];
+const GROUPS = [
+  { id: 'client' as const, label: 'Client', hint: 'One group per tenant (a PR for several tenants appears under each)' },
+  { id: 'repo' as const, label: 'Repo', hint: 'One group per repository' },
+];
+type GroupBy = typeof GROUPS[number]['id'];
+
+/** What a collapsed repo group says: how many PRs, for which tenants, and drafts (open PRs). */
+const repoSummary = (prs: DeliveryPr[], open?: boolean) => {
+  const tenants = [...new Set(prs.flatMap(p => p.tenants))].sort();
+  const parts = [`${prs.length} PR${prs.length === 1 ? '' : 's'}${tenants.length ? ` for ${tenants.length} tenant${tenants.length === 1 ? '' : 's'} (${tenants.slice(0, 6).join(', ')}${tenants.length > 6 ? ', …' : ''})` : ''}`];
+  if (open) { const d = prs.filter(p => p.isDraft).length; if (d) parts.push(`${d} draft${d === 1 ? '' : 's'}`); }
+  return parts.join(' · ');
+};
 
 /** What a collapsed tenant group says about its PRs: how many, in which repos, and (merged PRs) over how many days. */
 const prSummary = (prs: DeliveryPr[], open?: boolean) => {
@@ -146,14 +201,29 @@ export default function PrTable({ rows, open, empty, onChanged }: { rows: Delive
   const { jobs, start } = useAnalyze(onChanged);
   const review = useCodeReview(onChanged);
   const startReview = (p: DeliveryPr) => review.start([{ repo: p.repo, number: p.number }]);
+  const [groupBy, setGroupBy] = useState<GroupBy>('client');
+  const [query, setQuery] = useState('');
+  const [cmd, setCmd] = useState({ open: false, n: 0 });
+  const [allOpen, setAllOpen] = useState(false);
+  const toggleAll = () => setCmd(c => ({ open: !allOpen, n: c.n + 1 }));
+  const visible = useMemo(() => filterRows(rows, query, prSearchText), [rows, query]);
+  const byClient = groupBy === 'client';
 
   // keep the open modal in sync with refreshed rows
   const current = shown ? rows.find(r => r.id === shown.id) || shown : null;
 
-  if (rows.length === 0) return <div className="p-8 text-center text-gray-400">{empty}</div>;
+  if (rows.length === 0) return (
+    <>
+      <div className="flex items-center gap-3 mb-2"><FetchPrsButton /></div>
+      <div className="p-8 text-center text-gray-400">{empty}</div>
+    </>
+  );
   return (
     <>
-      <TenantGroupList items={rows} tenantsOf={prTenants} unit="PR" summary={prs => prSummary(prs, open)} order={mostFirst} orderLabel="most PRs first">
+      <ListControls groups={GROUPS} groupBy={groupBy} onGroupBy={setGroupBy} query={query} onQuery={setQuery} shown={visible.length} total={rows.length} unit="PR" extra={<FetchPrsButton />} allOpen={allOpen} onToggleAll={toggleAll} placeholder="Search PR #, ticket or title…" />
+      {visible.length === 0 ? <div className="p-8 text-center text-gray-400">Nothing matches &ldquo;{query.trim()}&rdquo;.</div> : (
+      <TenantGroupList command={cmd} onAllOpenChange={setAllOpen} items={visible} tenantsOf={byClient ? prTenants : prRepo} unit="PR" summary={prs => byClient ? prSummary(prs, open) : repoSummary(prs, open)}
+        groupLabel={byClient ? 'tenant' : 'repo'} expandAll={!!query.trim()} order={mostFirst} orderLabel="most PRs first">
         {prs => (
             <table className="w-full table-fixed text-[14px] leading-[22px] [overflow-wrap:anywhere]">
               <thead className="bg-gray-50 text-left text-[13px] font-semibold text-gray-600 border-b border-gray-200">
@@ -165,6 +235,7 @@ export default function PrTable({ rows, open, empty, onChanged }: { rows: Delive
                     <td className="px-2 py-[5.5px] whitespace-nowrap">
                       <a href={p.url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline font-medium">{p.repo} #{p.number}</a>
                       {open && p.isDraft && <span className="ml-1.5 text-[11px] px-1.5 py-0.5 rounded bg-gray-200 text-gray-700">draft</span>}
+                      {p.defectFix && <span className="ml-1.5 text-[11px] px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 font-medium" title="The Jira ticket is a Defect, Bug or Incident">defect fix</span>}
                       <div className="text-xs text-gray-400">
                         {open ? `opened ${dateOf(p.createdAt || '')} · ${ageDays(p.createdAt || '')}d` : `${dateOf(p.mergedAt || '')} ${timeOf(p.mergedAt || '')}`}
                       </div>
@@ -174,9 +245,10 @@ export default function PrTable({ rows, open, empty, onChanged }: { rows: Delive
                       {p.tickets.map(t => <div key={t.key}><a href={t.url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">{t.key}</a></div>)}
                       {p.tickets.length === 0 && <span className="text-gray-400">—</span>}
                       {p.tenants.length > 0 && <div className="text-xs text-gray-500">{p.tenants.join(', ')}</div>}
+                      <Shipped p={p} />
                     </td>
                     <td className="px-2 py-[5.5px]">
-                      <div className="font-medium text-gray-800" title={p.line1}>{p.line1}</div>
+                      <div className="font-medium text-gray-800" title={p.meaning ? `${p.meaning}${p.meaningSource && p.meaningSource !== 'title' ? ` (from the ${p.meaningSource.replace('-', ' ')})` : ''}` : p.line1}>{p.line1}</div>
                       {p.line2 && <div className="text-xs text-gray-500 mt-0.5">{p.line2}</div>}
                       {p.dependsOn.length > 0 && (
                         <div className="flex flex-wrap gap-1 mt-1.5">
@@ -197,6 +269,7 @@ export default function PrTable({ rows, open, empty, onChanged }: { rows: Delive
                           ? !p.isDraft && <CodeReviewButton p={p} job={review.jobs[prId(p)]} onStart={startReview} />
                           : (!p.analysis || p.rulesOnly) && <AnalyzeButton p={p} job={jobs[p.id]} onStart={start} />}
                         {!p.open && p.analysis && !p.rulesOnly && jobs[p.id]?.state === 'running' && <span className="text-xs text-blue-700">⏳ Analyzing…</span>}
+                        <DefectRowButton p={p} />
                       </div>
                     </td>
                   </tr>
@@ -205,6 +278,7 @@ export default function PrTable({ rows, open, empty, onChanged }: { rows: Delive
             </table>
         )}
       </TenantGroupList>
+      )}
       {current && <PrModal p={current} job={jobs[current.id]} onStart={start} reviewJob={review.jobs[prId(current)]} onReview={startReview} onClose={() => setShown(null)} />}
     </>
   );

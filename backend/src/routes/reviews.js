@@ -9,6 +9,7 @@ import { knownDefectsMarkdown } from '../../delivery/lib/reviewcontext.mjs';
 import { loadLedger } from '../../delivery/lib/releases.mjs';
 import { tierFromView, reviewTierOf, partitionByTier } from '../../delivery/lib/reviewtier.mjs';
 import { generateReview, createJobRunner } from '../../delivery/lib/reviewgen.mjs';
+import { generateDefectRow, loadProposal } from '../../delivery/lib/defectrow.mjs';
 import { relatedPrs, relatedMarkdown } from '../../delivery/lib/prrelated.mjs';
 import {
   reviewConfig, listReviews, getReview, prepareDraft, commitDraft, anchorInline, editDraft, markSkipped, postReview,
@@ -213,6 +214,33 @@ export const createReviewsRouter = ({ gh = realGh, now = () => Date.now(), claud
     }
     const data = Object.fromEntries(clean.map((c) => [`${c.repo}#${c.number}`, runner.enqueue(`${c.repo}#${c.number}`, c)]));
     res.status(202).json({ success: true, data });
+  });
+
+  // ---- Draft a defects-feed row from a merged defect-fix PR. Proposes only: the row is saved under this app's data folder and shown
+  // with a Copy button; nothing is written to the knowledge base or to any repo. One model call, so the request waits for it.
+  const drafting = new Set();
+  router.post('/reviews/defect-row', sameMachineOnly, async (req, res) => {
+    const cfg = reviewConfig();
+    const repo = req.body?.repo; const number = Number(req.body?.number);
+    const key = req.body?.key === undefined ? undefined : String(req.body.key).toUpperCase();
+    if (!cfg.repos[repo] || !Number.isInteger(number) || number <= 0 || (key !== undefined && !/^NGK-\d+$/.test(key))) return res.status(400).json({ success: false, error: 'Send {"repo","number"} for a configured repo, and optionally {"key":"NGK-123"}.' });
+    const id = `${repo}#${number}`;
+    if (drafting.has(id)) return res.status(409).json({ success: false, error: `A row for ${id} is already being drafted.` });
+    drafting.add(id);
+    try {
+      const r = await generateDefectRow({ repo, number, key, buildPacket, ...(claude ? { claude } : {}) });
+      res.status(r.state === 'failed' ? 502 : 200).json({ success: r.state !== 'failed', state: r.state, message: r.message, ...(r.state === 'failed' ? { error: r.message } : {}), data: r.proposal || null });
+    } finally { drafting.delete(id); }
+  });
+
+  // GET /api/reviews/defect-row/:repo/:number  — the row drafted earlier, if any
+  router.get('/reviews/defect-row/:repo/:number', (req, res) => {
+    const cfg = reviewConfig();
+    const number = Number(req.params.number);
+    if (!cfg.repos[req.params.repo] || !Number.isInteger(number) || number <= 0) return res.status(400).json({ success: false, error: 'Unknown repo or PR number' });
+    const p = loadProposal(req.params.repo, number);
+    if (!p) return res.status(404).json({ success: false, error: 'No row drafted for this PR yet' });
+    res.json({ success: true, data: p });
   });
 
   // GET /api/reviews/generate/status — state per PR: waiting | running | done | exists | queued | failed
