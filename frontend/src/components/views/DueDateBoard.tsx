@@ -38,11 +38,11 @@ const DueDateBoard: React.FC<{ issues: JiraIssue[]; dateType?: DateType }> = ({ 
   const [tones, setTones] = useState<Set<ChipTone>>(new Set(DEFAULT_TONES));
   const today = useMemo(() => new Date(), []);
   const board = useMemo(() => buildBoard(issues, today, i => dateOfIssue(i, dateType), i => i.key), [issues, dateType, today]);
-  const toneOf = (i: JiraIssue): ChipTone => chipTone(dateOfIssue(i, dateType)!, today, bucketOf(i));
+  const toneOf = (i: JiraIssue): ChipTone => chipTone(dateOfIssue(i, dateType), today, bucketOf(i));
   // how many tickets each chip color has (before the filter), shown on the legend so a switched-off color is not a mystery
   const toneCounts = useMemo(() => {
     const n: Record<ChipTone, number> = { aligned: 0, blocked: 0, done: 0, overdue: 0 };
-    for (const c of board.columns) for (const i of c.items) n[chipTone(dateOfIssue(i, dateType)!, today, bucketOf(i))]++;
+    for (const c of board.columns) for (const i of c.items) n[chipTone(dateOfIssue(i, dateType), today, bucketOf(i))]++;
     return n;
   }, [board, dateType, today]);
   const columns = board.columns.map(c => ({ ...c, items: c.items.filter(i => tones.has(toneOf(i))) }));
@@ -87,16 +87,23 @@ const DueDateBoard: React.FC<{ issues: JiraIssue[]; dateType?: DateType }> = ({ 
               </div>
               <div className="space-y-2">
                 {col.items.length === 0 && <div className="text-xs text-gray-400 px-1 py-3">Nothing here</div>}
-                {col.items.map(issue => {
-                  const date = dateOfIssue(issue, dateType)!;
+                {col.items.map((issue, idx) => {
+                  const date = dateOfIssue(issue, dateType);
+                  // in Later the tickets with no date come last; a divider says where they start
+                  const startsUndated = !date && (idx === 0 || dateOfIssue(col.items[idx - 1], dateType) !== null);
                   const tone = toneOf(issue);
                   const clients = splitClients(issue.client);
                   const isSel = selected === issue.key;
                   const pick = () => setSelected(isSel ? null : issue.key);
+                  // the card is a div, not a button: the ticket number inside is a link, and a link cannot sit inside a button
                   return (
-                    // a div, not a button: the ticket number inside is a link, and a link cannot sit inside a button
+                    <React.Fragment key={issue.id}>
+                    {startsUndated && (
+                      <div className="flex items-center gap-2 pt-2 text-xs text-gray-500">
+                        <span className="font-medium">No {label.toLowerCase()}</span><span>{col.items.filter(i => !dateOfIssue(i, dateType)).length}</span><span className="flex-1 border-t border-gray-300" />
+                      </div>
+                    )}
                     <div
-                      key={issue.id}
                       role="button"
                       tabIndex={0}
                       onClick={pick}
@@ -117,9 +124,10 @@ const DueDateBoard: React.FC<{ issues: JiraIssue[]; dateType?: DateType }> = ({ 
                       <div className="mt-1.5 flex items-center gap-2">
                         <span className="min-w-0 flex-1 truncate text-xs text-gray-500" title={issue.assignee || 'Unassigned'}>{issue.assignee || 'Unassigned'}</span>
                         <span className="min-w-0 max-w-[50%] truncate px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-700" title={issue.status}>{issue.status}</span>
-                        <span className={`shrink-0 whitespace-nowrap px-2 py-0.5 rounded text-xs font-medium ${CHIP[tone]}`}>{short(date)}</span>
+                        <span className={`shrink-0 whitespace-nowrap px-2 py-0.5 rounded text-xs font-medium ${CHIP[tone]}`}>{date ? short(date) : 'No date'}</span>
                       </div>
                     </div>
+                    </React.Fragment>
                   );
                 })}
               </div>
@@ -127,8 +135,6 @@ const DueDateBoard: React.FC<{ issues: JiraIssue[]; dateType?: DateType }> = ({ 
           ))}
         </div>
       </div>
-
-      {board.noDate > 0 && <p className="text-xs text-gray-500">Not shown: {board.noDate} with no {label.toLowerCase()}.</p>}
 
       {/* Details of the selected card */}
       {chosen && (

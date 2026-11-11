@@ -44,12 +44,21 @@ const items = [
 ];
 const board = () => buildBoard(items, TUE, (t) => t.date, (t) => t.k);
 
-test('the board has the four columns in order and counts the tickets without a date', () => {
+test('the board has the four columns in order; a ticket with no date goes last in Later, after every dated one', () => {
   const b = board();
   assert.deepEqual(b.columns.map((c) => c.id), BOARD_COLUMNS.map((c) => c.id));
   assert.equal(b.noDate, 1);
   assert.deepEqual(b.columns.find((c) => c.id === 'overdue').items.map((t) => t.k), ['NGK-9', 'NGK-1']);   // oldest first
-  assert.deepEqual(b.columns.find((c) => c.id === 'later').items.map((t) => t.k), ['NGK-6']);
+  assert.deepEqual(b.columns.find((c) => c.id === 'later').items.map((t) => t.k), ['NGK-6', 'NGK-7']);     // NGK-7 has no date
+});
+
+test('several tickets with no date follow the dated ones in key order and appear in no other column', () => {
+  const more = [...items, { k: 'NGK-20', date: null }, { k: 'NGK-5', date: null }];
+  const b = buildBoard(more, TUE, (t) => t.date, (t) => t.k);
+  assert.equal(b.noDate, 3);
+  assert.deepEqual(b.columns.find((c) => c.id === 'later').items.map((t) => t.k), ['NGK-6', 'NGK-5', 'NGK-7', 'NGK-20']);
+  for (const c of b.columns.filter((c) => c.id !== 'later')) assert.ok(c.items.every((t) => t.date));
+  assert.equal(b.columns.reduce((n, c) => n + c.items.length, 0), more.length);   // nothing is dropped
 });
 
 test('inside a column tickets are ordered by date, then by key with numbers compared as numbers', () => {
@@ -68,4 +77,6 @@ test('the date chip is red when late, otherwise it follows the status bucket', (
   assert.equal(chipTone(d('2026-11-09'), TUE, 'done'), 'done');       // done is never late
   assert.equal(chipTone(d('2026-11-10'), TUE, 'aligned'), 'aligned');  // due today is not late yet
   assert.equal(chipTone(d('2026-11-18'), TUE, 'blocked'), 'blocked');
+  assert.equal(chipTone(null, TUE, 'aligned'), 'aligned');             // no date cannot be late
+  assert.equal(chipTone(null, TUE, 'done'), 'done');
 });
