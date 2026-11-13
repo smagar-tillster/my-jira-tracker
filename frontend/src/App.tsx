@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import JiraTasksTracker from './components/JiraTasksTracker';
-import QuickAnalysisTracker from './components/QuickAnalysisTracker';
+import QuickAnalysis from './components/QuickAnalysis';
 import ReleasePrReports from './components/ReleasePrReports';
 import AppDrawer from './components/shell/AppDrawer';
 import TabStrip from './components/shell/TabStrip';
@@ -10,7 +10,7 @@ import MonitoringApp from './components/apps/MonitoringApp';
 import ReportViewer from './components/apps/ReportViewer';
 import ComingSoon from './components/apps/ComingSoon';
 import { APP_BY_ID } from './apps/registry';
-import { jiraApi, reviewsApi } from './services/api';
+import { jiraApi, reviewsApi, quickApi } from './services/api';
 import { JiraIssue } from './types';
 
 const OPEN_APPS_KEY = 'mytracker.openApps.v1';
@@ -44,6 +44,7 @@ function App() {
   const [activeId, setActiveId] = useState<string | null>(() => loadOpenApps().active);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [reviewDrafts, setReviewDrafts] = useState(0);
+  const [quickNew, setQuickNew] = useState(0); // new sprint tickets found by Quick Analysis since the page was last opened
 
   const [initialLoaded, setInitialLoaded] = useState(false);
   const initialLoadRef = useRef(false);
@@ -80,9 +81,25 @@ function App() {
     return () => { alive = false; clearInterval(t); window.removeEventListener('focus', poll); window.removeEventListener('reviews-changed', poll); };
   }, []);
 
-  const bellItems: BellItem[] = reviewDrafts > 0
-    ? [{ id: 'review-drafts', icon: '📝', text: `${reviewDrafts} PR review draft${reviewDrafts === 1 ? '' : 's'} ready`, detail: 'Read them and post from PR Reviews', onClick: () => openApp('prReviews') }]
-    : [];
+  // Bell: Quick Analysis found new tickets in the sprint. It clears when the Quick Analysis page is opened. Quiet on failure.
+  useEffect(() => {
+    let alive = true;
+    const poll = () => quickApi.status().then(s => { if (alive) setQuickNew(s.unviewedNew || 0); }).catch(() => {});
+    poll();
+    const t = setInterval(poll, 60000);
+    window.addEventListener('focus', poll);
+    window.addEventListener('quick-changed', poll); // the page marked something read or was opened: update the badge now
+    return () => { alive = false; clearInterval(t); window.removeEventListener('focus', poll); window.removeEventListener('quick-changed', poll); };
+  }, []);
+
+  const bellItems: BellItem[] = [
+    ...(quickNew > 0
+      ? [{ id: 'quick-analysis', icon: '🔍', text: `Quick analysis: ${quickNew} new ticket${quickNew === 1 ? '' : 's'}`, detail: 'See the new tickets, FE suggestions and my priorities', onClick: () => openApp('quickAnalysis') }]
+      : []),
+    ...(reviewDrafts > 0
+      ? [{ id: 'review-drafts', icon: '📝', text: `${reviewDrafts} PR review draft${reviewDrafts === 1 ? '' : 's'} ready`, detail: 'Read them and post from PR Reviews', onClick: () => openApp('prReviews') }]
+      : []),
+  ];
 
   // Ctrl/Cmd+K toggles the apps drawer
   useEffect(() => {
@@ -226,16 +243,7 @@ function App() {
           />
         );
       case 'quickAnalysis':
-        return (
-          <QuickAnalysisTracker
-            sprintIssues={issues}
-            myIssues={myIssues}
-            sprintLoading={loading}
-            myLoading={myLoading}
-            onRefreshSprint={fetchIssues}
-            onRefreshMe={fetchMyIssues}
-          />
-        );
+        return <QuickAnalysis active={activeId === 'quickAnalysis'} />;
       case 'releases':
         return <ReleasePrReports />;
       case 'prReviews':
