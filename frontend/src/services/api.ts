@@ -457,7 +457,7 @@ export const quickApi = {
 
 // ---------------------------------------------------------------- Trends
 export type TrendBasis = 'sprint' | 'created' | 'resolved';
-export type TrendGroup = 'type' | 'client' | 'assignee';
+export type TrendGroup = 'all' | 'type' | 'client' | 'assignee';
 export type TrendMonths = 3 | 6;
 export interface TrendsStatus {
   running: boolean; lastSyncAt: string | null; lastStatus: 'running' | 'ok' | 'failed' | null; lastError: string | null;
@@ -467,6 +467,8 @@ export interface TrendSeries { name: string; total: number; rank: number }
 export interface TrendFilters { type?: string; client?: string; assignee?: string; feTeam?: boolean }
 export interface SprintTrend {
   basis: TrendBasis; group: TrendGroup; months: string[]; series: TrendSeries[]; counts: Record<string, number[]>;
+  /** For the tiles, over the tickets counted in the months shown. */
+  summary: { stories: number; defects: number; topClient: { name: string; count: number } | null };
   /** Distinct tickets per month (a ticket with two clients is one here although it is under both clients in `counts`). */
   totals: number[];
   options: { types: string[]; clients: string[]; assignees: string[] };

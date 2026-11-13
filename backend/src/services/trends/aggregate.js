@@ -35,12 +35,14 @@ const addMonths = (month, n) => {
   return `${Math.floor(t / 12)}-${String((t % 12) + 1).padStart(2, '0')}`;
 };
 
-export const GROUPS = ['type', 'client', 'assignee'];
+export const GROUPS = ['all', 'type', 'client', 'assignee'];
+const ALL = 'All tickets';
 const NO_CLIENT = 'No client';
 const NO_ASSIGNEE = 'Unassigned';
 
 /** The series a ticket belongs to for a grouping. A ticket with several clients counts under each of them. */
 const valuesFor = (row, group) => {
+  if (group === 'all') return [ALL];
   if (group === 'client') return row.clients?.length ? row.clients : [NO_CLIENT];
   if (group === 'assignee') return [row.assignee || NO_ASSIGNEE];
   return [row.type || 'Unknown'];
@@ -53,7 +55,8 @@ const rank = (rows, group) => {
 };
 
 /**
- * Tickets per month, split by type, client or assignee.
+ * Tickets per month: all together, or split by type, client or assignee.
+ * `summary` is for the tiles, over the tickets counted in the months shown: stories, defects, and the client with the most tickets (tickets with no client are not a client).
  *   months    how many months back from the current one (3 or 6)
  *   filters   { type, client, assignee, feTeam }: a ticket must match every one given; feTeam keeps tickets assigned to a member of `feMembers`
  * Months after the current one are not shown (sprints that have not started); their tickets are counted in `future`.
@@ -61,7 +64,7 @@ const rank = (rows, group) => {
  * Other; ranking over all history would paint almost every assignee gray). A change of filter, basis or range can therefore change colors;
  * hiding series in the legend does not. `options` lists every value over all tickets for the filter menus.
  */
-export const aggregate = ({ rows, basis = 'sprint', group = 'type', months = 6, filters = {}, feMembers = new Set(), now = new Date() }) => {
+export const aggregate = ({ rows, basis = 'sprint', group = 'all', months = 6, filters = {}, feMembers = new Set(), now = new Date() }) => {
   if (!BASES.includes(basis)) throw new Error(`basis must be one of ${BASES.join(', ')}`);
   if (!GROUPS.includes(group)) throw new Error(`group must be one of ${GROUPS.join(', ')}`);
   const current = monthOf(now.toISOString());
@@ -79,6 +82,8 @@ export const aggregate = ({ rows, basis = 'sprint', group = 'type', months = 6, 
   const counts = {};
   const totals = list.map(() => 0);
   let noDate = 0; let future = 0; let before = 0; let inRange = 0;
+  const summary = { stories: 0, defects: 0, topClient: null };
+  const clientCounts = new Map();
   for (const r of kept) {
     const m = monthOf(dateFor(r, basis));
     if (!m) { noDate++; continue; }
@@ -86,9 +91,14 @@ export const aggregate = ({ rows, basis = 'sprint', group = 'type', months = 6, 
     const i = index.get(m);
     if (i === undefined) { before++; continue; }
     inRange++; totals[i]++;
+    if (r.type === 'Story') summary.stories++;
+    else if (r.type === 'Defect') summary.defects++;
+    for (const c of r.clients?.length ? r.clients : []) clientCounts.set(c, (clientCounts.get(c) || 0) + 1);
     for (const v of valuesFor(r, group)) (counts[v] ||= list.map(() => 0))[i]++;
   }
   const series = Object.entries(counts).map(([name, c]) => ({ name, total: c.reduce((a, b) => a + b, 0) }))
     .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name)).map((s, i) => ({ ...s, rank: i + 1 }));
-  return { basis, group, months: list, series, counts, totals, options, tickets: rows.length, matching: kept.length, inRange, before, future, noDate };
+  const topClient = [...clientCounts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0];
+  if (topClient) summary.topClient = { name: topClient[0], count: topClient[1] };
+  return { basis, group, summary, months: list, series, counts, totals, options, tickets: rows.length, matching: kept.length, inRange, before, future, noDate };
 };

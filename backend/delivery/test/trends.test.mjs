@@ -43,7 +43,7 @@ const rows = () => [
 ];
 
 test('tickets are counted in the month of their first sprint, once each, with every month shown and zero-filled', () => {
-  const a = A.aggregate({ rows: rows(), basis: 'sprint', months: 6, now: NOW });
+  const a = A.aggregate({ rows: rows(), basis: 'sprint', group: 'type', months: 6, now: NOW });
   assert.deepEqual(a.months, ['2026-06', '2026-07', '2026-08', '2026-09', '2026-10', '2026-11']);
   assert.deepEqual(a.counts.Story, [0, 0, 0, 2, 0, 0]);
   assert.deepEqual(a.counts.Defect, [0, 0, 0, 0, 2, 0]);
@@ -61,9 +61,9 @@ test('3 months is the last three; there is no "all" any more', () => {
 });
 
 test('the same tickets can be counted by created month or resolved month instead', () => {
-  const c = A.aggregate({ rows: rows(), basis: 'created', months: 6, now: NOW });
+  const c = A.aggregate({ rows: rows(), basis: 'created', group: 'type', months: 6, now: NOW });
   assert.deepEqual(c.counts.Story, [0, 0, 1, 1, 0, 1]);
-  const r = A.aggregate({ rows: rows(), basis: 'resolved', months: 6, now: NOW });
+  const r = A.aggregate({ rows: rows(), basis: 'resolved', group: 'type', months: 6, now: NOW });
   assert.deepEqual(r.counts.Story, [0, 0, 0, 1, 1, 0]);
   assert.deepEqual(r.counts.Defect, [0, 0, 0, 0, 1, 0]);
   assert.equal(r.noDate, 4);
@@ -78,6 +78,20 @@ test('grouped by client a ticket counts under each of its clients, and one with 
   assert.deepEqual(a.counts['No client'], [0, 0, 0, 0, 1, 0]);   // A-4
   assert.deepEqual(a.totals, [0, 0, 0, 2, 2, 1]);                // A-2 is one ticket although it is under two clients
   assert.deepEqual(a.series.map((s) => s.name), ['BK', 'PLK', 'No client']);   // ranked by tickets in the months shown: 3, 2, 1
+});
+
+test('with no split there is one line, All tickets, which is the month totals', () => {
+  const a = A.aggregate({ rows: rows(), months: 6, now: NOW });
+  assert.equal(a.group, 'all');
+  assert.deepEqual(a.series.map((s) => s.name), ['All tickets']);
+  assert.deepEqual(a.counts['All tickets'], a.totals);
+});
+
+test('the tile numbers: stories, defects and the top client, over the tickets in view only', () => {
+  const a = A.aggregate({ rows: rows(), months: 6, now: NOW });
+  assert.deepEqual(a.summary, { stories: 2, defects: 2, topClient: { name: 'BK', count: 3 } });   // A-1, A-2 (Story), A-3, A-4 (Defect); A-6, A-8 are not in view
+  assert.deepEqual(A.aggregate({ rows: rows(), months: 6, filters: { assignee: 'Ann' }, now: NOW }).summary, { stories: 1, defects: 1, topClient: { name: 'BK', count: 1 } });   // PLK ties and sorts after BK
+  assert.equal(A.aggregate({ rows: [], now: NOW }).summary.topClient, null);
 });
 
 test('grouped by assignee, nobody is "Unassigned"', () => {
@@ -104,7 +118,7 @@ test('filters narrow the tickets; FE team keeps the members only; menus list eve
 });
 
 test('series are ranked by their tickets in view, and only those with tickets in view are listed', () => {
-  const rk = (o) => A.aggregate({ rows: rows(), now: NOW, ...o }).series.map((t) => `${t.name}:${t.rank}:${t.total}`).join(' ');
+  const rk = (o) => A.aggregate({ rows: rows(), group: 'type', now: NOW, ...o }).series.map((t) => `${t.name}:${t.rank}:${t.total}`).join(' ');
   assert.equal(rk({}), 'Defect:1:2 Story:2:2 Task:3:1');                       // A-6 (future), A-7 (no date) and A-8 (old) are not in view
   assert.equal(rk({ basis: 'created', months: 3 }), 'Defect:1:2 Story:2:2 Epic:3:1 Task:4:1');   // A-7 (Epic) was created in November
   assert.equal(rk({ filters: { client: 'BK' } }), 'Story:1:2 Task:2:1');         // ranks close up when a filter removes series
@@ -124,7 +138,8 @@ test('a Jira ticket becomes a row: earliest valid sprint start, assignee, distin
 });
 
 test('the search asks for sprint tickets updated in the window and only the fields the trends use', () => {
-  assert.equal(S.buildJql({ project: 'NGK' }), 'project = NGK AND sprint is not EMPTY AND updated >= -200d ORDER BY created ASC');
+  assert.equal(S.buildJql({ project: 'NGK' }), 'project = NGK AND sprint in ("NGK Sprint") AND type NOT IN (Release, "Test Case Execution-Smoke/Sanity/Regression", Epic) AND issuetype not in subTaskIssueTypes() AND updated >= -200d ORDER BY created ASC');
+  assert.ok(!/openSprints/i.test(S.buildJql()));                    // past sprints count too
   assert.ok(S.WINDOW_DAYS >= 190);                                  // covers 6 months back from the current one
   assert.deepEqual(S.FIELDS, ['issuetype', 'created', 'resolutiondate', 'status', 'updated', 'assignee', 'customfield_16047', 'customfield_10007']);
 });
@@ -193,13 +208,13 @@ test('the routes: counts with group and filters, bad requests, and Refresh with 
   const app = express(); app.use(express.json()); app.use('/api', createTrendsRouter({ service: svc }));
   const server = http.createServer(app); await new Promise((r) => server.listen(0, '127.0.0.1', r));
   try {
-    const ok = await call(server, 'GET', '/api/trends/sprint-tickets?basis=sprint&months=6');
+    const ok = await call(server, 'GET', '/api/trends/sprint-tickets?basis=sprint&months=6&group=type');
     assert.equal(ok.status, 200);
     assert.equal(ok.json.data.months.length, 6);
     assert.deepEqual(ok.json.data.counts.Story, [0, 0, 0, 2, 0, 0]);
     assert.equal(ok.json.data.status.tickets, 8);
     const def = await call(server, 'GET', '/api/trends/sprint-tickets');
-    assert.deepEqual([def.json.data.basis, def.json.data.group, def.json.data.months.length], ['sprint', 'type', 6]);
+    assert.deepEqual([def.json.data.basis, def.json.data.group, def.json.data.months.length], ['sprint', 'all', 6]);
     const byClient = await call(server, 'GET', '/api/trends/sprint-tickets?group=client');
     assert.deepEqual(byClient.json.data.counts.BK, [0, 0, 0, 2, 0, 1]);
     const fe = await call(server, 'GET', '/api/trends/sprint-tickets?group=assignee&feTeam=1');

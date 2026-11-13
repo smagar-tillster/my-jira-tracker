@@ -51,42 +51,19 @@ export const labelPlan = (months: readonly string[], bandWidth: number) => {
   return months.map((m, i) => ({ month: m, show: i % every === 0, showYear: i === 0 || m.endsWith('-01') }));
 };
 
-// ---------------------------------------------------------------- layout
-export const BAR_MAX = 24;       // a bar is never thicker than this, however wide its slot
-export const GAP = 2;            // the surface-colored gap between touching segments
-export const RADIUS = 4;         // the data end (top) of a column is rounded, the baseline end is square
+// ---------------------------------------------------------------- lines
+/** Dash pattern and marker shape per series position, so a line is told apart without its color (the first, or only, line is solid). */
+export const LINE_DASH: readonly string[] = ['', '6 3', '2 2', '8 3 2 3', '', '6 3', ''];
+export const MARKERS = ['circle', 'square', 'triangle', 'diamond', 'circle', 'square', 'triangle'] as const;
+export const LAST_SEGMENT_DASH = '4 4';      // the month in progress is drawn dashed
 
-export const columnLayout = (width: number, count: number, left: number, right: number) => {
+/** The x of each month: the middle of its slot, so the first and last points keep a margin from the axes. */
+export const plotLayout = (width: number, count: number, left: number, right: number) => {
   const plot = Math.max(0, width - left - right);
   const band = count ? plot / count : plot;
-  const bar = Math.max(2, Math.min(BAR_MAX, Math.floor(band * 0.62)));
-  return { plot, band, bar, x: (i: number) => left + i * band + (band - bar) / 2, center: (i: number) => left + i * band + band / 2 };
+  return { plot, band, x: (i: number) => left + i * band + band / 2 };
 };
 
-export interface Segment { index: number; value: number; y: number; h: number; top: boolean }
-
-/**
- * Stacks values from the baseline up. `px` converts a value to pixels. Every segment above the first leaves a GAP of surface at its lower
- * edge so touching segments read apart; a segment too small to spare the gap keeps its full height. Zero values are skipped.
- * Returns the segments bottom to top; `top` marks the last one, the data end that gets the rounded corners.
- */
-export const stackSegments = (values: readonly number[], baseY: number, px: (v: number) => number): Segment[] => {
-  const out: Segment[] = [];
-  let cum = 0;
-  values.forEach((v, index) => {
-    if (!(v > 0)) return;
-    const lowEdge = baseY - px(cum);
-    const topEdge = baseY - px(cum + v);
-    const gap = out.length && lowEdge - topEdge > GAP + 1 ? GAP : 0;
-    out.push({ index, value: v, y: topEdge, h: lowEdge - topEdge - gap, top: false });
-    cum += v;
-  });
-  if (out.length) out[out.length - 1].top = true;
-  return out;
-};
-
-/** The outline of a rectangle whose top corners are rounded and whose bottom corners are square. */
-export const roundedTopPath = (x: number, y: number, w: number, h: number, r = RADIUS): string => {
-  const rr = Math.max(0, Math.min(r, h, w / 2));
-  return `M${x},${y + h}L${x},${y + rr}Q${x},${y} ${x + rr},${y}L${x + w - rr},${y}Q${x + w},${y} ${x + w},${y + rr}L${x + w},${y + h}Z`;
-};
+/** An SVG path through the points (straight segments, no smoothing: a smoothed line invents values between months). */
+export const linePath = (xs: readonly number[], ys: readonly number[]): string => xs.map((x, i) => `${i ? 'L' : 'M'}${round(x)},${round(ys[i])}`).join('');
+const round = (n: number) => Math.round(n * 100) / 100;

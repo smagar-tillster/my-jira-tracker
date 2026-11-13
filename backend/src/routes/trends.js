@@ -9,10 +9,10 @@ export const createTrendsRouter = ({ service = trendsService } = {}) => {
   // GET /api/trends/status  — the sync state
   router.get('/trends/status', (req, res) => res.json({ success: true, data: service.status() }));
 
-  // GET /api/trends/sprint-tickets?basis=sprint|created|resolved&months=3|6&group=type|client|assignee&type=&client=&assignee=&feTeam=1
+  // GET /api/trends/sprint-tickets?basis=sprint|created|resolved&months=3|6&group=all|type|client|assignee&type=&client=&assignee=&feTeam=1
   router.get('/trends/sprint-tickets', (req, res) => {
     const basis = String(req.query.basis || 'sprint');
-    const group = String(req.query.group || 'type');
+    const group = String(req.query.group || 'all');
     const months = Number(req.query.months || 6);
     if (!BASES.includes(basis) || !GROUPS.includes(group) || !MONTH_CHOICES.includes(months)) {
       return res.status(400).json({ success: false, error: `basis is one of ${BASES.join(', ')}; group is one of ${GROUPS.join(', ')}; months is one of ${MONTH_CHOICES.join(', ')}` });

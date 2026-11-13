@@ -24,7 +24,7 @@ export const createTrendsService = ({ sync = runTrendsSync, now = () => new Date
     return { running, lastSyncAt: s.lastSyncAt, lastStatus: running ? 'running' : s.lastStatus, lastError: s.lastError, lastDurationMs: s.lastDurationMs, tickets: store.count(), firstLoad: !s.lastSyncAt };
   };
 
-  const sprintTickets = ({ basis = 'sprint', group = 'type', months = 6, filters = {} } = {}) =>
+  const sprintTickets = ({ basis = 'sprint', group = 'all', months = 6, filters = {} } = {}) =>
     aggregate({ rows: store.allRows(), basis, group, months, filters, feMembers: filters.feTeam ? feMembers() : new Set(), now: now() });
 
   return { refresh, status, sprintTickets, isRunning: () => running };

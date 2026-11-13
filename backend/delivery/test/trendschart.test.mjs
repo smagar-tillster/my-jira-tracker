@@ -68,42 +68,22 @@ test('month labels, and which ones to print when the columns get narrow', () => 
   assert.deepEqual(C.labelPlan(months, 10).map((l) => l.show), [true, false, false, true]);
 });
 
-test('a column is at most 24px thick, centered in its slot, and the slots share the plot width', () => {
-  const wide = C.columnLayout(1000, 6, 40, 10);
-  assert.equal(wide.plot, 950);
-  assert.equal(wide.band, 950 / 6);
-  assert.equal(wide.bar, 24);                                         // capped: the rest of the slot is air
-  assert.equal(wide.center(0), 40 + wide.band / 2);
-  assert.equal(wide.x(0) + wide.bar / 2, wide.center(0));
-  assert.ok(Math.abs(wide.center(5) - wide.center(4) - wide.band) < 1e-9);   // evenly spaced
-  const narrow = C.columnLayout(300, 24, 40, 10);
-  assert.ok(narrow.bar < 24 && narrow.bar >= 2);                      // squeezed but never below 2px
-  assert.equal(C.columnLayout(1000, 0, 40, 10).band, 950);            // no months: no division by zero
+test('points sit in the middle of their month slot, evenly spaced, with the slots sharing the plot width', () => {
+  const l = C.plotLayout(1000, 6, 40, 10);
+  assert.equal(l.plot, 950);
+  assert.equal(l.band, 950 / 6);
+  assert.equal(l.x(0), 40 + l.band / 2);
+  assert.ok(Math.abs(l.x(5) - l.x(4) - l.band) < 1e-9);
+  assert.equal(C.plotLayout(1000, 0, 40, 10).band, 950);              // no months: no division by zero
+  assert.equal(C.plotLayout(30, 3, 40, 10).plot, 0);                  // a width smaller than the margins does not go negative
 });
 
-test('segments stack from the baseline up with a 2px gap between touching ones, and the last one is the rounded end', () => {
-  const px = (v) => v * 10;                                           // 10px per ticket
-  const seg = C.stackSegments([3, 0, 2, 4], 200, px);
-  assert.deepEqual(seg.map((s) => [s.index, s.value]), [[0, 3], [2, 2], [3, 4]]);     // the zero is skipped
-  assert.equal(seg[0].y, 170); assert.equal(seg[0].h, 30);                             // bottom segment: no gap
-  assert.equal(seg[1].y, 150); assert.equal(seg[1].h, 20 - C.GAP);                     // starts 2px above the one below
-  assert.equal(seg[2].y, 110); assert.equal(seg[2].h, 40 - C.GAP);
-  assert.deepEqual(seg.map((s) => s.top), [false, false, true]);
-  assert.equal(seg[1].y + seg[1].h + C.GAP, seg[0].y);                                 // the gap sits exactly between them
-  assert.equal(seg[2].y + seg[2].h + C.GAP, seg[1].y);
-  assert.deepEqual(C.stackSegments([0, 0], 200, px), []);
-  assert.equal(C.stackSegments([5], 200, px)[0].top, true);
-});
-
-test('a segment too small to spare the gap keeps its full height, so a single ticket is still visible', () => {
-  const seg = C.stackSegments([10, 1], 500, (v) => v * 2);            // the 1 is 2px tall
-  assert.equal(seg[1].h, 2);                                          // not 0: the gap is dropped for it
-  assert.ok(C.stackSegments([10, 1], 500, (v) => v * 4)[1].h >= 2);
-});
-
-test('the rounded top is only on the data end: square at the baseline, corners clamped for a short or narrow bar', () => {
-  assert.equal(C.roundedTopPath(10, 20, 24, 50), 'M10,70L10,24Q10,20 14,20L30,20Q34,20 34,24L34,70Z');
-  assert.match(C.roundedTopPath(10, 20, 24, 2), /Q10,20 12,20/);      // a 2px segment gets a 2px radius, not 4
-  assert.match(C.roundedTopPath(10, 20, 4, 50), /Q10,20 12,20/);      // a 4px wide bar: radius is half the width
-  assert.ok(C.roundedTopPath(0, 0, 24, 30).startsWith('M0,30L0,4'));  // the left edge runs straight down to the baseline
+test('a line is straight segments through its points (no smoothing), and the dash and marker sets tell lines apart without color', () => {
+  assert.equal(C.linePath([10, 20, 30], [100, 50, 75]), 'M10,100L20,50L30,75');
+  assert.equal(C.linePath([10.123456], [5]), 'M10.12,5');
+  assert.equal(C.linePath([], []), '');
+  assert.equal(C.LINE_DASH[0], '');                                   // the first (or only) line is solid
+  assert.equal(new Set(C.LINE_DASH.slice(0, 4)).size, 4);             // the first four lines differ in dash
+  assert.equal(new Set(C.MARKERS.slice(0, 4)).size, 4);               // and in marker shape
+  assert.ok(C.LINE_DASH.length >= C.MAX_NAMED + 0 && C.MARKERS.length >= C.MAX_NAMED);   // one per colored series, Other included
 });

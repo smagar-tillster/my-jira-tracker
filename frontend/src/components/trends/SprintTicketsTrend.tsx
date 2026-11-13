@@ -1,26 +1,21 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { trendsApi, SprintTrend, TrendBasis, TrendFilters, TrendGroup, TrendMonths } from '../../services/api';
+import { trendsApi, SprintTrend, TrendFilters, TrendGroup, TrendMonths } from '../../services/api';
 import { buildSeries, seriesCounts, monthLabel, OTHER_COLOR, SERIES_COLORS, MAX_NAMED } from '../../utils/trendsChart';
-import StackedColumns, { ColumnSeries, INK } from './StackedColumns';
+import LineChart, { LineSeries, INK } from './LineChart';
 
-const BASES: { id: TrendBasis; label: string; hint: string }[] = [
-  { id: 'sprint', label: 'Sprint start', hint: 'Counted in the month its first sprint started: when it entered sprint planning. Each ticket once.' },
-  { id: 'created', label: 'Created', hint: 'Counted in the month it was created in Jira.' },
-  { id: 'resolved', label: 'Resolved', hint: 'Counted in the month it was resolved. A ticket not resolved yet is not counted.' },
-];
 const RANGES: { id: TrendMonths; label: string }[] = [{ id: 3, label: '3 months' }, { id: 6, label: '6 months' }];
 const GROUPS: { id: TrendGroup; label: string; one: string; many: string; hint: string }[] = [
-  { id: 'type', label: 'Type', one: 'type', many: 'types', hint: 'Split each month by ticket type.' },
-  { id: 'client', label: 'Client', one: 'client', many: 'clients', hint: 'Split each month by the Client field. A ticket with several clients is counted under each; a ticket with none is "No client".' },
-  { id: 'assignee', label: 'Assignee', one: 'assignee', many: 'assignees', hint: 'Split each month by who the ticket is assigned to now.' },
+  { id: 'all', label: 'All tickets', one: 'ticket', many: 'tickets', hint: 'One line with every ticket.' },
+  { id: 'client', label: 'By client', one: 'client', many: 'clients', hint: 'One line per client. A ticket with several clients is counted under each; a ticket with none is "No client".' },
+  { id: 'type', label: 'By type', one: 'type', many: 'types', hint: 'One line per ticket type.' },
 ];
 
 const ago = (iso: string) => {
   const m = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000));
   return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`;
 };
-const n1 = (x: number) => (Number.isInteger(x) ? String(x) : x.toFixed(1));
-const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString('en-US')} ${n === 1 ? one : many}`;
+const pct = (a: number, b: number) => (b ? Math.round((a / b) * 100) : 0);
 
 const Segmented = <T extends string | number>({ value, options, onChange, label }: {
   value: T; options: { id: T; label: string; hint?: string }[]; onChange: (v: T) => void; label: string;
@@ -36,51 +31,69 @@ const Segmented = <T extends string | number>({ value, options, onChange, label 
   </div>
 );
 
-const Tile = ({ label, value, sub }: { label: string; value: string; sub?: string }) => (
-  <div className="bg-white rounded-lg shadow-sm border border-gray-200 px-4 py-3 min-w-[150px]">
-    <div className="text-2xl font-semibold text-gray-900 tabular-nums">{value}</div>
+const Tile: React.FC<{ label: string; value: string; sub?: string; children?: React.ReactNode }> = ({ label, value, sub, children }) => (
+  <div className="bg-white rounded-lg shadow-sm border border-gray-200 px-4 py-3 min-w-[170px] flex-1">
     <div className="text-xs text-gray-500">{label}</div>
+    <div className="text-2xl font-semibold text-gray-900 tabular-nums truncate" title={value}>{value}</div>
     {sub && <div className="text-xs text-gray-400 mt-0.5">{sub}</div>}
+    {children}
   </div>
 );
 
 export interface TrendViewProps {
   data: SprintTrend | null; loading: boolean; error: string | null;
-  basis: TrendBasis; group: TrendGroup; months: TrendMonths; filters: TrendFilters; hidden: ReadonlySet<string>; view: 'chart' | 'table';
-  onBasis: (b: TrendBasis) => void; onGroup: (g: TrendGroup) => void; onMonths: (m: TrendMonths) => void; onFilters: (f: TrendFilters) => void; onToggleSeries: (id: string) => void; onShowAll: () => void;
+  group: TrendGroup; months: TrendMonths; filters: TrendFilters; hidden: ReadonlySet<string>; view: 'chart' | 'table';
+  onGroup: (g: TrendGroup) => void; onMonths: (m: TrendMonths) => void; onFilters: (f: TrendFilters) => void; onToggleSeries: (id: string) => void; onShowAll: () => void;
   onView: (v: 'chart' | 'table') => void; onRefresh: () => void;
 }
 
 /** The Sprint tickets by month page for given data and choices. No loading here, so it can be rendered on its own. */
-export const SprintTicketsTrendView: React.FC<TrendViewProps> = ({ data, loading, error, basis, group, months, filters, hidden, view, onBasis, onGroup, onMonths, onFilters, onToggleSeries, onShowAll, onView, onRefresh }) => {
+export const SprintTicketsTrendView: React.FC<TrendViewProps> = ({ data, loading, error, group, months, filters, hidden, view, onGroup, onMonths, onFilters, onToggleSeries, onShowAll, onView, onRefresh }) => {
   const status = data?.status;
   const groupInfo = GROUPS.find(g => g.id === group) as (typeof GROUPS)[number];
   const series = useMemo(() => (data ? buildSeries(data.series, groupInfo.many) : []), [data, groupInfo]);
   const monthCount = data?.months.length ?? 0;
 
-  // every series with its counts per month; the legend turns series off, and everything below follows the same slice
-  const all: ColumnSeries[] = useMemo(() => (data ? series.map(s => ({ series: s, counts: seriesCounts(s, data.counts, monthCount) })) : []), [data, series, monthCount]);
+  // every line with its counts per month; the position (not the visible order) picks its dash and marker, so hiding a line changes no other
+  const all: LineSeries[] = useMemo(() => (data ? series.map((s, position) => ({ series: s, position, counts: seriesCounts(s, data.counts, monthCount) })) : []), [data, series, monthCount]);
   const shown = all.filter(d => !hidden.has(d.series.id));
   const sums = all.map(d => d.counts.reduce((a, b) => a + b, 0));
-  const monthTotals = (data?.months ?? []).map((_, i) => shown.reduce((n, d) => n + d.counts[i], 0));
-  const total = monthTotals.reduce((a, b) => a + b, 0);
-  const busiest = monthTotals.length ? monthTotals.indexOf(Math.max(...monthTotals)) : -1;
-  const top = shown.length ? shown.reduce((best, d) => (d.counts.reduce((a, b) => a + b, 0) > best.counts.reduce((a, b) => a + b, 0) ? d : best), shown[0]) : null;
-  const topSum = top ? top.counts.reduce((a, b) => a + b, 0) : 0;
-  const basisInfo = BASES.find(b => b.id === basis) as (typeof BASES)[number];
   const empty = !!data && data.tickets === 0;
   const filtered = !!filters.feTeam || !!filters.type || !!filters.client || !!filters.assignee;
 
+  const totals = data?.totals ?? [];
+  const busiest = totals.length ? totals.indexOf(Math.max(...totals)) : -1;
+  const inRange = data?.inRange ?? 0;
+  const sd = data ? data.summary.stories + data.summary.defects : 0;
+
   return (
     <div className="space-y-4">
-      {/* Filters: rows above the content they scope */}
+      {error || status?.lastStatus === 'failed' ? (
+        <div className="px-3 py-2 text-sm bg-red-50 text-red-800 border border-red-200 rounded">❌ {error || `The last read from Jira failed: ${status?.lastError || 'unknown error'}`}{data ? ' The numbers below are from the last good read.' : ''}</div>
+      ) : null}
+
+      {data && !empty && (
+        <div className="flex flex-wrap gap-3">
+          <Tile label="Total tickets" value={inRange.toLocaleString('en-US')} sub={`${monthCount ? Math.round(inRange / monthCount) : 0} per month, ${plural(monthCount, 'month')}`} />
+          <Tile label="Stories vs defects" value={`${data.summary.stories.toLocaleString('en-US')} / ${data.summary.defects.toLocaleString('en-US')}`}
+            sub={sd ? `${pct(data.summary.stories, inRange)}% stories, ${pct(data.summary.defects, inRange)}% defects` : 'None in view'}>
+            <div className="flex h-1.5 rounded-full overflow-hidden mt-2 gap-0.5" aria-hidden>
+              <div style={{ width: `${sd ? (data.summary.stories / sd) * 100 : 0}%`, background: SERIES_COLORS[0] }} />
+              <div style={{ width: `${sd ? (data.summary.defects / sd) * 100 : 0}%`, background: SERIES_COLORS[1] }} />
+            </div>
+          </Tile>
+          <Tile label="Top client" value={data.summary.topClient?.name ?? '–'} sub={data.summary.topClient ? `${plural(data.summary.topClient.count, 'ticket')}, ${pct(data.summary.topClient.count, inRange)}% of tickets shown` : 'No ticket has a client'} />
+          <Tile label="Busiest month" value={busiest >= 0 && totals[busiest] > 0 ? monthLabel(data.months[busiest]).full : '–'} sub={busiest >= 0 && totals[busiest] > 0 ? plural(totals[busiest], 'ticket') : undefined} />
+        </div>
+      )}
+
+      {/* Controls: rows above the content they scope */}
       <div className="flex items-center gap-x-6 gap-y-2 flex-wrap">
-        <Segmented label="Count by" value={basis} options={BASES} onChange={onBasis} />
-        <Segmented label="Group by" value={group} options={GROUPS} onChange={onGroup} />
+        <Segmented label="Lines" value={group} options={GROUPS} onChange={onGroup} />
         <Segmented label="Show" value={months} options={RANGES} onChange={onMonths} />
         <div className="ml-auto flex items-center gap-3 text-xs text-gray-500">
           {status?.running ? <span>⏳ Reading Jira…</span> : status?.lastSyncAt ? <span title="The numbers change only when you press Refresh">Read from Jira {ago(status.lastSyncAt)} · {status.tickets.toLocaleString('en-US')} tickets</span> : null}
-          <button onClick={onRefresh} disabled={!!status?.running} title="Reads the sprint tickets of the last 200 days from Jira (about a minute). Nothing updates on its own."
+          <button onClick={onRefresh} disabled={!!status?.running} title="Reads the sprint tickets of the last 200 days from Jira. Nothing updates on its own."
             className="px-3 py-1.5 rounded-lg text-sm font-medium bg-white ring-1 ring-gray-300 text-gray-700 hover:bg-gray-100 disabled:opacity-60 disabled:cursor-not-allowed">↻ Refresh</button>
         </div>
       </div>
@@ -90,7 +103,7 @@ export const SprintTicketsTrendView: React.FC<TrendViewProps> = ({ data, loading
           <button onClick={() => onFilters({ ...filters, feTeam: !filters.feTeam })} aria-pressed={!!filters.feTeam}
             title="Tickets assigned to a member of the FE team (the people flagged on the Tasks page)"
             className={`px-3 py-1.5 rounded-lg text-sm font-medium ring-1 ${filters.feTeam ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-gray-700 ring-gray-300 hover:bg-gray-100'}`}>FE team</button>
-          {([['type', 'Type', data.options.types], ['client', 'Client', data.options.clients], ['assignee', 'Assignee', data.options.assignees]] as const).map(([k, label, opts]) => (
+          {([['client', 'Client', data.options.clients], ['assignee', 'Assignee', data.options.assignees], ['type', 'Type', data.options.types]] as const).map(([k, label, opts]) => (
             <label key={k} className="inline-flex items-center gap-1.5">
               <span className="sr-only">{label}</span>
               <select value={filters[k] || ''} onChange={e => onFilters({ ...filters, [k]: e.target.value || undefined })}
@@ -104,44 +117,33 @@ export const SprintTicketsTrendView: React.FC<TrendViewProps> = ({ data, loading
         </div>
       )}
 
-      {(error || status?.lastStatus === 'failed') && (
-        <div className="px-3 py-2 text-sm bg-red-50 text-red-800 border border-red-200 rounded">❌ {error || `The last read from Jira failed: ${status?.lastError || 'unknown error'}`}{data ? ' The numbers below are from the last good read.' : ''}</div>
-      )}
-
       {!data && loading && <p className="text-sm text-gray-500">Loading…</p>}
-      {!data && !loading && !error && status?.firstLoad && <p className="text-sm text-gray-500">Nothing has been read from Jira yet. Press Refresh to read the sprint tickets; it takes about a minute.</p>}
+      {!data && !loading && !error && status?.firstLoad && <p className="text-sm text-gray-500">Nothing has been read from Jira yet. Press Refresh to read the sprint tickets.</p>}
 
       {data && (
-        <>
-          {!empty && data.matching === 0 ? (
-            <div className="bg-white rounded-lg border border-gray-200 p-8 text-center text-gray-500">No ticket matches these filters. <button onClick={() => onFilters({})} className="text-blue-600 hover:underline">Clear filters</button></div>
-          ) : empty ? (
-            <div className="bg-white rounded-lg border border-gray-200 p-8 text-center text-gray-500">
-              <div className="text-3xl mb-2">📈</div>
-              {status?.running ? 'Reading Jira. This can take a minute or two.' : 'No sprint tickets yet. Press Refresh to read them from Jira.'}
-            </div>
-          ) : (
-            <>
-              <div className="flex flex-wrap gap-3">
-                <Tile label="Tickets shown" value={total.toLocaleString('en-US')} sub={`of ${data.inRange.toLocaleString('en-US')} in this range`} />
-                <Tile label="Average per month" value={monthCount ? n1(total / monthCount) : '0'} sub={plural(monthCount, 'month')} />
-                <Tile label="Busiest month" value={busiest >= 0 && monthTotals[busiest] > 0 ? monthLabel(data.months[busiest]).full : '–'} sub={busiest >= 0 && monthTotals[busiest] > 0 ? plural(monthTotals[busiest], 'ticket') : undefined} />
-                <Tile label={`Top ${groupInfo.one}`} value={top && topSum > 0 ? top.series.label : '–'} sub={top && topSum > 0 && total ? `${Math.round((topSum / total) * 100)}% of tickets shown` : undefined} />
+        empty ? (
+          <div className="bg-white rounded-lg border border-gray-200 p-8 text-center text-gray-500">
+            <div className="text-3xl mb-2">📈</div>
+            {status?.running ? 'Reading Jira. This can take a minute.' : 'No sprint tickets yet. Press Refresh to read them from Jira.'}
+          </div>
+        ) : data.matching === 0 ? (
+          <div className="bg-white rounded-lg border border-gray-200 p-8 text-center text-gray-500">No ticket matches these filters. <button onClick={() => onFilters({})} className="text-blue-600 hover:underline">Clear filters</button></div>
+        ) : (
+          <>
+            <section className="bg-white rounded-lg shadow-sm border border-gray-200">
+              <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 flex-wrap">
+                <h2 className="text-[15px] font-semibold text-gray-800">Sprint tickets by month{group === 'all' ? '' : `, by ${groupInfo.one}`}</h2>
+                <span className="text-xs text-gray-500">Counted in the month its first sprint started. Each ticket once.</span>
+                <div className="ml-auto inline-flex rounded-lg overflow-clip ring-1 ring-gray-300 bg-white" role="group" aria-label="View">
+                  {(['chart', 'table'] as const).map(v => (
+                    <button key={v} onClick={() => onView(v)} aria-pressed={view === v}
+                      className={`px-3 py-1 text-sm font-medium ${view === v ? 'bg-indigo-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}>{v === 'chart' ? 'Chart' : 'Table'}</button>
+                  ))}
+                </div>
               </div>
 
-              <section className="bg-white rounded-lg shadow-sm border border-gray-200">
-                <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 flex-wrap">
-                  <h2 className="text-[15px] font-semibold text-gray-800">Sprint tickets by month, by {groupInfo.one}</h2>
-                  <span className="text-xs text-gray-500">{basisInfo.hint}</span>
-                  <div className="ml-auto inline-flex rounded-lg overflow-clip ring-1 ring-gray-300 bg-white" role="group" aria-label="View">
-                    {(['chart', 'table'] as const).map(v => (
-                      <button key={v} onClick={() => onView(v)} aria-pressed={view === v}
-                        className={`px-3 py-1 text-sm font-medium ${view === v ? 'bg-indigo-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}>{v === 'chart' ? 'Chart' : 'Table'}</button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Legend: always present, and it is the type filter */}
+              {/* Legend: with more than one line it is always there, and it is the filter that hides a line */}
+              {group !== 'all' && (
                 <div className="flex flex-wrap items-center gap-2 px-4 pt-3" role="group" aria-label={groupInfo.many}>
                   {all.map((d, i) => {
                     const off = hidden.has(d.series.id);
@@ -157,36 +159,36 @@ export const SprintTicketsTrendView: React.FC<TrendViewProps> = ({ data, loading
                   })}
                   {hidden.size > 0 && <button onClick={onShowAll} className="text-xs text-blue-600 hover:underline ml-1">Show all</button>}
                 </div>
+              )}
 
-                <div className="p-4">
-                  {shown.length === 0 ? <p className="text-sm text-gray-400 py-10 text-center">Nothing to show: every item is hidden or the filters match no ticket. Click an item above, or clear the filters.</p>
-                    : view === 'chart' ? <StackedColumns months={data.months} data={shown} dimmed={loading} />
-                    : <TrendTable months={data.months} label={groupInfo.label} types={data.series.filter(t => !hiddenTypes(series, hidden).has(t.name))} counts={data.counts} dimmed={loading} />}
-                </div>
-              </section>
+              <div className="p-4">
+                {shown.length === 0 ? <p className="text-sm text-gray-400 py-10 text-center">Every line is hidden. Click one above to show it.</p>
+                  : view === 'chart' ? <LineChart months={data.months} data={shown} dimmed={loading} ariaLabel={`Tickets per month${group === 'all' ? '' : `, one line per ${groupInfo.one}`}`} />
+                  : <TrendTable months={data.months} label={groupInfo.label} series={data.series.filter(t => !hiddenNames(series, hidden).has(t.name))} counts={data.counts} totals={data.totals} dimmed={loading} />}
+              </div>
+            </section>
 
-              <p className="text-xs text-gray-500">
-                {plural(data.inRange, 'ticket')} counted by {basisInfo.label.toLowerCase()} in these months.
-                {data.before > 0 && ` ${plural(data.before, 'ticket')} older than this range.`}
-                {data.future > 0 && ` ${plural(data.future, 'ticket')} in sprints that have not started yet.`}
-                {data.noDate > 0 && ` ${plural(data.noDate, 'ticket')} with no ${basis === 'resolved' ? 'resolved date (not resolved yet)' : basis === 'created' ? 'created date' : 'sprint start date'}.`}
-                {group === 'client' && ' A ticket with several clients is counted under each of them, so the columns can be taller than the ticket count.'}
-                {' '}The colors follow the {groupInfo.one}: the seven most common each keep theirs, the rest are grouped as Other (the table lists them all).
-              </p>
-            </>
-          )}
-        </>
+            <p className="text-xs text-gray-500">
+              {plural(data.inRange, 'ticket')} in these months.
+              {data.before > 0 && ` ${plural(data.before, 'ticket')} older than this range.`}
+              {data.future > 0 && ` ${plural(data.future, 'ticket')} in sprints that have not started yet.`}
+              {data.noDate > 0 && ` ${plural(data.noDate, 'ticket')} with no sprint start date.`}
+              {' '}The last month is still in progress (dashed).
+              {group === 'client' && ' A ticket with several clients is counted under each of them, so the lines add up to more than the ticket count.'}
+              {group !== 'all' && ' The seven biggest lines each keep a color; the rest are grouped as Other (the table lists them all).'}
+            </p>
+          </>
+        )
       )}
     </div>
   );
 };
 
-/** The names of every type inside a hidden series (Other hides several). */
-const hiddenTypes = (series: ReturnType<typeof buildSeries>, hidden: ReadonlySet<string>) => new Set(series.filter(s => hidden.has(s.id)).flatMap(s => s.types));
+/** The names inside a hidden series (Other hides several). */
+const hiddenNames = (series: ReturnType<typeof buildSeries>, hidden: ReadonlySet<string>) => new Set(series.filter(s => hidden.has(s.id)).flatMap(s => s.types));
 
 // ---------------------------------------------------------------- the table view: every item, newest month first
-const TrendTable: React.FC<{ months: string[]; label: string; types: SprintTrend['series']; counts: SprintTrend['counts']; dimmed?: boolean }> = ({ months, label, types, counts, dimmed }) => {
-  const rowTotal = (i: number) => types.reduce((n, t) => n + (counts[t.name]?.[i] ?? 0), 0);
+const TrendTable: React.FC<{ months: string[]; label: string; series: SprintTrend['series']; counts: SprintTrend['counts']; totals: number[]; dimmed?: boolean }> = ({ months, label, series, counts, totals, dimmed }) => {
   const colTotal = (t: string) => (counts[t] ?? []).reduce((a, b) => a + b, 0);
   const order = months.map((_, i) => i).reverse();
   return (
@@ -194,30 +196,30 @@ const TrendTable: React.FC<{ months: string[]; label: string; types: SprintTrend
       <table className="w-full text-sm tabular-nums">
         <thead className="bg-gray-50 text-gray-600 sticky top-0">
           <tr>
-            <th className="text-left font-semibold px-3 py-2 sticky left-0 bg-gray-50">Month <span className="font-normal text-gray-400">by {label.toLowerCase()}</span></th>
-            {types.map(t => (
+            <th className="text-left font-semibold px-3 py-2 sticky left-0 bg-gray-50">Month <span className="font-normal text-gray-400">{label.toLowerCase()}</span></th>
+            {series.length > 1 && series.map(t => (
               <th key={t.name} className="text-right font-semibold px-3 py-2 whitespace-nowrap">
                 <span aria-hidden className="inline-block rounded-sm mr-1.5 align-middle" style={{ width: 8, height: 8, background: t.rank <= MAX_NAMED ? SERIES_COLORS[t.rank - 1] : OTHER_COLOR }} />
                 {t.name}
               </th>
             ))}
-            <th className="text-right font-semibold px-3 py-2">Total</th>
+            <th className="text-right font-semibold px-3 py-2">Tickets</th>
           </tr>
         </thead>
         <tbody>
           {order.map(i => (
             <tr key={months[i]} className="border-t border-gray-100 hover:bg-gray-50">
               <td className="px-3 py-1.5 font-medium text-gray-800 whitespace-nowrap sticky left-0 bg-white">{monthLabel(months[i]).full}</td>
-              {types.map(t => { const v = counts[t.name]?.[i] ?? 0; return <td key={t.name} className={`px-3 py-1.5 text-right ${v ? 'text-gray-800' : 'text-gray-300'}`}>{v || '–'}</td>; })}
-              <td className="px-3 py-1.5 text-right font-semibold text-gray-900">{rowTotal(i)}</td>
+              {series.length > 1 && series.map(t => { const v = counts[t.name]?.[i] ?? 0; return <td key={t.name} className={`px-3 py-1.5 text-right ${v ? 'text-gray-800' : 'text-gray-300'}`}>{v || '–'}</td>; })}
+              <td className="px-3 py-1.5 text-right font-semibold text-gray-900">{totals[i]}</td>
             </tr>
           ))}
         </tbody>
         <tfoot className="bg-gray-50 border-t border-gray-200">
           <tr>
             <td className="px-3 py-2 font-semibold text-gray-800 sticky left-0 bg-gray-50">Total</td>
-            {types.map(t => <td key={t.name} className="px-3 py-2 text-right font-semibold text-gray-900">{colTotal(t.name)}</td>)}
-            <td className="px-3 py-2 text-right font-semibold text-gray-900">{months.reduce((n, _, i) => n + rowTotal(i), 0)}</td>
+            {series.length > 1 && series.map(t => <td key={t.name} className="px-3 py-2 text-right font-semibold text-gray-900">{colTotal(t.name)}</td>)}
+            <td className="px-3 py-2 text-right font-semibold text-gray-900">{totals.reduce((a, b) => a + b, 0)}</td>
           </tr>
         </tfoot>
       </table>
@@ -226,10 +228,9 @@ const TrendTable: React.FC<{ months: string[]; label: string; types: SprintTrend
 };
 
 // ---------------------------------------------------------------- loading and choices
-/** Sprint tickets by month: loads the counts, follows a sync in progress, and keeps the choices. */
+/** Sprint tickets by month: loads the counts and keeps the choices. Nothing refreshes on its own; while a read you started is running it checks until it is done. */
 const SprintTicketsTrend: React.FC = () => {
-  const [basis, setBasis] = useState<TrendBasis>('sprint');
-  const [group, setGroup] = useState<TrendGroup>('type');
+  const [group, setGroup] = useState<TrendGroup>('all');
   const [months, setMonths] = useState<TrendMonths>(6);
   const [filters, setFilters] = useState<TrendFilters>({});
   const [view, setView] = useState<'chart' | 'table'>('chart');
@@ -237,18 +238,18 @@ const SprintTicketsTrend: React.FC = () => {
   const [data, setData] = useState<SprintTrend | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const seen = useRef<string | null>(null);
+  const latest = useRef(0);
 
   const load = useCallback(async () => {
+    const mine = ++latest.current;
     setLoading(true);
-    try { const d = await trendsApi.sprintTickets(basis, months, group, filters); setData(d); seen.current = d.status.lastSyncAt; setError(null); }
-    catch (e) { setError(e instanceof Error ? e.message : 'Could not load the trend'); }
-    finally { setLoading(false); }
-  }, [basis, months, group, filters]);
+    try { const d = await trendsApi.sprintTickets('sprint', months, group, filters); if (mine === latest.current) { setData(d); setError(null); } }
+    catch (e) { if (mine === latest.current) setError(e instanceof Error ? e.message : 'Could not load the trend'); }
+    finally { if (mine === latest.current) setLoading(false); }
+  }, [months, group, filters]);
 
   useEffect(() => { load(); }, [load]);
 
-  // nothing updates on its own; while a read you started is running, check often and reload when it is done
   const running = data?.status.running;
   useEffect(() => {
     if (!running) return undefined;
@@ -267,8 +268,8 @@ const SprintTicketsTrend: React.FC = () => {
   const changeGroup = (g: TrendGroup) => { setHidden(new Set()); setGroup(g); };
 
   return (
-    <SprintTicketsTrendView data={data} loading={loading} error={error} basis={basis} group={group} months={months} filters={filters} hidden={hidden} view={view}
-      onBasis={setBasis} onGroup={changeGroup} onMonths={setMonths} onFilters={setFilters} onToggleSeries={toggle} onShowAll={() => setHidden(new Set())} onView={setView} onRefresh={refresh} />
+    <SprintTicketsTrendView data={data} loading={loading} error={error} group={group} months={months} filters={filters} hidden={hidden} view={view}
+      onGroup={changeGroup} onMonths={setMonths} onFilters={setFilters} onToggleSeries={toggle} onShowAll={() => setHidden(new Set())} onView={setView} onRefresh={refresh} />
   );
 };
 

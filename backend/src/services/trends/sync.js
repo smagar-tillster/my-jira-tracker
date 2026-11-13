@@ -1,5 +1,6 @@
 // Reads the NGK sprint tickets from Jira into the local copy. Only when asked (the Refresh button): there is no background sync.
-// One read covers the tickets updated in the last WINDOW_DAYS days, which is more than the 6 months the page can show (a ticket that
+// The ticket filter is the Tasks page's (NGK Sprint, without Release, Test Case Execution, Epic and sub-tasks) but over past sprints too, not only
+// open ones. One read covers the tickets updated in the last WINDOW_DAYS days, which is more than the 6 months the page can show (a ticket that
 // entered a sprint, was created or was resolved in those months was updated in them), and the copy is replaced by what Jira returned.
 import { search, PROJECT, FIELDS as JIRA_FIELDS } from '../../../delivery/lib/jira.mjs';
 import * as store from './store.js';
@@ -20,7 +21,11 @@ export const toRow = (issue) => {
   };
 };
 
-export const buildJql = ({ project = PROJECT, days = WINDOW_DAYS } = {}) => `project = ${project} AND sprint is not EMPTY AND updated >= -${days}d ORDER BY created ASC`;
+export const EXCLUDED_TYPES = ['Release', 'Test Case Execution-Smoke/Sanity/Regression', 'Epic'];
+
+export const buildJql = ({ project = PROJECT, days = WINDOW_DAYS } = {}) =>
+  `project = ${project} AND sprint in ("NGK Sprint") AND type NOT IN (${EXCLUDED_TYPES.map((t) => (/^\w+$/.test(t) ? t : `"${t}"`)).join(', ')}) `
+  + `AND issuetype not in subTaskIssueTypes() AND updated >= -${days}d ORDER BY created ASC`;
 
 export const runTrendsSync = async ({ searchJira = search, now = () => new Date() } = {}) => {
   const started = now();
