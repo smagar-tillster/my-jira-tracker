@@ -6,7 +6,7 @@ import { runClaude, parseModelJson } from '../../../delivery/lib/reviewgen.mjs';
 import { redactSecrets } from '../../../delivery/lib/reviews.mjs';
 import * as store from './store.js';
 import {
-  DEFAULT_SCHEDULE, bucketOf, isFE, isUnassigned, clientsOf, findNewKeys, teamWorkload, suggestAssignee, priorityOf, PRIORITY_RANK, fallbackGroups, dateOf,
+  DEFAULT_SCHEDULE, bucketOf, isFE, isUnassigned, clientsOf, findNewKeys, teamWorkload, suggestAssignee, addPlannedLoad, priorityOf, PRIORITY_RANK, fallbackGroups, dateOf,
 } from './rules.js';
 import { SIZE_PROMPT, buildSizeInput, parseSizeAnswer, plainAnalysis, GROUP_PROMPT, buildGroupInput, groupHash, resolveGroups } from './ai.js';
 
@@ -57,7 +57,9 @@ export const runQuickAnalysis = async ({
     if (baseline) notes.push('First run: tickets already in the sprint are taken as known. Only tickets created in the last 2 days count as new.');
 
     const keepSince = started.getTime() - cfg.readKeepDays * 86400000;
-    const rows = store.newRows().filter((r) => sprintByKey.has(r.key) && (!r.readAt || Date.parse(r.readAt) >= keepSince));
+    // A new ticket that is already done (released, in QA) has nothing left to review, so it is not offered, unless it was read and is being kept.
+    const rows = store.newRows().filter((r) => sprintByKey.has(r.key)
+      && (r.readAt ? Date.parse(r.readAt) >= keepSince : bucketOf(sprintByKey.get(r.key)) !== 'done'));
     const newTickets = rows.map((r) => ({ ...view(sprintByKey.get(r.key)), firstSeenAt: r.firstSeenAt, read: !!r.readAt, fe: isFE(sprintByKey.get(r.key)) }));
     const unreadKeys = new Set(rows.filter((r) => !r.readAt).map((r) => r.key));
 
@@ -94,10 +96,14 @@ export const runQuickAnalysis = async ({
     // 3. who could take them: by load and related work, from the sprint
     const workloads = teamWorkload(sprint, feMembers);
     if (!feMembers.length) notes.push('No FE team members are set. Mark them with the FE Team filter on the Tasks page to get assignment suggestions.');
-    const feCandidates = candidates.map((c) => ({
-      ...view(c.issue), origin: c.origin, ...(analysis.get(c.issue.key) || plainAnalysis(c.issue)),
-      suggestion: feMembers.length ? suggestAssignee(c.issue, workloads, { exclude: [c.issue.assignee] }) : null,
-    }));
+    // each suggestion counts the ones already made in this report, so one person is not offered everything
+    const planned = workloads.map((w) => ({ ...w, clients: { ...w.clients }, components: { ...w.components } }));
+    const feCandidates = candidates.map((c) => {
+      const a = analysis.get(c.issue.key) || plainAnalysis(c.issue);
+      const suggestion = feMembers.length ? suggestAssignee(c.issue, planned, { exclude: [c.issue.assignee] }) : null;
+      if (suggestion) addPlannedLoad(planned, suggestion.name, c.issue, a.size);
+      return { ...view(c.issue), origin: c.origin, ...a, suggestion };
+    });
 
     // 4. my open tickets, grouped by meaning with a next step and a priority (not the unread new ones, which are in section 1)
     const open = mine.filter((m) => bucketOf(m) !== 'done' && !unreadKeys.has(m.key));

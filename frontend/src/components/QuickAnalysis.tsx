@@ -218,7 +218,7 @@ export const QuickAnalysisView: React.FC<QuickViewProps> = ({ report, status, er
             <Card icon="🧩" title="FE tickets: size and who could take them" count={report.feCandidates.length}
               hint="New FE tickets, and FE tickets assigned to me"
               right={report.feTeam.length > 0 && <button onClick={onToggleTeam} className="text-xs text-blue-600 hover:underline">{showTeam ? 'Hide' : 'Show'} who has what</button>}>
-              {showTeam && <div className="mb-3 p-3 rounded-md bg-gray-50 border border-gray-100"><FeTeam team={report.feTeam} /><p className="text-xs text-gray-500 mt-2">Aligned means in progress and not blocked. Suggestions go by this load and by related work; they are a starting point, you decide.</p></div>}
+              {showTeam && <div className="mb-3 p-3 rounded-md bg-gray-50 border border-gray-100"><FeTeam team={report.feTeam} /><p className="text-xs text-gray-500 mt-2">Aligned means in progress and not blocked. Suggestions go by this load and by related work, and each one counts the suggestions above it so one person is not offered everything. They are a starting point, you decide.</p></div>}
               {report.feCandidates.length === 0 ? <Empty>No FE tickets to place right now.</Empty> : (
                 <ul className="divide-y divide-gray-100">{report.feCandidates.map(c => <FeCard key={c.key} c={c} />)}</ul>
               )}

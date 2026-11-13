@@ -118,6 +118,35 @@ test('priority: due tomorrow or earlier is high, within 3 days or blocked is med
   assert.equal(R.priorityOf(T(), today), 'low');
 });
 
+test('a ticket weeks overdue is stale: medium, not high, and flagged for a decision', () => {
+  const today = at('2026-11-10T12:00:00');
+  assert.equal(R.priorityOf(T({ dueDate: '2026-10-27' }), today), 'high');         // 14 days overdue: still a rush
+  assert.equal(R.priorityOf(T({ dueDate: '2026-10-26' }), today), 'medium');       // 15 days: stale
+  assert.equal(R.isStale(T({ dueDate: '2026-10-26' }), today), true);
+  assert.equal(R.isStale(T({ dueDate: '2026-10-27' }), today), false);
+  assert.equal(R.isStale(T({ dueDate: '2026-09-01', status: 'Released', statusCategory: 'Done' }), today), false);   // done is never stale
+  assert.equal(R.isStale(T(), today), false);
+  const g = R.fallbackGroups([T({ key: 'A-1', client: 'X', dueDate: '2026-09-01' })], today);
+  assert.equal(g[0].priority, 'medium');
+  assert.match(g[0].action, /Re-date or close the 1 that are weeks overdue: A-1/);
+});
+
+test('each suggestion adds load to the person offered, so tickets are spread; bigger tickets weigh more', () => {
+  const w = R.teamWorkload([T({ key: 'A-1', assignee: 'Ana', client: 'X' })], ['Ana', 'Ben', 'Cy']);   // Ana 1, Ben 0, Cy 0
+  const picks = [];
+  for (const size of ['S', 'S', 'L', 'S']) {
+    const s = R.suggestAssignee(T({ client: 'NEW' }), w);
+    picks.push(s.name); R.addPlannedLoad(w, s.name, T({ client: 'NEW' }), size);
+  }
+  // Ben, then Cy (the two free ones). Both now hold work for NEW, which counts for the next NEW ticket, so Ben (name order) takes the third,
+  // an L worth 2. Ben is then at 3, so the fourth goes to Cy. Ana, who has nothing for NEW, is never first.
+  assert.deepEqual(picks, ['Ben', 'Cy', 'Ben', 'Cy']);
+  const load = Object.fromEntries(w.map((x) => [x.name, x.aligned]));
+  assert.deepEqual(load, { Ana: 1, Ben: 3, Cy: 2 });             // S + L = 3 for Ben, S + S = 2 for Cy
+  R.addPlannedLoad(w, 'Nobody', T(), 'S');                       // an unknown name changes nothing
+  assert.equal(w.length, 3);
+});
+
 test('the fallback grouping is by client, most urgent group first, with a next step', () => {
   const today = at('2026-11-10T12:00:00');
   const g = R.fallbackGroups([T({ key: 'A-1', client: 'BK-US', dueDate: '2026-11-09' }), T({ key: 'A-2', client: 'BK-US' }), T({ key: 'B-1', client: 'KFC-MX', status: 'Blocked' }), T({ key: 'C-1', client: '' })], today);
@@ -180,6 +209,19 @@ const mineBase = () => [
   J({ key: 'M-3', assignee: 'Me', status: 'Released', statusCategory: 'Done' }),
 ];
 const go = (over = {}) => runQuickAnalysis({ fetchSprint: async () => sprintBase(), fetchMine: async () => mineBase(), feMembers: ['Ana', 'Ben'], claude: fakeClaude([]), now: () => NOW, ...over });
+
+test('a new ticket that is already done is not offered, and FE suggestions are spread over the team', async () => {
+  reset();
+  const sprint = [...sprintBase(), J({ key: 'S-6', assignee: 'Unassigned', client: 'ZZ', status: 'Released', statusCategory: 'Done', created: '2026-11-09T12:00:00.000-0700' }),
+    ...[7, 8, 9, 10].map((n) => J({ key: `S-${n}`, assignee: 'Unassigned', client: 'NEWCLIENT', components: ['FE'], created: '2026-11-09T12:00:00.000-0700' }))];
+  const { report } = await go({ fetchSprint: async () => sprint });
+  assert.ok(!report.newTickets.some((t) => t.key === 'S-6'));                           // released: nothing to review
+  const names = report.feCandidates.filter((c) => c.origin === 'new').map((c) => c.suggestion.name);
+  assert.ok(new Set(names).size >= 2, `suggestions should not all go to one person: ${names}`);
+  const team = Object.fromEntries(report.feTeam.map((m) => [m.name, m.aligned]));
+  assert.deepEqual(team, { Ana: 1, Ben: 1 });                                          // the team table still shows the real load, not the planned one
+  reset();
+});
 
 test('a first run: baseline, new tickets, FE candidates with size and a suggestion, and my tickets in groups', async () => {
   reset();

@@ -5,7 +5,7 @@
 // the due and release dates already make high or medium.
 import crypto from 'node:crypto';
 import { redactSecrets } from '../../../delivery/lib/reviews.mjs';
-import { bucketOf, dateOf, priorityOf, PRIORITY_RANK, clientsOf } from './rules.js';
+import { bucketOf, priorityOf, isStale, PRIORITY_RANK } from './rules.js';
 
 const clip = (s, n) => { const t = String(s ?? '').replace(/\s+/g, ' ').trim(); return t.length > n ? `${t.slice(0, n - 1).trimEnd()}…` : t; };
 const safe = (s, n) => redactSecrets(clip(s, n)).text;
@@ -54,7 +54,7 @@ export const GROUP_PROMPT = `You help an engineer plan their open Jira tickets. 
 
 - Every ticket key appears in exactly one group. A ticket that fits nowhere goes in a group titled "Everything else". At most 10 groups.
 - title: a short name for what the group is about (not just a client code).
-- priority: "high", "medium" or "low". A ticket whose due or release date is tomorrow or earlier, or already past, makes its group high; dates within 3 days or a blocked status make it at least medium. Otherwise judge by how much waiting costs.
+- priority: "high", "medium" or "low". A ticket whose due or release date is tomorrow or earlier (and no more than 14 days overdue) makes its group high. A ticket more than 14 days overdue is stale: it needs a decision, so suggest re-dating or closing it, and it makes its group medium at most. Dates within 3 days or a blocked status make a group at least medium. Otherwise judge by how much waiting costs. Do not mark most groups high: high means do it first.
 - why: one sentence on what ties the tickets together and why this priority.
 - action: the single next step, concrete and short (for example "Ask the client to confirm the copy on NGK-1, then finish NGK-2").
 - keys: the ticket keys, most urgent first.
@@ -64,7 +64,7 @@ export const groupInput = (tickets, today) => ({
   today: ymd(today),
   tickets: tickets.map((t) => ({
     key: t.key, summary: safe(t.summary, 110), status: t.status, bucket: bucketOf(t), client: t.client || '', components: t.components || [],
-    due: iso(t.dueDate), release: t.releaseDate && t.releaseDate !== 'NA' ? t.releaseDate : '', parent: safe(t.parentSummary, 80),
+    due: iso(t.dueDate), release: t.releaseDate && t.releaseDate !== 'NA' ? t.releaseDate : '', stale: isStale(t, today), parent: safe(t.parentSummary, 80),
   })),
 });
 export const buildGroupInput = (tickets, today) => JSON.stringify(groupInput(tickets, today));

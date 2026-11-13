@@ -125,18 +125,38 @@ export const suggestAssignee = (ticket, workloads, { exclude = [] } = {}) => {
 // ---------------------------------------------------------------- priority and a fallback grouping
 export const PRIORITY_RANK = { high: 0, medium: 1, low: 2 };
 
+/** A ticket this many days overdue is stale: it needs a decision (re-date or close), not a rush. */
+export const STALE_DAYS = 14;
+
 /**
- * high   the due or release date is tomorrow or earlier (including overdue)
- * medium within the next 3 days, or blocked
+ * high   the due or release date is tomorrow or earlier, up to STALE_DAYS overdue
+ * medium within the next 3 days, blocked, or stale (more than STALE_DAYS overdue)
  * low    everything else
  */
 export const priorityOf = (issue, today = new Date()) => {
   const d = dateOf(issue);
   const t = startOfDay(today);
-  if (d && d <= addDays(t, 1)) return 'high';
+  if (d && d <= addDays(t, 1)) return d < addDays(t, -STALE_DAYS) ? 'medium' : 'high';
   if (d && d <= addDays(t, 3)) return 'medium';
   if (bucketOf(issue) === 'blocked') return 'medium';
   return 'low';
+};
+
+/** True when the ticket is more than STALE_DAYS past its date and not done. */
+export const isStale = (issue, today = new Date()) => {
+  const d = dateOf(issue);
+  return !!d && bucketOf(issue) !== 'done' && d < addDays(startOfDay(today), -STALE_DAYS);
+};
+
+/**
+ * Adds the load of a suggestion that was just made to that person, so the next ticket in the same report is offered to someone else
+ * once they are carrying more. A bigger ticket weighs more. Works on a copy meant for suggesting; the team table shows the real load.
+ */
+export const addPlannedLoad = (workloads, name, ticket, size) => {
+  const w = workloads.find((x) => x.name === name);
+  if (!w) return;
+  w.aligned += size === 'L' ? 2 : size === 'XL' ? 3 : 1;
+  for (const c of clientsOf(ticket)) w.clients[c] = (w.clients[c] || 0) + 1;
 };
 
 const highest = (list) => list.reduce((best, p) => (PRIORITY_RANK[p] < PRIORITY_RANK[best] ? p : best), 'low');
@@ -152,8 +172,10 @@ export const fallbackGroups = (tickets, today = new Date()) => {
   const groups = [...by.entries()].map(([name, list]) => {
     const pr = list.map((t) => ({ t, p: priorityOf(t, today) }));
     const high = pr.filter((x) => x.p === 'high').map((x) => x.t.key);
+    const stale = list.filter((t) => isStale(t, today)).map((t) => t.key);
     const blocked = list.filter((t) => bucketOf(t) === 'blocked').map((t) => t.key);
     const action = high.length ? `Deal with the ${high.length} due soon or overdue first: ${high.slice(0, 4).join(', ')}.`
+      : stale.length ? `Re-date or close the ${stale.length} that are weeks overdue: ${stale.slice(0, 4).join(', ')}.`
       : blocked.length ? `Chase what blocks ${blocked.slice(0, 3).join(', ')}.` : 'Carry on in order of date.';
     return {
       title: name, priority: highest(pr.map((x) => x.p)), why: `${list.length} open ticket${list.length === 1 ? '' : 's'} for ${name}${high.length ? `, ${high.length} due soon or overdue` : ''}${blocked.length ? `, ${blocked.length} blocked` : ''}.`,
