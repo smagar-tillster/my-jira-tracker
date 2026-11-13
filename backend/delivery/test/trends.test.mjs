@@ -137,10 +137,10 @@ test('a Jira ticket becomes a row: earliest valid sprint start, assignee, distin
   assert.equal(S.toRow(issue('N-3', 'Story', { customfield_10007: null, customfield_16047: null })).firstSprintStart, null);
 });
 
-test('the search asks for sprint tickets updated in the window and only the fields the trends use', () => {
-  assert.equal(S.buildJql({ project: 'NGK' }), 'project = NGK AND sprint in ("NGK Sprint") AND type NOT IN (Release, "Test Case Execution-Smoke/Sanity/Regression", Epic) AND issuetype not in subTaskIssueTypes() AND updated >= -200d ORDER BY created ASC');
+test('the search asks only for done NGK Sprint tickets resolved in the last 6 months, and only the fields the trends use', () => {
+  assert.equal(S.buildJql({ project: 'NGK' }), 'project = NGK AND sprint in ("NGK Sprint") AND type NOT IN (Release, "Test Case Execution-Smoke/Sanity/Regression", Epic) AND issuetype not in subTaskIssueTypes() AND statusCategory = Done AND resolved >= startOfMonth(-5) ORDER BY created ASC');
+  assert.match(S.buildJql({ project: 'NGK', months: 3 }), /resolved >= startOfMonth\(-2\)/);
   assert.ok(!/openSprints/i.test(S.buildJql()));                    // past sprints count too
-  assert.ok(S.WINDOW_DAYS >= 190);                                  // covers 6 months back from the current one
   assert.deepEqual(S.FIELDS, ['issuetype', 'created', 'resolutiondate', 'status', 'updated', 'assignee', 'customfield_16047', 'customfield_10007']);
 });
 
@@ -214,12 +214,12 @@ test('the routes: counts with group and filters, bad requests, and Refresh with 
     assert.deepEqual(ok.json.data.counts.Story, [0, 0, 0, 2, 0, 0]);
     assert.equal(ok.json.data.status.tickets, 8);
     const def = await call(server, 'GET', '/api/trends/sprint-tickets');
-    assert.deepEqual([def.json.data.basis, def.json.data.group, def.json.data.months.length], ['sprint', 'all', 6]);
-    const byClient = await call(server, 'GET', '/api/trends/sprint-tickets?group=client');
+    assert.deepEqual([def.json.data.basis, def.json.data.group, def.json.data.months.length], ['resolved', 'all', 6]);
+    const byClient = await call(server, 'GET', '/api/trends/sprint-tickets?basis=sprint&group=client');
     assert.deepEqual(byClient.json.data.counts.BK, [0, 0, 0, 2, 0, 1]);
     const fe = await call(server, 'GET', '/api/trends/sprint-tickets?group=assignee&feTeam=1');
     assert.deepEqual(fe.json.data.series.map((s) => s.name), ['Ann']);
-    const filtered = await call(server, 'GET', `/api/trends/sprint-tickets?client=${encodeURIComponent('No client')}&type=Defect`);
+    const filtered = await call(server, 'GET', `/api/trends/sprint-tickets?basis=sprint&client=${encodeURIComponent('No client')}&type=Defect`);
     assert.deepEqual(filtered.json.data.totals, [0, 0, 0, 0, 1, 0]);
     for (const bad of ['?basis=nope', '?months=12', '?months=all', '?months=abc', '?group=nope']) assert.equal((await call(server, 'GET', `/api/trends/sprint-tickets${bad}`)).status, 400, bad);
 

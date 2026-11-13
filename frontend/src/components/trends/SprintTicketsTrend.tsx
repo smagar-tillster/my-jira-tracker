@@ -47,7 +47,7 @@ export interface TrendViewProps {
   onView: (v: 'chart' | 'table') => void; onRefresh: () => void;
 }
 
-/** The Sprint tickets by month page for given data and choices. No loading here, so it can be rendered on its own. */
+/** The Tickets done by month page for given data and choices. No loading here, so it can be rendered on its own. */
 export const SprintTicketsTrendView: React.FC<TrendViewProps> = ({ data, loading, error, group, months, filters, hidden, view, onGroup, onMonths, onFilters, onToggleSeries, onShowAll, onView, onRefresh }) => {
   const status = data?.status;
   const groupInfo = GROUPS.find(g => g.id === group) as (typeof GROUPS)[number];
@@ -74,15 +74,15 @@ export const SprintTicketsTrendView: React.FC<TrendViewProps> = ({ data, loading
 
       {data && !empty && (
         <div className="flex flex-wrap gap-3">
-          <Tile label="Total tickets" value={inRange.toLocaleString('en-US')} sub={`${monthCount ? Math.round(inRange / monthCount) : 0} per month, ${plural(monthCount, 'month')}`} />
+          <Tile label="Tickets done" value={inRange.toLocaleString('en-US')} sub={`${monthCount ? Math.round(inRange / monthCount) : 0} per month, ${plural(monthCount, 'month')}`} />
           <Tile label="Stories vs defects" value={`${data.summary.stories.toLocaleString('en-US')} / ${data.summary.defects.toLocaleString('en-US')}`}
-            sub={sd ? `${pct(data.summary.stories, inRange)}% stories, ${pct(data.summary.defects, inRange)}% defects` : 'None in view'}>
+            sub={sd ? `${pct(data.summary.stories, inRange)}% stories, ${pct(data.summary.defects, inRange)}% defects` : 'None done in view'}>
             <div className="flex h-1.5 rounded-full overflow-hidden mt-2 gap-0.5" aria-hidden>
               <div style={{ width: `${sd ? (data.summary.stories / sd) * 100 : 0}%`, background: SERIES_COLORS[0] }} />
               <div style={{ width: `${sd ? (data.summary.defects / sd) * 100 : 0}%`, background: SERIES_COLORS[1] }} />
             </div>
           </Tile>
-          <Tile label="Top client" value={data.summary.topClient?.name ?? '–'} sub={data.summary.topClient ? `${plural(data.summary.topClient.count, 'ticket')}, ${pct(data.summary.topClient.count, inRange)}% of tickets shown` : 'No ticket has a client'} />
+          <Tile label="Top client" value={data.summary.topClient?.name ?? '–'} sub={data.summary.topClient ? `${plural(data.summary.topClient.count, 'ticket')}, ${pct(data.summary.topClient.count, inRange)}% of tickets shown` : 'No done ticket has a client'} />
           <Tile label="Busiest month" value={busiest >= 0 && totals[busiest] > 0 ? monthLabel(data.months[busiest]).full : '–'} sub={busiest >= 0 && totals[busiest] > 0 ? plural(totals[busiest], 'ticket') : undefined} />
         </div>
       )}
@@ -92,8 +92,8 @@ export const SprintTicketsTrendView: React.FC<TrendViewProps> = ({ data, loading
         <Segmented label="Lines" value={group} options={GROUPS} onChange={onGroup} />
         <Segmented label="Show" value={months} options={RANGES} onChange={onMonths} />
         <div className="ml-auto flex items-center gap-3 text-xs text-gray-500">
-          {status?.running ? <span>⏳ Reading Jira…</span> : status?.lastSyncAt ? <span title="The numbers change only when you press Refresh">Read from Jira {ago(status.lastSyncAt)} · {status.tickets.toLocaleString('en-US')} tickets</span> : null}
-          <button onClick={onRefresh} disabled={!!status?.running} title="Reads the sprint tickets of the last 200 days from Jira. Nothing updates on its own."
+          {status?.running ? <span>⏳ Reading Jira…</span> : status?.lastSyncAt ? <span title="The numbers change only when you press Refresh">Read from Jira {ago(status.lastSyncAt)} · {status.tickets.toLocaleString('en-US')} done tickets read</span> : null}
+          <button onClick={onRefresh} disabled={!!status?.running} title="Reads the tickets done in the last 6 months from Jira. Nothing updates on its own."
             className="px-3 py-1.5 rounded-lg text-sm font-medium bg-white ring-1 ring-gray-300 text-gray-700 hover:bg-gray-100 disabled:opacity-60 disabled:cursor-not-allowed">↻ Refresh</button>
         </div>
       </div>
@@ -118,13 +118,13 @@ export const SprintTicketsTrendView: React.FC<TrendViewProps> = ({ data, loading
       )}
 
       {!data && loading && <p className="text-sm text-gray-500">Loading…</p>}
-      {!data && !loading && !error && status?.firstLoad && <p className="text-sm text-gray-500">Nothing has been read from Jira yet. Press Refresh to read the sprint tickets.</p>}
+      {!data && !loading && !error && status?.firstLoad && <p className="text-sm text-gray-500">Nothing has been read from Jira yet. Press Refresh to read the done tickets.</p>}
 
       {data && (
         empty ? (
           <div className="bg-white rounded-lg border border-gray-200 p-8 text-center text-gray-500">
             <div className="text-3xl mb-2">📈</div>
-            {status?.running ? 'Reading Jira. This can take a minute.' : 'No sprint tickets yet. Press Refresh to read them from Jira.'}
+            {status?.running ? 'Reading Jira. This can take a minute.' : 'No done tickets yet. Press Refresh to read them from Jira.'}
           </div>
         ) : data.matching === 0 ? (
           <div className="bg-white rounded-lg border border-gray-200 p-8 text-center text-gray-500">No ticket matches these filters. <button onClick={() => onFilters({})} className="text-blue-600 hover:underline">Clear filters</button></div>
@@ -132,8 +132,8 @@ export const SprintTicketsTrendView: React.FC<TrendViewProps> = ({ data, loading
           <>
             <section className="bg-white rounded-lg shadow-sm border border-gray-200">
               <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 flex-wrap">
-                <h2 className="text-[15px] font-semibold text-gray-800">Sprint tickets by month{group === 'all' ? '' : `, by ${groupInfo.one}`}</h2>
-                <span className="text-xs text-gray-500">Counted in the month its first sprint started. Each ticket once.</span>
+                <h2 className="text-[15px] font-semibold text-gray-800">Tickets done by month{group === 'all' ? '' : `, by ${groupInfo.one}`}</h2>
+                <span className="text-xs text-gray-500">Done = passed QA or later (Jira's Done). Counted in the month it was done, each ticket once.</span>
                 <div className="ml-auto inline-flex rounded-lg overflow-clip ring-1 ring-gray-300 bg-white" role="group" aria-label="View">
                   {(['chart', 'table'] as const).map(v => (
                     <button key={v} onClick={() => onView(v)} aria-pressed={view === v}
@@ -169,10 +169,9 @@ export const SprintTicketsTrendView: React.FC<TrendViewProps> = ({ data, loading
             </section>
 
             <p className="text-xs text-gray-500">
-              {plural(data.inRange, 'ticket')} in these months.
-              {data.before > 0 && ` ${plural(data.before, 'ticket')} older than this range.`}
-              {data.future > 0 && ` ${plural(data.future, 'ticket')} in sprints that have not started yet.`}
-              {data.noDate > 0 && ` ${plural(data.noDate, 'ticket')} with no sprint start date.`}
+              {plural(data.inRange, 'ticket')} done in these months.
+              {data.before > 0 && ` ${plural(data.before, 'ticket')} done before this range (read, not shown).`}
+              {data.noDate > 0 && ` ${plural(data.noDate, 'ticket')} with no done date.`}
               {' '}The last month is still in progress (dashed).
               {group === 'client' && ' A ticket with several clients is counted under each of them, so the lines add up to more than the ticket count.'}
               {group !== 'all' && ' The seven biggest lines each keep a color; the rest are grouped as Other (the table lists them all).'}
@@ -243,7 +242,7 @@ const SprintTicketsTrend: React.FC = () => {
   const load = useCallback(async () => {
     const mine = ++latest.current;
     setLoading(true);
-    try { const d = await trendsApi.sprintTickets('sprint', months, group, filters); if (mine === latest.current) { setData(d); setError(null); } }
+    try { const d = await trendsApi.sprintTickets('resolved', months, group, filters); if (mine === latest.current) { setData(d); setError(null); } }
     catch (e) { if (mine === latest.current) setError(e instanceof Error ? e.message : 'Could not load the trend'); }
     finally { if (mine === latest.current) setLoading(false); }
   }, [months, group, filters]);

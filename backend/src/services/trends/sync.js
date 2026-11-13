@@ -1,12 +1,11 @@
 // Reads the NGK sprint tickets from Jira into the local copy. Only when asked (the Refresh button): there is no background sync.
-// The ticket filter is the Tasks page's (NGK Sprint, without Release, Test Case Execution, Epic and sub-tasks) but over past sprints too, not only
-// open ones. One read covers the tickets updated in the last WINDOW_DAYS days, which is more than the 6 months the page can show (a ticket that
-// entered a sprint, was created or was resolved in those months was updated in them), and the copy is replaced by what Jira returned.
+// The ticket filter is the Tasks page's (NGK Sprint, without Release, Test Case Execution, Epic and sub-tasks) but for tickets that are DONE
+// (Jira's Done category: passed QA or later) and were resolved in the last 6 months, the current month included. Jira filters that exactly, so
+// the read is the tickets the page counts and nothing else. Past sprints count too, not only open ones. The copy is replaced by what Jira returned.
 import { search, PROJECT, FIELDS as JIRA_FIELDS } from '../../../delivery/lib/jira.mjs';
 import * as store from './store.js';
 
 const SPRINT_FIELD = JIRA_FIELDS.sprint;
-export const WINDOW_DAYS = 200;
 export const FIELDS = ['issuetype', 'created', 'resolutiondate', 'status', 'updated', 'assignee', JIRA_FIELDS.client, SPRINT_FIELD];
 
 /** A Jira search row as the table keeps it. */
@@ -23,9 +22,10 @@ export const toRow = (issue) => {
 
 export const EXCLUDED_TYPES = ['Release', 'Test Case Execution-Smoke/Sanity/Regression', 'Epic'];
 
-export const buildJql = ({ project = PROJECT, days = WINDOW_DAYS } = {}) =>
+/** `months` back from the current one: 6 reads the current month and the five before it. */
+export const buildJql = ({ project = PROJECT, months = 6 } = {}) =>
   `project = ${project} AND sprint in ("NGK Sprint") AND type NOT IN (${EXCLUDED_TYPES.map((t) => (/^\w+$/.test(t) ? t : `"${t}"`)).join(', ')}) `
-  + `AND issuetype not in subTaskIssueTypes() AND updated >= -${days}d ORDER BY created ASC`;
+  + `AND issuetype not in subTaskIssueTypes() AND statusCategory = Done AND resolved >= startOfMonth(-${months - 1}) ORDER BY created ASC`;
 
 export const runTrendsSync = async ({ searchJira = search, now = () => new Date() } = {}) => {
   const started = now();

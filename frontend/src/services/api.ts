@@ -481,7 +481,7 @@ export const trendsApi = {
   status: async (): Promise<TrendsStatus> => (await apiClient.get('/trends/status')).data.data,
   sprintTickets: async (basis: TrendBasis, months: TrendMonths, group: TrendGroup, filters: TrendFilters): Promise<SprintTrend> =>
     (await apiClient.get('/trends/sprint-tickets', { params: { basis, months, group, type: filters.type, client: filters.client, assignee: filters.assignee, feTeam: filters.feTeam ? 1 : undefined } })).data.data,
-  /** Reads the sprint tickets from Jira now: the only way the copy is updated. A read already running is not an error. An empty JSON body on purpose: the backend refuses non-JSON POSTs. */
+  /** Reads the done tickets of the last 6 months from Jira now: the only way the copy is updated. A read already running is not an error. An empty JSON body on purpose: the backend refuses non-JSON POSTs. */
   refresh: async (): Promise<TrendsStatus> => {
     try { return (await apiClient.post('/trends/refresh', {})).data.data; }
     catch (e: any) { if (e?.response?.status === 409) return e.response.data.data; throw e; }

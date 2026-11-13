@@ -5,7 +5,7 @@ interface TrendDef { id: string; title: string; blurb: string; render: () => Rea
 
 // The trends on offer. A new one is an entry here and a component; the page around it does not change.
 const TRENDS: TrendDef[] = [
-  { id: 'sprint-tickets', title: 'Sprint tickets by month', blurb: 'All NGK tickets that were in a sprint, by month and type', render: () => <SprintTicketsTrend /> },
+  { id: 'sprint-tickets', title: 'Tickets done by month', blurb: 'NGK Sprint tickets that passed QA or later, by month, client and type', render: () => <SprintTicketsTrend /> },
 ];
 
 /** Trends: pick a trend on the left, see it on the right. */
