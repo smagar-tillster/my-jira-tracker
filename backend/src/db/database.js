@@ -91,6 +91,27 @@ export function initDb() {
       group_hash       TEXT,
       group_json       TEXT
     );
+
+    -- Trends: a local copy of the NGK tickets that were in a sprint, with only what the trend pages count. Times are ISO-8601 as Jira gave them.
+    CREATE TABLE IF NOT EXISTS trend_tickets (
+      issue_key          TEXT PRIMARY KEY,
+      type               TEXT NOT NULL,
+      created            TEXT,
+      resolved           TEXT,
+      status_category    TEXT,
+      first_sprint_start TEXT,
+      updated            TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS trend_sync (
+      id               INTEGER PRIMARY KEY CHECK (id = 1),
+      last_sync_at     TEXT,
+      last_full_at     TEXT,
+      last_status      TEXT,
+      last_error       TEXT,
+      last_duration_ms INTEGER,
+      last_count       INTEGER
+    );
   `);
 
   console.log('✓ SQLite database initialized');
