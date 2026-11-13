@@ -75,47 +75,63 @@ const Card: React.FC<{
 
 const Empty = ({ children }: { children: React.ReactNode }) => <p className="text-sm text-gray-400 py-2">{children}</p>;
 
+// ---------------------------------------------------------------- shared by the new tickets and the FE tickets
+// Both lists are rows of three columns: a narrow lead column (the read button, or New / Mine), the ticket with its tags, and the text about it.
+const COLS = 'md:grid-cols-[3rem_minmax(0,5fr)_minmax(0,6fr)]';
+const rowCls = `py-3 grid grid-cols-1 ${COLS} gap-x-4 gap-y-2`;
+
+const ListHead = ({ right }: { right: string }) => (
+  <div className={`hidden md:grid ${COLS} gap-x-4 pb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500 border-b border-gray-200`}>
+    <div /><div>Ticket</div><div>{right}</div>
+  </div>
+);
+
+/** The ticket column: the type icon, the key as a link and the summary, with the given tags underneath. */
+const TicketCell = ({ t, tags }: { t: QuickTicket; tags: React.ReactNode }) => (
+  <div className="min-w-0">
+    <div className="text-[14px] leading-5 text-gray-800"><TypeIcon type={t.type} icon={t.typeIcon} /> <TicketLink t={t} /> {t.summary}</div>
+    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">{tags}</div>
+  </div>
+);
+
 // ---------------------------------------------------------------- 1. new tickets
 const NewTicketRow = ({ t, onRead }: { t: QuickNewTicket; onRead: (key: string, read: boolean) => void }) => (
-  <li className={`flex gap-3 py-2.5 ${t.read ? 'opacity-60' : ''}`}>
-    <button onClick={() => onRead(t.key, !t.read)} aria-pressed={t.read}
-      title={t.read ? 'Read. Click to mark unread' : 'Mark as read: it is skipped from the next run on'}
-      className={`shrink-0 w-8 h-8 rounded-full ring-1 flex items-center justify-center text-sm ${t.read ? 'bg-green-100 ring-green-300 text-green-700' : 'bg-white ring-gray-300 text-gray-500 hover:bg-blue-50 hover:text-blue-700'}`}>
-      {t.read ? '✓' : '👁'}
-    </button>
-    <div className="min-w-0 flex-1">
-      <div className="text-[14px] leading-5 text-gray-800"><TypeIcon type={t.type} icon={t.typeIcon} /> <TicketLink t={t} /> {t.summary}</div>
-      {t.description && <div className="text-xs text-gray-500 line-clamp-2 mt-0.5">{t.description}</div>}
-      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-        <StatusPill t={t} />
-        <Pills items={t.clients} />
-        {t.fe && <span className="px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">FE</span>}
-        <span className="text-xs text-gray-500">{t.assignee || 'Unassigned'} · added {dayTime(t.firstSeenAt)}</span>
-      </div>
+  <li className={`${rowCls} ${t.read ? 'opacity-60' : ''}`}>
+    <div>
+      <button onClick={() => onRead(t.key, !t.read)} aria-pressed={t.read}
+        title={t.read ? 'Read. Click to mark unread' : 'Mark as read: it is skipped from the next run on'}
+        className={`w-8 h-8 rounded-full ring-1 flex items-center justify-center text-sm ${t.read ? 'bg-green-100 ring-green-300 text-green-700' : 'bg-white ring-gray-300 text-gray-500 hover:bg-blue-50 hover:text-blue-700'}`}>
+        {t.read ? '✓' : '👁'}
+      </button>
+    </div>
+    <TicketCell t={t} tags={<>
+      <StatusPill t={t} />
+      <Pills items={t.clients} />
+      {t.fe && <span className="px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">FE</span>}
+      <span className="text-xs text-gray-500">{t.assignee || 'Unassigned'} · added {dayTime(t.firstSeenAt)}</span>
+    </>} />
+    <div className="min-w-0">
+      {t.description ? <p className="text-sm text-gray-700 line-clamp-4">{t.description}</p> : <p className="text-sm text-gray-400">No description on the ticket.</p>}
     </div>
   </li>
 );
 
 // ---------------------------------------------------------------- 2. FE candidates
-const FE_COLS = 'md:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]';
-
-/** One FE ticket as a row of two columns: the ticket with its tags, and what the analysis says about it. */
 const FeRow = ({ c }: { c: QuickFeCandidate }) => (
-  <li className={`py-3 grid grid-cols-1 ${FE_COLS} gap-x-6 gap-y-2`}>
-    <div className="min-w-0">
-      <div className="text-[14px] leading-5 text-gray-800"><TypeIcon type={c.type} icon={c.typeIcon} /> <TicketLink t={c} /> {c.summary}</div>
-      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-        <span className={`px-2 py-0.5 rounded text-xs font-medium ${c.origin === 'new' ? 'bg-sky-100 text-sky-800' : 'bg-gray-100 text-gray-700'}`}>{c.origin === 'new' ? 'New' : 'Mine'}</span>
-        {c.size
-          ? <span title={`${SIZE_HINT[c.size]}${c.sizeWhy ? `\n${c.sizeWhy}` : ''}`} className={`px-2 py-0.5 rounded text-xs font-bold ${SIZE_PILL[c.size]}`}>Size {c.size}</span>
-          : <span className="px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-500" title="No size could be written for this ticket">No size</span>}
-        <StatusPill t={c} />
-        <Pills items={c.clients} />
-        <DateChip t={c} />
-        {c.areas.map(a => <span key={a} className="px-1.5 py-0.5 rounded text-xs text-gray-600 bg-white ring-1 ring-gray-200">{a}</span>)}
-        <span className="text-xs text-gray-500">{c.assignee ? `now with ${c.assignee}` : 'unassigned'}</span>
-      </div>
+  <li className={rowCls}>
+    <div>
+      <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${c.origin === 'new' ? 'bg-sky-100 text-sky-800' : 'bg-gray-100 text-gray-700'}`}>{c.origin === 'new' ? 'New' : 'Mine'}</span>
     </div>
+    <TicketCell t={c} tags={<>
+      {c.size
+        ? <span title={`${SIZE_HINT[c.size]}${c.sizeWhy ? `\n${c.sizeWhy}` : ''}`} className={`px-2 py-0.5 rounded text-xs font-bold ${SIZE_PILL[c.size]}`}>Size {c.size}</span>
+        : <span className="px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-500" title="No size could be written for this ticket">No size</span>}
+      <StatusPill t={c} />
+      <Pills items={c.clients} />
+      <DateChip t={c} />
+      {c.areas.map(a => <span key={a} className="px-1.5 py-0.5 rounded text-xs text-gray-600 bg-white ring-1 ring-gray-200">{a}</span>)}
+      <span className="text-xs text-gray-500">{c.assignee ? `now with ${c.assignee}` : 'unassigned'}</span>
+    </>} />
     <div className="min-w-0">
       <p className="text-sm text-gray-700">{c.analysis}</p>
       {c.sizeWhy && <p className="text-xs text-gray-500 mt-0.5">Size: {c.sizeWhy}</p>}
@@ -237,10 +253,13 @@ export const QuickAnalysisView: React.FC<QuickViewProps> = ({ report, status, er
             <Card icon="🆕" title="New tickets in the sprint" count={unread.length} open={!collapsed.has('new')} onToggle={() => onToggleSection('new')} hint="Mark one as read and it is skipped from the next run on"
               right={read.length > 0 && <button onClick={onToggleRead} className="text-xs text-blue-600 hover:underline">{showRead ? 'Hide' : 'Show'} read ({read.length})</button>}>
               {unread.length === 0 && !showRead ? <Empty>Nothing new since you last read. New tickets added to the sprint show up here.</Empty> : (
-                <ul className="divide-y divide-gray-100">
-                  {unread.map(t => <NewTicketRow key={t.key} t={t} onRead={onSetRead} />)}
-                  {showRead && read.map(t => <NewTicketRow key={t.key} t={t} onRead={onSetRead} />)}
-                </ul>
+                <>
+                  <ListHead right="Description" />
+                  <ul className="divide-y divide-gray-100">
+                    {unread.map(t => <NewTicketRow key={t.key} t={t} onRead={onSetRead} />)}
+                    {showRead && read.map(t => <NewTicketRow key={t.key} t={t} onRead={onSetRead} />)}
+                  </ul>
+                </>
               )}
             </Card>
 
@@ -251,7 +270,7 @@ export const QuickAnalysisView: React.FC<QuickViewProps> = ({ report, status, er
               {showTeam && <div className="mb-3 p-3 rounded-md bg-gray-50 border border-gray-100"><FeTeam team={report.feTeam} /><p className="text-xs text-gray-500 mt-2">Aligned means in progress and not blocked. Suggestions go by this load and by related work, and each one counts the suggestions above it so one person is not offered everything. They are a starting point, you decide.</p></div>}
               {report.feCandidates.length === 0 ? <Empty>No FE tickets to place right now.</Empty> : (
                 <>
-                  <div className={`hidden md:grid ${FE_COLS} gap-x-6 pb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500 border-b border-gray-200`}><div>Ticket</div><div>Analysis</div></div>
+                  <ListHead right="Analysis" />
                   <ul className="divide-y divide-gray-100">{report.feCandidates.map(c => <FeRow key={c.key} c={c} />)}</ul>
                 </>
               )}
