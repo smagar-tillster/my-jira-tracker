@@ -60,5 +60,13 @@
     "components": {
       "kiosk-ui": "FE"
     }
+  },
+  "quickAnalysis": {
+    "startHour": 7,
+    "endHour": 18,
+    "intervalMinutes": 15,
+    "weekdaysOnly": true,
+    "disabled": false,
+    "models": { "size": "haiku", "group": "sonnet" }
   }
 }
