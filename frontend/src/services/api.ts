@@ -454,3 +454,29 @@ export const quickApi = {
   markRead: async (key: string, read: boolean): Promise<QuickStatus> => (await apiClient.put(`/quick/new/${encodeURIComponent(key)}/read`, { read })).data.data,
   viewed: async (): Promise<QuickStatus> => (await apiClient.post('/quick/viewed', {})).data.data,
 };
+
+// ---------------------------------------------------------------- Trends
+export type TrendBasis = 'sprint' | 'created' | 'resolved';
+export type TrendMonths = 6 | 12 | 24 | 'all';
+export interface TrendsStatus {
+  running: boolean; lastSyncAt: string | null; lastFullAt: string | null; lastStatus: 'running' | 'ok' | 'failed' | null; lastError: string | null;
+  lastDurationMs: number | null; tickets: number; firstLoad: boolean;
+}
+export interface TrendType { name: string; total: number; rank: number }
+export interface SprintTrend {
+  basis: TrendBasis; months: string[]; types: TrendType[]; counts: Record<string, number[]>; totals: number[];
+  /** All tickets in the local copy / the ones counted in the months shown / older than the range / in sprints that have not started / with no date of this kind. */
+  tickets: number; inRange: number; before: number; future: number; noDate: number;
+  status: TrendsStatus;
+}
+
+export const trendsApi = {
+  status: async (): Promise<TrendsStatus> => (await apiClient.get('/trends/status')).data.data,
+  sprintTickets: async (basis: TrendBasis, months: TrendMonths): Promise<SprintTrend> =>
+    (await apiClient.get('/trends/sprint-tickets', { params: { basis, months } })).data.data,
+  /** Reads what changed in Jira now. A sync already running is not an error. An empty JSON body on purpose: the backend refuses non-JSON POSTs. */
+  refresh: async (full = false): Promise<TrendsStatus> => {
+    try { return (await apiClient.post('/trends/refresh', { full })).data.data; }
+    catch (e: any) { if (e?.response?.status === 409) return e.response.data.data; throw e; }
+  },
+};

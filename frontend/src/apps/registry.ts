@@ -20,6 +20,7 @@ export const FLEET_URL =
 export const APPS: AppDef[] = [
   { id: 'tasks',         name: 'Tasks',                 icon: '📋', section: 'apps', description: 'Sprint and personal Jira tasks', keywords: ['jira', 'sprint', 'issues'] },
   { id: 'quickAnalysis', name: 'Quick Analysis',        icon: '🔍', section: 'apps', description: 'New sprint tickets, FE sizing and who could take them, and my priorities', keywords: ['new tickets', 'fe', 'size', 'assign', 'priority', 'sprint', 'my tickets'] },
+  { id: 'trends',        name: 'Trends',                icon: '📈', section: 'apps', description: 'How the sprint tickets move, month by month and by type', keywords: ['trend', 'chart', 'month', 'history', 'tickets', 'type', 'volume'] },
   { id: 'releases',      name: 'Release & PRs',         icon: '📦', section: 'apps', description: 'What was released, what is next, and PRs', keywords: ['release', 'pull request', 'delivery'] },
   { id: 'prReviews',     name: 'PR Reviews',            icon: '📝', section: 'apps', description: 'Code review drafts for open PRs: read, then post', keywords: ['review', 'pull request', 'github', 'comments', 'drafts'] },
   { id: 'monitoring',    name: 'Monitoring',            icon: '📡', section: 'apps', description: 'Fleet health and New Relic conditions', keywords: ['fleet', 'kiosk', 'health', 'newrelic', 'new relic', 'alerts', 'conditions', 'nr'] },
