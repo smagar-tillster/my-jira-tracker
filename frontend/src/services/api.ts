@@ -445,9 +445,10 @@ export const quickApi = {
   report: async (): Promise<{ report: QuickReport | null; status: QuickStatus }> => (await apiClient.get('/quick/report')).data.data,
   /** Run now. Resolves with the new state; a run already going is not an error. */
   run: async (): Promise<QuickStatus> => {
-    try { return (await apiClient.post('/quick/run')).data.data; }
+    // An empty JSON body on purpose: in the browser axios drops Content-Type from a POST with no body, and the backend refuses non-JSON (415).
+    try { return (await apiClient.post('/quick/run', {})).data.data; }
     catch (e: any) { if (e?.response?.status === 409) return e.response.data.data; throw e; }
   },
   markRead: async (key: string, read: boolean): Promise<QuickStatus> => (await apiClient.put(`/quick/new/${encodeURIComponent(key)}/read`, { read })).data.data,
-  viewed: async (): Promise<QuickStatus> => (await apiClient.post('/quick/viewed')).data.data,
+  viewed: async (): Promise<QuickStatus> => (await apiClient.post('/quick/viewed', {})).data.data,
 };

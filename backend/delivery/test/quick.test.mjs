@@ -374,3 +374,17 @@ test('the routes: report, Run now, marking read, and the bell count that clears 
     assert.equal(viewed.json.data.unviewedNew, 0);                      // opening the page clears the bell
   } finally { server.close(); }
 });
+
+test('Run now needs a JSON request: a POST with no content type is refused (415), and one with an empty JSON body is accepted', async () => {
+  reset();
+  const svc = createQuickService({ run: async () => {}, deps: () => ({}), now: () => NOW, cfgOf: () => ({ schedule: R.DEFAULT_SCHEDULE, disabled: false }) });
+  const { default: express } = await import('express');
+  const app = express(); app.use(express.json()); app.use('/api', createQuickRouter({ service: svc }));
+  const server = http.createServer(app); await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  try {
+    const base = `http://127.0.0.1:${server.address().port}/api/quick/run`;
+    // what the browser sent before the fix: axios removes Content-Type from a POST that has no body
+    assert.equal((await fetch(base, { method: 'POST' })).status, 415);
+    assert.equal((await fetch(base, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).status, 202);
+  } finally { server.close(); }
+});
