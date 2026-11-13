@@ -265,6 +265,28 @@ test('a ticket marked read is skipped from then on, and drops out of the FE cand
   // S-3 is now just one of my own tickets only if assigned to me; it is not, so it is in no list but the read one
 });
 
+test('a done ticket is shown nowhere, even if it was marked read or is in a report stored before it moved on', async () => {
+  reset();
+  const sprint = [...sprintBase(), J({ key: 'S-11', assignee: 'Unassigned', client: 'X', components: ['FE'], created: '2026-11-09T12:00:00.000-0700' })];
+  await go({ fetchSprint: async () => sprint });
+  assert.equal(store.setRead('S-11', true, NOW.toISOString()), true);                  // read, and then it is released
+  const released = sprint.map((i) => (i.key === 'S-11' ? { ...i, status: 'Released', statusCategory: 'Done' } : i));
+  const { report } = await go({ fetchSprint: async () => released, now: () => new Date(NOW.getTime() + 15 * 60000) });
+  assert.ok(!report.newTickets.some((t) => t.key === 'S-11'));                          // dropped at the next run, read or not
+  // a stored report from before the move: the service filters it when it is read
+  const stored = store.getState().report;
+  stored.newTickets.push({ ...stored.newTickets[0], key: 'S-12', bucket: 'done', read: true });
+  stored.feCandidates.push({ ...stored.feCandidates[0], key: 'S-13', bucket: 'done' });
+  stored.myTickets.groups[0].tickets.push({ ...stored.myTickets.groups[0].tickets[0], key: 'S-14', bucket: 'done' });
+  store.finishRun({ status: 'ok', durationMs: 1, report: stored });
+  const svc = createQuickService({ run: async () => {}, deps: () => ({}), now: () => NOW, cfgOf: () => ({ schedule: R.DEFAULT_SCHEDULE, disabled: false }) });
+  const shown = svc.currentReport();
+  const keys = [...shown.newTickets, ...shown.feCandidates, ...shown.myTickets.groups.flatMap((g) => g.tickets)].map((t) => t.key);
+  assert.ok(!keys.some((k) => ['S-11', 'S-12', 'S-13', 'S-14'].includes(k)), keys.join(','));
+  assert.equal(shown.counts.newUnread, shown.newTickets.filter((t) => !t.read).length);
+  reset();
+});
+
 test('when the model fails the run still finishes, with plain analysis, rule-based groups and a note', async () => {
   reset();
   const { ok, report } = await go({ claude: async () => ({ ok: false, reason: 'not logged in' }) });

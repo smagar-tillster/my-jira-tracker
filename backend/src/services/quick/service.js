@@ -36,10 +36,16 @@ export const createQuickService = ({ run = runQuickAnalysis, deps = realDeps, cf
     const { report } = store.getState();
     if (!report) return null;
     const readAt = new Map(store.newRows().map((r) => [r.key, r.readAt]));
-    const newTickets = report.newTickets.map((t) => ({ ...t, read: readAt.has(t.key) ? !!readAt.get(t.key) : t.read }));
+    // Never show a done ticket (Ready for QA onward). The report is rebuilt every run, but one that was stored before a ticket moved on is filtered here.
+    const open = (t) => t.bucket !== 'done';
+    const newTickets = report.newTickets.filter(open).map((t) => ({ ...t, read: readAt.has(t.key) ? !!readAt.get(t.key) : t.read }));
     const readNow = new Set(newTickets.filter((t) => t.read).map((t) => t.key));
-    const feCandidates = report.feCandidates.filter((c) => !(c.origin === 'new' && readNow.has(c.key)));
-    return { ...report, newTickets, feCandidates, counts: { ...report.counts, newUnread: newTickets.filter((t) => !t.read).length, feCandidates: feCandidates.length } };
+    const feCandidates = report.feCandidates.filter((c) => open(c) && !(c.origin === 'new' && readNow.has(c.key)));
+    const groups = report.myTickets.groups.map((g) => ({ ...g, tickets: g.tickets.filter(open) })).filter((g) => g.tickets.length);
+    return {
+      ...report, newTickets, feCandidates, myTickets: { ...report.myTickets, groups },
+      counts: { ...report.counts, newUnread: newTickets.filter((t) => !t.read).length, feCandidates: feCandidates.length, myOpen: groups.reduce((n, g) => n + g.tickets.length, 0) },
+    };
   };
 
   const status = () => {

@@ -57,9 +57,9 @@ export const runQuickAnalysis = async ({
     if (baseline) notes.push('First run: tickets already in the sprint are taken as known. Only tickets created in the last 2 days count as new.');
 
     const keepSince = started.getTime() - cfg.readKeepDays * 86400000;
-    // A new ticket that is already done (released, in QA) has nothing left to review, so it is not offered, unless it was read and is being kept.
-    const rows = store.newRows().filter((r) => sprintByKey.has(r.key)
-      && (r.readAt ? Date.parse(r.readAt) >= keepSince : bucketOf(sprintByKey.get(r.key)) !== 'done'));
+    // Only tickets before Ready for QA are shown, read or not: a done ticket has nothing left to review or place.
+    const rows = store.newRows().filter((r) => sprintByKey.has(r.key) && bucketOf(sprintByKey.get(r.key)) !== 'done'
+      && (!r.readAt || Date.parse(r.readAt) >= keepSince));
     const newTickets = rows.map((r) => ({ ...view(sprintByKey.get(r.key)), firstSeenAt: r.firstSeenAt, read: !!r.readAt, fe: isFE(sprintByKey.get(r.key)) }));
     const unreadKeys = new Set(rows.filter((r) => !r.readAt).map((r) => r.key));
 
