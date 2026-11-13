@@ -413,8 +413,10 @@ export const reviewsApi = {
 };
 
 // ---------------------------------------------------------------- Quick Analysis
+/** Where the page loads a Jira issue type icon from: the backend fetches it with its own Jira login, because Jira only serves icons to a logged-in user. */
+export const jiraIcon = (iconUrl: string) => `${API_URL}/jira-icon?u=${encodeURIComponent(iconUrl)}`;
 export interface QuickTicket {
-  key: string; url: string; summary: string; description: string; type: string; status: string; bucket: 'blocked' | 'aligned' | 'done';
+  key: string; url: string; summary: string; description: string; type: string; /** Jira's own icon URL for the type (shown through jiraIcon), or null. */ typeIcon?: string | null; status: string; bucket: 'blocked' | 'aligned' | 'done';
   assignee: string; client: string; clients: string[]; components: string[]; created: string; updated: string; dueDate: string | null; releaseDate: string | null;
 }
 export type QuickSize = 'S' | 'M' | 'L' | 'XL';

@@ -316,6 +316,11 @@ test('view() keeps only what the page needs and scrubs the description', () => {
   assert.equal(v.assignee, ''); assert.ok(!v.description.includes('AKIA')); assert.equal(v.bucket, 'aligned');
 });
 
+test("the ticket type's own Jira icon is passed through, or null when Jira gave none", () => {
+  assert.equal(view(J({ key: 'V-2', issueTypeIcon: 'https://example.atlassian.net/images/icons/issuetypes/story.svg' })).typeIcon, 'https://example.atlassian.net/images/icons/issuetypes/story.svg');
+  assert.equal(view(J({ key: 'V-3' })).typeIcon, null);
+});
+
 // ---------------------------------------------------------------- service and routes
 const call = async (server, method, url, body) => {
   const res = await fetch(`http://127.0.0.1:${server.address().port}${url}`, { method, headers: { 'Content-Type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) });

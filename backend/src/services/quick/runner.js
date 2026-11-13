@@ -30,7 +30,7 @@ const snippet = (s, n = 280) => redactSecrets(String(s ?? '').replace(/\s+/g, ' 
 
 /** The parts of a Jira ticket the page needs. */
 export const view = (i) => ({
-  key: i.key, url: i.url, summary: i.summary, description: snippet(i.description), type: i.issueType, status: i.status, bucket: bucketOf(i),
+  key: i.key, url: i.url, summary: i.summary, description: snippet(i.description), type: i.issueType, typeIcon: i.issueTypeIcon || null, status: i.status, bucket: bucketOf(i),
   assignee: isUnassigned(i) ? '' : i.assignee, client: i.client || '', clients: clientsOf(i), components: i.components || [],
   created: i.created, updated: i.updated, dueDate: i.dueDate || null, releaseDate: i.releaseDate && i.releaseDate !== 'NA' ? i.releaseDate : null,
 });

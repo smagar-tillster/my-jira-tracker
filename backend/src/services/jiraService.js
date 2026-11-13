@@ -229,6 +229,7 @@ const mapIssues = (jiraIssues) => {
       created: fields.created,
       updated: fields.updated,
       issueType: fields.issuetype?.name || 'Unknown',
+      issueTypeIcon: fields.issuetype?.iconUrl || null,   // Jira's own icon for the type, shown through /api/jira-icon
       labels: fields.labels || [],
       components: (fields.components || []).map((c) => c.name),
       description: typeof fields.description === 'string' ? fields.description : extractDescription(fields.description),

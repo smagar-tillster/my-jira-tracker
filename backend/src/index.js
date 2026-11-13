@@ -7,6 +7,7 @@ import deliveryRouter from './routes/delivery.js';
 import hubRouter from './routes/hub.js';
 import reviewsRouter from './routes/reviews.js';
 import quickRouter from './routes/quick.js';
+import jiraIconRouter from './routes/jiraIcon.js';
 import { quickService } from './services/quick/service.js';
 import { initDb } from './db/database.js';
 import { migrateFromJson } from './db/migrate.js';
@@ -37,6 +38,7 @@ app.use('/api', deliveryRouter);
 app.use('/api', hubRouter);
 app.use('/api', reviewsRouter);
 app.use('/api', quickRouter);
+app.use('/api', jiraIconRouter);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

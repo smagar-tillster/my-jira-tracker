@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  quickApi, QuickReport, QuickStatus, QuickTicket, QuickNewTicket, QuickFeCandidate, QuickGroup, QuickSize,
+  quickApi, jiraIcon, QuickReport, QuickStatus, QuickTicket, QuickNewTicket, QuickFeCandidate, QuickGroup, QuickSize,
 } from '../services/api';
 import { BUCKET_PILL } from '../utils/statusBuckets';
 import { parseLocalDate } from '../utils/dateUtils';
@@ -34,14 +34,17 @@ const Pills = ({ items }: { items: string[] }) => (
   <>{items.map(c => <span key={c} className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 ring-1 ring-gray-200">{c}</span>)}</>
 );
 
-// An icon for the kind of ticket; the full name is the tooltip. Anything not listed gets a plain marker.
-const TYPE_ICON: Record<string, string> = {
-  defect: '🐞', bug: '🐞', incident: '🚨', story: '📖', task: '✅', 'sub-task': '🔹', subtask: '🔹', epic: '⚡', spike: '🔬', release: '🚀',
-  'feature change request': '✨', 'menu change request': '🍔', 'content change request': '📝',
+/** The ticket type as Jira draws it: Jira's own icon, with the type's name as the tooltip. No icon, or one that does not load, gives a plain letter tile. */
+const TypeIcon = ({ type, icon }: { type: string; icon?: string | null }) => {
+  const [failed, setFailed] = useState(false);
+  return (
+    <span className="inline-flex w-5 justify-center align-text-bottom shrink-0" title={type}>
+      {icon && !failed
+        ? <img src={jiraIcon(icon)} alt={type} width={16} height={16} className="w-4 h-4" onError={() => setFailed(true)} />
+        : <span aria-label={type} className="inline-flex w-4 h-4 items-center justify-center rounded bg-gray-200 text-[10px] font-semibold text-gray-600">{String(type || '?').charAt(0).toUpperCase()}</span>}
+    </span>
+  );
 };
-const TypeIcon = ({ type }: { type: string }) => (
-  <span title={type} aria-label={type} className="inline-block w-5 text-center shrink-0">{TYPE_ICON[String(type || '').toLowerCase()] || '🔸'}</span>
-);
 
 /** The earlier of the due and release dates, labeled, red when before today. */
 const DateChip = ({ t }: { t: QuickTicket }) => {
@@ -81,7 +84,7 @@ const NewTicketRow = ({ t, onRead }: { t: QuickNewTicket; onRead: (key: string, 
       {t.read ? '✓' : '👁'}
     </button>
     <div className="min-w-0 flex-1">
-      <div className="text-[14px] leading-5 text-gray-800"><TypeIcon type={t.type} /> <TicketLink t={t} /> {t.summary}</div>
+      <div className="text-[14px] leading-5 text-gray-800"><TypeIcon type={t.type} icon={t.typeIcon} /> <TicketLink t={t} /> {t.summary}</div>
       {t.description && <div className="text-xs text-gray-500 line-clamp-2 mt-0.5">{t.description}</div>}
       <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
         <StatusPill t={t} />
@@ -100,7 +103,7 @@ const FE_COLS = 'md:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]';
 const FeRow = ({ c }: { c: QuickFeCandidate }) => (
   <li className={`py-3 grid grid-cols-1 ${FE_COLS} gap-x-6 gap-y-2`}>
     <div className="min-w-0">
-      <div className="text-[14px] leading-5 text-gray-800"><TypeIcon type={c.type} /> <TicketLink t={c} /> {c.summary}</div>
+      <div className="text-[14px] leading-5 text-gray-800"><TypeIcon type={c.type} icon={c.typeIcon} /> <TicketLink t={c} /> {c.summary}</div>
       <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
         <span className={`px-2 py-0.5 rounded text-xs font-medium ${c.origin === 'new' ? 'bg-sky-100 text-sky-800' : 'bg-gray-100 text-gray-700'}`}>{c.origin === 'new' ? 'New' : 'Mine'}</span>
         {c.size
@@ -159,7 +162,7 @@ const GroupCard = ({ g }: { g: QuickGroup }) => {
       <ul className="bg-white rounded-b-lg divide-y divide-gray-100 border-t border-gray-100">
         {g.tickets.map(t => (
           <li key={t.key} className="px-4 py-2 flex flex-wrap items-center gap-2">
-            <span className="text-[14px] text-gray-800 min-w-0 flex-1"><TypeIcon type={t.type} /> <TicketLink t={t} /> {t.summary}</span>
+            <span className="text-[14px] text-gray-800 min-w-0 flex-1"><TypeIcon type={t.type} icon={t.typeIcon} /> <TicketLink t={t} /> {t.summary}</span>
             <StatusPill t={t} /><DateChip t={t} />
           </li>
         ))}
