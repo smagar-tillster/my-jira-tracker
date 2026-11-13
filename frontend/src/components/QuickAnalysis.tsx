@@ -34,6 +34,15 @@ const Pills = ({ items }: { items: string[] }) => (
   <>{items.map(c => <span key={c} className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 ring-1 ring-gray-200">{c}</span>)}</>
 );
 
+// An icon for the kind of ticket; the full name is the tooltip. Anything not listed gets a plain marker.
+const TYPE_ICON: Record<string, string> = {
+  defect: '🐞', bug: '🐞', incident: '🚨', story: '📖', task: '✅', 'sub-task': '🔹', subtask: '🔹', epic: '⚡', spike: '🔬', release: '🚀',
+  'feature change request': '✨', 'menu change request': '🍔', 'content change request': '📝',
+};
+const TypeIcon = ({ type }: { type: string }) => (
+  <span title={type} aria-label={type} className="inline-block w-5 text-center shrink-0">{TYPE_ICON[String(type || '').toLowerCase()] || '🔸'}</span>
+);
+
 /** The earlier of the due and release dates, labeled, red when before today. */
 const DateChip = ({ t }: { t: QuickTicket }) => {
   const due = parseLocalDate(t.dueDate); const rel = parseLocalDate(t.releaseDate);
@@ -72,10 +81,9 @@ const NewTicketRow = ({ t, onRead }: { t: QuickNewTicket; onRead: (key: string, 
       {t.read ? '✓' : '👁'}
     </button>
     <div className="min-w-0 flex-1">
-      <div className="text-[14px] leading-5 text-gray-800"><TicketLink t={t} /> {t.summary}</div>
+      <div className="text-[14px] leading-5 text-gray-800"><TypeIcon type={t.type} /> <TicketLink t={t} /> {t.summary}</div>
       {t.description && <div className="text-xs text-gray-500 line-clamp-2 mt-0.5">{t.description}</div>}
       <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-        <span className="px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-700">{t.type}</span>
         <StatusPill t={t} />
         <Pills items={t.clients} />
         {t.fe && <span className="px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">FE</span>}
@@ -86,31 +94,34 @@ const NewTicketRow = ({ t, onRead }: { t: QuickNewTicket; onRead: (key: string, 
 );
 
 // ---------------------------------------------------------------- 2. FE candidates
-const FeCard = ({ c }: { c: QuickFeCandidate }) => (
-  <li className="py-3">
-    <div className="flex items-start gap-2">
-      <span className={`mt-0.5 shrink-0 px-2 py-0.5 rounded text-xs font-medium ${c.origin === 'new' ? 'bg-sky-100 text-sky-800' : 'bg-gray-100 text-gray-700'}`}>{c.origin === 'new' ? 'New' : 'Mine'}</span>
-      <div className="min-w-0 flex-1">
-        <div className="text-[14px] leading-5 text-gray-800"><TicketLink t={c} /> {c.summary}</div>
-        <div className="mt-1 flex flex-wrap items-center gap-1.5">
-          {c.size
-            ? <span title={`${SIZE_HINT[c.size]}${c.sizeWhy ? `\n${c.sizeWhy}` : ''}`} className={`px-2 py-0.5 rounded text-xs font-bold ${SIZE_PILL[c.size]}`}>Size {c.size}</span>
-            : <span className="px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-500" title="No size could be written for this ticket">No size</span>}
-          <StatusPill t={c} />
-          <Pills items={c.clients} />
-          <DateChip t={c} />
-          {c.areas.map(a => <span key={a} className="px-1.5 py-0.5 rounded text-xs text-gray-600 bg-white ring-1 ring-gray-200">{a}</span>)}
-          <span className="text-xs text-gray-500">{c.assignee ? `now with ${c.assignee}` : 'unassigned'}</span>
-        </div>
-        <p className="text-sm text-gray-700 mt-1.5">{c.analysis}</p>
-        {c.sizeWhy && <p className="text-xs text-gray-500 mt-0.5">Size: {c.sizeWhy}</p>}
-        {c.suggestion ? (
-          <div className="mt-2 inline-block rounded-md bg-indigo-50 border border-indigo-100 px-3 py-1.5 text-sm text-indigo-900">
-            <span className="font-semibold">Suggest {c.suggestion.name}.</span> <span className="text-indigo-800">{c.suggestion.why.replace(`${c.suggestion.name}: `, '')}</span>
-            {c.suggestion.alternatives.length > 0 && <span className="text-indigo-700"> Also: {c.suggestion.alternatives.map(a => `${a.name} (${a.aligned})`).join(', ')}.</span>}
-          </div>
-        ) : <p className="text-xs text-gray-400 mt-2">No suggestion: no one else on the FE team to offer it to.</p>}
+const FE_COLS = 'md:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]';
+
+/** One FE ticket as a row of two columns: the ticket with its tags, and what the analysis says about it. */
+const FeRow = ({ c }: { c: QuickFeCandidate }) => (
+  <li className={`py-3 grid grid-cols-1 ${FE_COLS} gap-x-6 gap-y-2`}>
+    <div className="min-w-0">
+      <div className="text-[14px] leading-5 text-gray-800"><TypeIcon type={c.type} /> <TicketLink t={c} /> {c.summary}</div>
+      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+        <span className={`px-2 py-0.5 rounded text-xs font-medium ${c.origin === 'new' ? 'bg-sky-100 text-sky-800' : 'bg-gray-100 text-gray-700'}`}>{c.origin === 'new' ? 'New' : 'Mine'}</span>
+        {c.size
+          ? <span title={`${SIZE_HINT[c.size]}${c.sizeWhy ? `\n${c.sizeWhy}` : ''}`} className={`px-2 py-0.5 rounded text-xs font-bold ${SIZE_PILL[c.size]}`}>Size {c.size}</span>
+          : <span className="px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-500" title="No size could be written for this ticket">No size</span>}
+        <StatusPill t={c} />
+        <Pills items={c.clients} />
+        <DateChip t={c} />
+        {c.areas.map(a => <span key={a} className="px-1.5 py-0.5 rounded text-xs text-gray-600 bg-white ring-1 ring-gray-200">{a}</span>)}
+        <span className="text-xs text-gray-500">{c.assignee ? `now with ${c.assignee}` : 'unassigned'}</span>
       </div>
+    </div>
+    <div className="min-w-0">
+      <p className="text-sm text-gray-700">{c.analysis}</p>
+      {c.sizeWhy && <p className="text-xs text-gray-500 mt-0.5">Size: {c.sizeWhy}</p>}
+      {c.suggestion ? (
+        <div className="mt-2 inline-block rounded-md bg-indigo-50 border border-indigo-100 px-3 py-1.5 text-sm text-indigo-900">
+          <span className="font-semibold">Suggest {c.suggestion.name}.</span> <span className="text-indigo-800">{c.suggestion.why.replace(`${c.suggestion.name}: `, '')}</span>
+          {c.suggestion.alternatives.length > 0 && <span className="text-indigo-700"> Also: {c.suggestion.alternatives.map(a => `${a.name} (${a.aligned})`).join(', ')}.</span>}
+        </div>
+      ) : <p className="text-xs text-gray-400 mt-2">No suggestion: no one else on the FE team to offer it to.</p>}
     </div>
   </li>
 );
@@ -148,7 +159,7 @@ const GroupCard = ({ g }: { g: QuickGroup }) => {
       <ul className="bg-white rounded-b-lg divide-y divide-gray-100 border-t border-gray-100">
         {g.tickets.map(t => (
           <li key={t.key} className="px-4 py-2 flex flex-wrap items-center gap-2">
-            <span className="text-[14px] text-gray-800 min-w-0 flex-1"><TicketLink t={t} /> {t.summary}</span>
+            <span className="text-[14px] text-gray-800 min-w-0 flex-1"><TypeIcon type={t.type} /> <TicketLink t={t} /> {t.summary}</span>
             <StatusPill t={t} /><DateChip t={t} />
           </li>
         ))}
@@ -236,7 +247,10 @@ export const QuickAnalysisView: React.FC<QuickViewProps> = ({ report, status, er
               right={report.feTeam.length > 0 && <button onClick={onToggleTeam} className="text-xs text-blue-600 hover:underline">{showTeam ? 'Hide' : 'Show'} who has what</button>}>
               {showTeam && <div className="mb-3 p-3 rounded-md bg-gray-50 border border-gray-100"><FeTeam team={report.feTeam} /><p className="text-xs text-gray-500 mt-2">Aligned means in progress and not blocked. Suggestions go by this load and by related work, and each one counts the suggestions above it so one person is not offered everything. They are a starting point, you decide.</p></div>}
               {report.feCandidates.length === 0 ? <Empty>No FE tickets to place right now.</Empty> : (
-                <ul className="divide-y divide-gray-100">{report.feCandidates.map(c => <FeCard key={c.key} c={c} />)}</ul>
+                <>
+                  <div className={`hidden md:grid ${FE_COLS} gap-x-6 pb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500 border-b border-gray-200`}><div>Ticket</div><div>Analysis</div></div>
+                  <ul className="divide-y divide-gray-100">{report.feCandidates.map(c => <FeRow key={c.key} c={c} />)}</ul>
+                </>
               )}
             </Card>
 
