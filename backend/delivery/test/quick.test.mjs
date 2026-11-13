@@ -95,7 +95,7 @@ test('the suggestion is the lightest load, helped by related work, and never the
   const w = R.teamWorkload(sprint, ['Ana', 'Ben', 'Cy']);
   const plain = R.suggestAssignee(T({ client: 'NEW-CLIENT' }), w);
   assert.equal(plain.name, 'Ben');
-  assert.match(plain.why, /2 aligned tickets \(the fewest on the team\)/);
+  assert.match(plain.why, /2 aligned tickets \(the lightest load on the team\)/);
   assert.deepEqual(plain.alternatives.map((a) => a.name), ['Ana', 'Cy']);
   // Ana holds 3 for BK-US, which is worth up to 3 tickets, so she now outranks Ben (2) for a BK-US ticket
   const related = R.suggestAssignee(T({ client: 'BK-US' }), w);
@@ -145,6 +145,10 @@ test('each suggestion adds load to the person offered, so tickets are spread; bi
   assert.deepEqual(load, { Ana: 1, Ben: 3, Cy: 2 });             // S + L = 3 for Ben, S + S = 2 for Cy
   R.addPlannedLoad(w, 'Nobody', T(), 'S');                       // an unknown name changes nothing
   assert.equal(w.length, 3);
+  // the reason tells the real load apart from what was only suggested earlier in the same report
+  const again = R.suggestAssignee(T({ client: 'NEW' }), w);
+  assert.equal(again.name, 'Cy');
+  assert.match(again.why, /^Cy: 0 aligned tickets, plus 2 already suggested above/);
 });
 
 test('the fallback grouping is by client, most urgent group first, with a next step', () => {

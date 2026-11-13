@@ -111,7 +111,8 @@ export const suggestAssignee = (ticket, workloads, { exclude = [] } = {}) => {
   }).sort((a, b) => a.score - b.score || a.w.aligned - b.w.aligned || a.w.name.localeCompare(b.w.name));
   const top = scored[0];
   const lightest = Math.min(...pool.map((w) => w.aligned));
-  const parts = [`${top.w.aligned} aligned ticket${top.w.aligned === 1 ? '' : 's'}${top.w.aligned === lightest ? ' (the fewest on the team)' : ''}`];
+  const real = top.w.aligned - (top.w.planned || 0);
+  const parts = [`${real} aligned ticket${real === 1 ? '' : 's'}${top.w.planned ? `, plus ${top.w.planned} already suggested above` : ''}${top.w.aligned === lightest ? ' (the lightest load on the team)' : ''}`];
   if (top.w.blocked) parts.push(`${top.w.blocked} blocked`);
   if (top.sharedClients.length) parts.push(`already holds work for ${top.sharedClients.join(', ')}`);
   if (top.sharedComps.length) parts.push(`and the ${top.sharedComps.join(', ')} component`);
@@ -155,7 +156,9 @@ export const isStale = (issue, today = new Date()) => {
 export const addPlannedLoad = (workloads, name, ticket, size) => {
   const w = workloads.find((x) => x.name === name);
   if (!w) return;
-  w.aligned += size === 'L' ? 2 : size === 'XL' ? 3 : 1;
+  const weight = size === 'L' ? 2 : size === 'XL' ? 3 : 1;
+  w.aligned += weight;
+  w.planned = (w.planned || 0) + weight;       // the part of the load that is only a suggestion made earlier in this report
   for (const c of clientsOf(ticket)) w.clients[c] = (w.clients[c] || 0) + 1;
 };
 
