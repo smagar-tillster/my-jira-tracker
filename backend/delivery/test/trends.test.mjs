@@ -77,7 +77,7 @@ test('grouped by client a ticket counts under each of its clients, and one with 
   assert.deepEqual(a.counts.PLK, [0, 0, 0, 1, 1, 0]);            // A-2 in Sep; A-3 in Oct
   assert.deepEqual(a.counts['No client'], [0, 0, 0, 0, 1, 0]);   // A-4
   assert.deepEqual(a.totals, [0, 0, 0, 2, 2, 1]);                // A-2 is one ticket although it is under two clients
-  assert.deepEqual(a.series.map((s) => s.name), ['No client', 'BK', 'PLK']);   // ranked over all tickets: 4, 3, 2
+  assert.deepEqual(a.series.map((s) => s.name), ['BK', 'PLK', 'No client']);   // ranked by tickets in the months shown: 3, 2, 1
 });
 
 test('grouped by assignee, nobody is "Unassigned"', () => {
@@ -103,11 +103,12 @@ test('filters narrow the tickets; FE team keeps the members only; menus list eve
   assert.equal(byType({ feTeam: true }).options.clients.length, 3);       // menus do not shrink with the filters
 });
 
-test('a series keeps its rank over all tickets, whatever filter, basis or range is chosen', () => {
-  const rk = (o) => A.aggregate({ rows: rows(), now: NOW, ...o }).series.map((t) => `${t.name}:${t.rank}`).join(' ');
-  assert.equal(rk({}), 'Story:1 Defect:2 Epic:3 Task:4');
-  assert.equal(rk({ basis: 'created', months: 3 }), 'Story:1 Defect:2 Epic:3 Task:4');
-  assert.equal(rk({ filters: { client: 'BK' } }), 'Story:1 Task:4');   // Defect and Epic have no BK ticket: gone from the legend, ranks unchanged
+test('series are ranked by their tickets in view, and only those with tickets in view are listed', () => {
+  const rk = (o) => A.aggregate({ rows: rows(), now: NOW, ...o }).series.map((t) => `${t.name}:${t.rank}:${t.total}`).join(' ');
+  assert.equal(rk({}), 'Defect:1:2 Story:2:2 Task:3:1');                       // A-6 (future), A-7 (no date) and A-8 (old) are not in view
+  assert.equal(rk({ basis: 'created', months: 3 }), 'Defect:1:2 Story:2:2 Epic:3:1 Task:4:1');   // A-7 (Epic) was created in November
+  assert.equal(rk({ filters: { client: 'BK' } }), 'Story:1:2 Task:2:1');         // ranks close up when a filter removes series
+  assert.equal(A.aggregate({ rows: rows(), months: 3, now: NOW }).series.every((s) => s.total === A.aggregate({ rows: rows(), months: 3, now: NOW }).counts[s.name].reduce((a, b) => a + b, 0)), true);
 });
 
 // ---------------------------------------------------------------- reading Jira

@@ -10,8 +10,8 @@ export interface TypeInfo { name: string; total: number; rank: number }
 export interface Series { id: string; label: string; color: string; types: string[]; isOther: boolean }
 
 /**
- * The named series (rank 1 to 7) and one "Other" series for the rest. A series' color comes from its rank over ALL tickets, which the
- * backend fixes, so it keeps its color when a filter, the basis or the range changes (a filtered list may skip ranks). `noun` words the Other label.
+ * The named series (rank 1 to 7) and one "Other" series for the rest. A series' color comes from its rank by tickets in view, which the
+ * backend fixes, so hiding series in the legend does not repaint the rest. `noun` words the Other label.
  */
 export const buildSeries = (types: readonly TypeInfo[], noun = 'types'): Series[] => {
   const named: Series[] = types.filter((t) => t.rank <= MAX_NAMED).map((t) => ({ id: t.name, label: t.name, color: SERIES_COLORS[t.rank - 1], types: [t.name], isOther: false }));

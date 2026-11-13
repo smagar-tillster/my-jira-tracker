@@ -57,14 +57,14 @@ const rank = (rows, group) => {
  *   months    how many months back from the current one (3 or 6)
  *   filters   { type, client, assignee, feTeam }: a ticket must match every one given; feTeam keeps tickets assigned to a member of `feMembers`
  * Months after the current one are not shown (sprints that have not started); their tickets are counted in `future`.
- * Series are ranked once over ALL tickets for the grouping (not the filtered ones), so a series keeps its rank and color when a filter or the basis changes.
- * `series` lists only those with tickets after the filters; `options` lists every value for the filter menus.
+ * `series` are the ones with tickets in the months shown, ranked by those counts (so the top seven in view get the colors and the tail folds into
+ * Other; ranking over all history would paint almost every assignee gray). A change of filter, basis or range can therefore change colors;
+ * hiding series in the legend does not. `options` lists every value over all tickets for the filter menus.
  */
 export const aggregate = ({ rows, basis = 'sprint', group = 'type', months = 6, filters = {}, feMembers = new Set(), now = new Date() }) => {
   if (!BASES.includes(basis)) throw new Error(`basis must be one of ${BASES.join(', ')}`);
   if (!GROUPS.includes(group)) throw new Error(`group must be one of ${GROUPS.join(', ')}`);
   const current = monthOf(now.toISOString());
-  const ranked = rank(rows, group);
   const options = { types: rank(rows, 'type').map((t) => t.name).sort(), clients: rank(rows, 'client').map((t) => t.name).sort(), assignees: rank(rows, 'assignee').map((t) => t.name).sort() };
 
   const f = filters || {};
@@ -88,7 +88,7 @@ export const aggregate = ({ rows, basis = 'sprint', group = 'type', months = 6, 
     inRange++; totals[i]++;
     for (const v of valuesFor(r, group)) (counts[v] ||= list.map(() => 0))[i]++;
   }
-  const series = ranked.filter((s) => kept.some((r) => valuesFor(r, group).includes(s.name))).map((s) => ({ ...s, total: kept.filter((r) => valuesFor(r, group).includes(s.name)).length }));
-  for (const s of series) counts[s.name] ||= list.map(() => 0);
+  const series = Object.entries(counts).map(([name, c]) => ({ name, total: c.reduce((a, b) => a + b, 0) }))
+    .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name)).map((s, i) => ({ ...s, rank: i + 1 }));
   return { basis, group, months: list, series, counts, totals, options, tickets: rows.length, matching: kept.length, inRange, before, future, noDate };
 };
