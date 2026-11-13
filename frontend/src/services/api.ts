@@ -411,3 +411,46 @@ export const reviewsApi = {
     try { return (await apiClient.post(`${rvPath(r)}/post`, { confirm: true, acknowledgeSecrets: !!opts.acknowledgeSecrets })).data.data; } catch (e) { return reviewErr(e); }
   },
 };
+
+// ---------------------------------------------------------------- Quick Analysis
+/** Where the page loads a Jira issue type icon from: the backend fetches it with its own Jira login, because Jira only serves icons to a logged-in user. */
+export const jiraIcon = (iconUrl: string) => `${API_URL}/jira-icon?u=${encodeURIComponent(iconUrl)}`;
+export interface QuickTicket {
+  key: string; url: string; summary: string; description: string; type: string; /** Jira's own icon URL for the type (shown through jiraIcon), or null. */ typeIcon?: string | null; status: string; bucket: 'blocked' | 'aligned' | 'done';
+  assignee: string; client: string; clients: string[]; components: string[]; created: string; updated: string; dueDate: string | null; releaseDate: string | null;
+}
+export type QuickSize = 'S' | 'M' | 'L' | 'XL';
+export interface QuickNewTicket extends QuickTicket { firstSeenAt: string; read: boolean; fe: boolean }
+export interface QuickFeCandidate extends QuickTicket {
+  origin: 'new' | 'mine'; size: QuickSize | null; sizeWhy: string; analysis: string; areas: string[];
+  suggestion: { name: string; why: string; alternatives: { name: string; aligned: number }[] } | null;
+}
+export interface QuickGroup { title: string; priority: 'high' | 'medium' | 'low'; why: string; action: string; tickets: (QuickTicket & { priority: 'high' | 'medium' | 'low' })[] }
+export interface QuickReport {
+  generatedAt: string; durationSec: number; baseline: boolean;
+  counts: { sprint: number; newUnread: number; feCandidates: number; myOpen: number };
+  newTickets: QuickNewTicket[]; feCandidates: QuickFeCandidate[];
+  feTeam: { name: string; aligned: number; blocked: number; clients: { name: string; n: number }[]; tickets: { key: string; summary: string }[] }[];
+  myTickets: { source: 'ai' | 'rules'; groups: QuickGroup[] };
+  notes: string[];
+}
+export interface QuickStatus {
+  running: boolean; lastRunAt: string | null; lastStatus: 'running' | 'ok' | 'failed' | null; lastError: string | null; lastDurationMs: number | null;
+  reportReady: boolean; generatedAt: string | null; nextRunAt: string | null; disabled: boolean;
+  schedule: { startHour: number; endHour: number; intervalMinutes: number; weekdaysOnly: boolean };
+  /** New tickets found since the page was last opened: the number the bell shows. */
+  unviewedNew: number; unreadNew: number;
+}
+
+export const quickApi = {
+  status: async (): Promise<QuickStatus> => (await apiClient.get('/quick/status')).data.data,
+  report: async (): Promise<{ report: QuickReport | null; status: QuickStatus }> => (await apiClient.get('/quick/report')).data.data,
+  /** Run now. Resolves with the new state; a run already going is not an error. */
+  run: async (): Promise<QuickStatus> => {
+    // An empty JSON body on purpose: in the browser axios drops Content-Type from a POST with no body, and the backend refuses non-JSON (415).
+    try { return (await apiClient.post('/quick/run', {})).data.data; }
+    catch (e: any) { if (e?.response?.status === 409) return e.response.data.data; throw e; }
+  },
+  markRead: async (key: string, read: boolean): Promise<QuickStatus> => (await apiClient.put(`/quick/new/${encodeURIComponent(key)}/read`, { read })).data.data,
+  viewed: async (): Promise<QuickStatus> => (await apiClient.post('/quick/viewed', {})).data.data,
+};

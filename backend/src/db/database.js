@@ -59,6 +59,38 @@ export function initDb() {
       impact     TEXT NOT NULL DEFAULT 'medium',
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
+    -- Quick Analysis: every sprint ticket seen at an earlier run, the ones that were new (with whether they were marked read),
+    -- the model's analysis per ticket, and the last report with its run state. Times are UTC ISO-8601.
+    CREATE TABLE IF NOT EXISTS qa_known (
+      issue_key     TEXT PRIMARY KEY,
+      first_seen_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS qa_new (
+      issue_key     TEXT PRIMARY KEY,
+      first_seen_at TEXT NOT NULL,
+      read_at       TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS qa_analysis (
+      issue_key  TEXT PRIMARY KEY,
+      updated    TEXT NOT NULL,
+      json       TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS qa_state (
+      id               INTEGER PRIMARY KEY CHECK (id = 1),
+      last_run_at      TEXT,
+      last_status      TEXT,
+      last_error       TEXT,
+      last_duration_ms INTEGER,
+      report_json      TEXT,
+      viewed_at        TEXT,
+      group_hash       TEXT,
+      group_json       TEXT
+    );
   `);
 
   console.log('✓ SQLite database initialized');
