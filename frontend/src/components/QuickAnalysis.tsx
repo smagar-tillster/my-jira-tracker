@@ -44,15 +44,20 @@ const DateChip = ({ t }: { t: QuickTicket }) => {
   return <span className={`px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap ${late ? 'bg-red-100 text-red-800 ring-1 ring-red-300' : 'bg-gray-100 text-gray-700'}`}>{pick.l} {shortDate(pick.d)}</span>;
 };
 
-const Card: React.FC<{ icon: string; title: string; count?: number | string; hint?: string; right?: React.ReactNode; children: React.ReactNode }> = ({ icon, title, count, hint, right, children }) => (
+const Card: React.FC<{
+  icon: string; title: string; count?: number | string; hint?: string; right?: React.ReactNode; open: boolean; onToggle: () => void; children: React.ReactNode;
+}> = ({ icon, title, count, hint, right, open, onToggle, children }) => (
   <section className="bg-white rounded-lg shadow-sm border border-gray-200">
-    <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100">
-      <h2 className="text-[15px] font-semibold text-gray-800">{icon} {title}</h2>
-      {count !== undefined && <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{count}</span>}
-      {hint && <span className="text-xs text-gray-500 truncate">{hint}</span>}
-      <div className="ml-auto flex items-center gap-3">{right}</div>
+    <div className={`flex items-center gap-3 px-4 py-3 ${open ? 'border-b border-gray-100' : ''}`}>
+      <button onClick={onToggle} aria-expanded={open} title={open ? 'Collapse' : 'Expand'} className="flex items-center gap-3 min-w-0 flex-1 text-left">
+        <span className="text-gray-400 text-xs w-3">{open ? '▼' : '▶'}</span>
+        <h2 className="text-[15px] font-semibold text-gray-800 whitespace-nowrap">{icon} {title}</h2>
+        {count !== undefined && <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{count}</span>}
+        {hint && <span className="text-xs text-gray-500 truncate">{hint}</span>}
+      </button>
+      {open && <div className="ml-auto flex items-center gap-3">{right}</div>}
     </div>
-    <div className="p-4">{children}</div>
+    {open && <div className="p-4">{children}</div>}
   </section>
 );
 
@@ -153,17 +158,22 @@ const GroupCard = ({ g }: { g: QuickGroup }) => {
 };
 
 // ---------------------------------------------------------------- the page
+const SECTIONS = ['new', 'fe', 'mine'];
+
 export interface QuickViewProps {
   report: QuickReport | null; status: QuickStatus | null; error: string | null; loading: boolean;
   showRead: boolean; showTeam: boolean;
+  /** The sections that are collapsed: 'new', 'fe', 'mine'. */
+  collapsed: ReadonlySet<string>; onToggleSection: (id: string) => void; onToggleAll: () => void;
   onToggleRead: () => void; onToggleTeam: () => void; onRun: () => void; onSetRead: (key: string, read: boolean) => void;
 }
 
 /** What the page looks like for a given report and state. No data loading here, so it can be rendered on its own. */
-export const QuickAnalysisView: React.FC<QuickViewProps> = ({ report, status, error, loading, showRead, showTeam, onToggleRead, onToggleTeam, onRun, onSetRead }) => {
+export const QuickAnalysisView: React.FC<QuickViewProps> = ({ report, status, error, loading, showRead, showTeam, collapsed, onToggleSection, onToggleAll, onToggleRead, onToggleTeam, onRun, onSetRead }) => {
   const sched = status?.schedule;
   const unread = report?.newTickets.filter(t => !t.read) ?? [];
   const read = report?.newTickets.filter(t => t.read) ?? [];
+  const allCollapsed = SECTIONS.every(id => collapsed.has(id));
 
   return (
     <div className="h-full overflow-auto bg-gray-100">
@@ -178,8 +188,14 @@ export const QuickAnalysisView: React.FC<QuickViewProps> = ({ report, status, er
             {status?.disabled && ' · automatic runs are off'}
           </span>
           {sched && <span className="text-xs text-gray-400" title="Set in backend/delivery/config.json, quickAnalysis">Every {sched.intervalMinutes} min, {hour(sched.startHour)} to {hour(sched.endHour)}{sched.weekdaysOnly ? ', Mon to Fri' : ''}</span>}
+          {report && (
+            <button onClick={onToggleAll} title={allCollapsed ? 'Open every section' : 'Fold every section to its title'}
+              className="ml-auto px-3 py-1.5 rounded-lg text-sm font-medium bg-white ring-1 ring-gray-300 text-gray-700 hover:bg-gray-100 whitespace-nowrap">
+              {allCollapsed ? '▼ Expand all' : '▲ Collapse all'}
+            </button>
+          )}
           <button onClick={onRun} disabled={!!status?.running}
-            className="ml-auto px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-60 disabled:cursor-not-allowed">
+            className={`${report ? '' : 'ml-auto '}px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-60 disabled:cursor-not-allowed`}>
             {status?.running ? '⏳ Running…' : '🔄 Run now'}
           </button>
         </div>
@@ -204,7 +220,7 @@ export const QuickAnalysisView: React.FC<QuickViewProps> = ({ report, status, er
         {report && (
           <>
             {/* 1. New tickets */}
-            <Card icon="🆕" title="New tickets in the sprint" count={unread.length} hint="Mark one as read and it is skipped from the next run on"
+            <Card icon="🆕" title="New tickets in the sprint" count={unread.length} open={!collapsed.has('new')} onToggle={() => onToggleSection('new')} hint="Mark one as read and it is skipped from the next run on"
               right={read.length > 0 && <button onClick={onToggleRead} className="text-xs text-blue-600 hover:underline">{showRead ? 'Hide' : 'Show'} read ({read.length})</button>}>
               {unread.length === 0 && !showRead ? <Empty>Nothing new since you last read. New tickets added to the sprint show up here.</Empty> : (
                 <ul className="divide-y divide-gray-100">
@@ -215,7 +231,7 @@ export const QuickAnalysisView: React.FC<QuickViewProps> = ({ report, status, er
             </Card>
 
             {/* 2. FE tickets: size and who could take them */}
-            <Card icon="🧩" title="FE tickets: size and who could take them" count={report.feCandidates.length}
+            <Card icon="🧩" title="FE tickets: size and who could take them" count={report.feCandidates.length} open={!collapsed.has('fe')} onToggle={() => onToggleSection('fe')}
               hint="New FE tickets, and FE tickets assigned to me"
               right={report.feTeam.length > 0 && <button onClick={onToggleTeam} className="text-xs text-blue-600 hover:underline">{showTeam ? 'Hide' : 'Show'} who has what</button>}>
               {showTeam && <div className="mb-3 p-3 rounded-md bg-gray-50 border border-gray-100"><FeTeam team={report.feTeam} /><p className="text-xs text-gray-500 mt-2">Aligned means in progress and not blocked. Suggestions go by this load and by related work, and each one counts the suggestions above it so one person is not offered everything. They are a starting point, you decide.</p></div>}
@@ -225,7 +241,7 @@ export const QuickAnalysisView: React.FC<QuickViewProps> = ({ report, status, er
             </Card>
 
             {/* 3. My tickets */}
-            <Card icon="🎯" title="My tickets: what to do first" count={report.counts.myOpen}
+            <Card icon="🎯" title="My tickets: what to do first" count={report.counts.myOpen} open={!collapsed.has('mine')} onToggle={() => onToggleSection('mine')}
               hint={report.myTickets.source === 'ai' ? 'Grouped by meaning (AI-assisted); priority is never lower than the dates say' : 'Grouped by client and date'}>
               {report.myTickets.groups.length === 0 ? <Empty>Nothing open on your list.</Empty> : (
                 <div className="space-y-3">{report.myTickets.groups.map(g => <GroupCard key={g.title} g={g} />)}</div>
@@ -246,6 +262,7 @@ const QuickAnalysis: React.FC<{ active?: boolean }> = ({ active = true }) => {
   const [loading, setLoading] = useState(true);
   const [showRead, setShowRead] = useState(false);
   const [showTeam, setShowTeam] = useState(false);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const seen = useRef<string | null>(null);
 
   const load = useCallback(async () => {
@@ -294,8 +311,13 @@ const QuickAnalysis: React.FC<{ active?: boolean }> = ({ active = true }) => {
     load();
   };
 
+  const toggleSection = (id: string) => setCollapsed(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  // one button: if every section is folded open them all, otherwise fold them all
+  const toggleAll = () => setCollapsed(prev => (SECTIONS.every(id => prev.has(id)) ? new Set() : new Set(SECTIONS)));
+
   return (
     <QuickAnalysisView report={report} status={status} error={error} loading={loading} showRead={showRead} showTeam={showTeam}
+      collapsed={collapsed} onToggleSection={toggleSection} onToggleAll={toggleAll}
       onToggleRead={() => setShowRead(s => !s)} onToggleTeam={() => setShowTeam(s => !s)} onRun={runNow} onSetRead={setRead} />
   );
 };
