@@ -457,26 +457,31 @@ export const quickApi = {
 
 // ---------------------------------------------------------------- Trends
 export type TrendBasis = 'sprint' | 'created' | 'resolved';
-export type TrendMonths = 6 | 12 | 24 | 'all';
+export type TrendGroup = 'type' | 'client' | 'assignee';
+export type TrendMonths = 3 | 6;
 export interface TrendsStatus {
-  running: boolean; lastSyncAt: string | null; lastFullAt: string | null; lastStatus: 'running' | 'ok' | 'failed' | null; lastError: string | null;
+  running: boolean; lastSyncAt: string | null; lastStatus: 'running' | 'ok' | 'failed' | null; lastError: string | null;
   lastDurationMs: number | null; tickets: number; firstLoad: boolean;
 }
-export interface TrendType { name: string; total: number; rank: number }
+export interface TrendSeries { name: string; total: number; rank: number }
+export interface TrendFilters { type?: string; client?: string; assignee?: string; feTeam?: boolean }
 export interface SprintTrend {
-  basis: TrendBasis; months: string[]; types: TrendType[]; counts: Record<string, number[]>; totals: number[];
-  /** All tickets in the local copy / the ones counted in the months shown / older than the range / in sprints that have not started / with no date of this kind. */
-  tickets: number; inRange: number; before: number; future: number; noDate: number;
+  basis: TrendBasis; group: TrendGroup; months: string[]; series: TrendSeries[]; counts: Record<string, number[]>;
+  /** Distinct tickets per month (a ticket with two clients is one here although it is under both clients in `counts`). */
+  totals: number[];
+  options: { types: string[]; clients: string[]; assignees: string[] };
+  /** All tickets in the local copy / the ones left after the filters / counted in the months shown / older than the range / in sprints that have not started / with no date of this kind. */
+  tickets: number; matching: number; inRange: number; before: number; future: number; noDate: number;
   status: TrendsStatus;
 }
 
 export const trendsApi = {
   status: async (): Promise<TrendsStatus> => (await apiClient.get('/trends/status')).data.data,
-  sprintTickets: async (basis: TrendBasis, months: TrendMonths): Promise<SprintTrend> =>
-    (await apiClient.get('/trends/sprint-tickets', { params: { basis, months } })).data.data,
-  /** Reads what changed in Jira now. A sync already running is not an error. An empty JSON body on purpose: the backend refuses non-JSON POSTs. */
-  refresh: async (full = false): Promise<TrendsStatus> => {
-    try { return (await apiClient.post('/trends/refresh', { full })).data.data; }
+  sprintTickets: async (basis: TrendBasis, months: TrendMonths, group: TrendGroup, filters: TrendFilters): Promise<SprintTrend> =>
+    (await apiClient.get('/trends/sprint-tickets', { params: { basis, months, group, type: filters.type, client: filters.client, assignee: filters.assignee, feTeam: filters.feTeam ? 1 : undefined } })).data.data,
+  /** Reads the sprint tickets from Jira now: the only way the copy is updated. A read already running is not an error. An empty JSON body on purpose: the backend refuses non-JSON POSTs. */
+  refresh: async (): Promise<TrendsStatus> => {
+    try { return (await apiClient.post('/trends/refresh', {})).data.data; }
     catch (e: any) { if (e?.response?.status === 409) return e.response.data.data; throw e; }
   },
 };

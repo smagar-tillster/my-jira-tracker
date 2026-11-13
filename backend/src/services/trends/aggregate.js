@@ -35,42 +35,60 @@ const addMonths = (month, n) => {
   return `${Math.floor(t / 12)}-${String((t % 12) + 1).padStart(2, '0')}`;
 };
 
-/**
- * Tickets per month and type.
- *   months  how many months back from the current one (6, 12, 24) or 'all' (from the first month with a ticket)
- * Months after the current one are not shown (they are sprints that have not started); their tickets are counted in `future`.
- * Types are ranked once over ALL tickets, whatever the basis or range, so a type keeps its rank (and its color) when the view changes.
- */
-export const aggregate = ({ rows, basis = 'sprint', months = 12, now = new Date() }) => {
-  if (!BASES.includes(basis)) throw new Error(`basis must be one of ${BASES.join(', ')}`);
-  const current = monthOf(now.toISOString());
-  const typeTotals = new Map();
-  for (const r of rows) typeTotals.set(r.type, (typeTotals.get(r.type) || 0) + 1);
-  const types = [...typeTotals.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-    .map(([name, total], i) => ({ name, total, rank: i + 1 }));
+export const GROUPS = ['type', 'client', 'assignee'];
+const NO_CLIENT = 'No client';
+const NO_ASSIGNEE = 'Unassigned';
 
-  const dated = []; let noDate = 0; let future = 0;
-  for (const r of rows) {
+/** The series a ticket belongs to for a grouping. A ticket with several clients counts under each of them. */
+const valuesFor = (row, group) => {
+  if (group === 'client') return row.clients?.length ? row.clients : [NO_CLIENT];
+  if (group === 'assignee') return [row.assignee || NO_ASSIGNEE];
+  return [row.type || 'Unknown'];
+};
+
+const rank = (rows, group) => {
+  const totals = new Map();
+  for (const r of rows) for (const v of valuesFor(r, group)) totals.set(v, (totals.get(v) || 0) + 1);
+  return [...totals.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([name, total], i) => ({ name, total, rank: i + 1 }));
+};
+
+/**
+ * Tickets per month, split by type, client or assignee.
+ *   months    how many months back from the current one (3 or 6)
+ *   filters   { type, client, assignee, feTeam }: a ticket must match every one given; feTeam keeps tickets assigned to a member of `feMembers`
+ * Months after the current one are not shown (sprints that have not started); their tickets are counted in `future`.
+ * Series are ranked once over ALL tickets for the grouping (not the filtered ones), so a series keeps its rank and color when a filter or the basis changes.
+ * `series` lists only those with tickets after the filters; `options` lists every value for the filter menus.
+ */
+export const aggregate = ({ rows, basis = 'sprint', group = 'type', months = 6, filters = {}, feMembers = new Set(), now = new Date() }) => {
+  if (!BASES.includes(basis)) throw new Error(`basis must be one of ${BASES.join(', ')}`);
+  if (!GROUPS.includes(group)) throw new Error(`group must be one of ${GROUPS.join(', ')}`);
+  const current = monthOf(now.toISOString());
+  const ranked = rank(rows, group);
+  const options = { types: rank(rows, 'type').map((t) => t.name).sort(), clients: rank(rows, 'client').map((t) => t.name).sort(), assignees: rank(rows, 'assignee').map((t) => t.name).sort() };
+
+  const f = filters || {};
+  const matches = (r) => (!f.type || r.type === f.type)
+    && (!f.client || valuesFor(r, 'client').includes(f.client))
+    && (!f.assignee || (r.assignee || NO_ASSIGNEE) === f.assignee)
+    && (!f.feTeam || (!!r.assignee && feMembers.has(r.assignee)));
+  const kept = rows.filter(matches);
+
+  const list = monthRange(addMonths(current, -(Number(months) - 1)), current);
+  const index = new Map(list.map((m, i) => [m, i]));
+  const counts = {};
+  const totals = list.map(() => 0);
+  let noDate = 0; let future = 0; let before = 0; let inRange = 0;
+  for (const r of kept) {
     const m = monthOf(dateFor(r, basis));
     if (!m) { noDate++; continue; }
     if (m > current) { future++; continue; }
-    dated.push({ type: r.type, month: m });
-  }
-  const first = dated.reduce((min, d) => (d.month < min ? d.month : min), current);
-  const from = months === 'all' ? first : addMonths(current, -(Number(months) - 1));
-  const list = monthRange(from, current);
-  const index = new Map(list.map((m, i) => [m, i]));
-
-  const counts = Object.fromEntries(types.map((t) => [t.name, list.map(() => 0)]));
-  let before = 0;
-  for (const d of dated) {
-    const i = index.get(d.month);
+    const i = index.get(m);
     if (i === undefined) { before++; continue; }
-    counts[d.type][i]++;
+    inRange++; totals[i]++;
+    for (const v of valuesFor(r, group)) (counts[v] ||= list.map(() => 0))[i]++;
   }
-  return {
-    basis, months: list, types, counts,
-    totals: list.map((_, i) => types.reduce((n, t) => n + counts[t.name][i], 0)),
-    tickets: rows.length, inRange: dated.length - before, before, future, noDate,
-  };
+  const series = ranked.filter((s) => kept.some((r) => valuesFor(r, group).includes(s.name))).map((s) => ({ ...s, total: kept.filter((r) => valuesFor(r, group).includes(s.name)).length }));
+  for (const s of series) counts[s.name] ||= list.map(() => 0);
+  return { basis, group, months: list, series, counts, totals, options, tickets: rows.length, matching: kept.length, inRange, before, future, noDate };
 };

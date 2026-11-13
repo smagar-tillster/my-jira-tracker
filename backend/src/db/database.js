@@ -100,7 +100,9 @@ export function initDb() {
       resolved           TEXT,
       status_category    TEXT,
       first_sprint_start TEXT,
-      updated            TEXT
+      updated            TEXT,
+      assignee           TEXT,
+      clients            TEXT
     );
 
     CREATE TABLE IF NOT EXISTS trend_sync (
@@ -113,6 +115,11 @@ export function initDb() {
       last_count       INTEGER
     );
   `);
+
+  // trend_tickets from before the assignee and clients columns existed
+  const trendCols = db.prepare('PRAGMA table_info(trend_tickets)').all().map((c) => c.name);
+  if (!trendCols.includes('assignee')) db.exec('ALTER TABLE trend_tickets ADD COLUMN assignee TEXT');
+  if (!trendCols.includes('clients')) db.exec('ALTER TABLE trend_tickets ADD COLUMN clients TEXT');
 
   console.log('✓ SQLite database initialized');
   return db;

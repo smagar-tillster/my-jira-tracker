@@ -2,15 +2,15 @@
 import { getDb } from '../../db/database.js';
 
 export const allRows = () => getDb().prepare(
-  'SELECT issue_key AS key, type, created, resolved, status_category AS statusCategory, first_sprint_start AS firstSprintStart FROM trend_tickets',
-).all();
+  'SELECT issue_key AS key, type, created, resolved, status_category AS statusCategory, first_sprint_start AS firstSprintStart, assignee, clients FROM trend_tickets',
+).all().map((r) => ({ ...r, clients: r.clients ? JSON.parse(r.clients) : [] }));
 
 export const count = () => getDb().prepare('SELECT COUNT(*) AS n FROM trend_tickets').get().n;
 
 export const upsert = (rows) => {
-  const ins = getDb().prepare(`INSERT OR REPLACE INTO trend_tickets (issue_key, type, created, resolved, status_category, first_sprint_start, updated)
-    VALUES (@key, @type, @created, @resolved, @statusCategory, @firstSprintStart, @updated)`);
-  getDb().transaction((list) => list.forEach((r) => ins.run(r)))(rows);
+  const ins = getDb().prepare(`INSERT OR REPLACE INTO trend_tickets (issue_key, type, created, resolved, status_category, first_sprint_start, updated, assignee, clients)
+    VALUES (@key, @type, @created, @resolved, @statusCategory, @firstSprintStart, @updated, @assignee, @clients)`);
+  getDb().transaction((list) => list.forEach((r) => ins.run({ assignee: null, ...r, clients: JSON.stringify(r.clients || []) })))(rows);
 };
 
 /** Removes tickets that are no longer in the result of a full sync (moved out of every sprint, deleted, moved to another project). */

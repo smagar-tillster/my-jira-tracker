@@ -9,7 +9,6 @@ import reviewsRouter from './routes/reviews.js';
 import quickRouter from './routes/quick.js';
 import jiraIconRouter from './routes/jiraIcon.js';
 import trendsRouter from './routes/trends.js';
-import { trendsService } from './services/trends/service.js';
 import { quickService } from './services/quick/service.js';
 import { initDb } from './db/database.js';
 import { migrateFromJson } from './db/migrate.js';
@@ -58,6 +57,5 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Jira Tracker Backend running on http://localhost:${PORT}`);
   console.log(`📝 API available at http://localhost:${PORT}/api`);
   console.log(`🏥 Health check at http://localhost:${PORT}/api/health`);
-  trendsService.start(); // Trends: keeps the local copy of the sprint tickets in step with Jira, every 2 hours
   quickService.start(); // Quick Analysis: every 15 minutes during working hours (see delivery/config.json "quickAnalysis")
 });

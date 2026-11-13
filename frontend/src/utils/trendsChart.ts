@@ -10,14 +10,14 @@ export interface TypeInfo { name: string; total: number; rank: number }
 export interface Series { id: string; label: string; color: string; types: string[]; isOther: boolean }
 
 /**
- * The named series (rank 1 to 7) and one "Other" series for the rest. A type's color comes from its rank over ALL tickets, which the
- * backend fixes, so a type keeps its color when the basis, the range or the visible types change.
+ * The named series (rank 1 to 7) and one "Other" series for the rest. A series' color comes from its rank over ALL tickets, which the
+ * backend fixes, so it keeps its color when a filter, the basis or the range changes (a filtered list may skip ranks). `noun` words the Other label.
  */
-export const buildSeries = (types: readonly TypeInfo[]): Series[] => {
-  const named: Series[] = types.slice(0, MAX_NAMED).map((t, i) => ({ id: t.name, label: t.name, color: SERIES_COLORS[i], types: [t.name], isOther: false }));
-  const rest = types.slice(MAX_NAMED);
+export const buildSeries = (types: readonly TypeInfo[], noun = 'types'): Series[] => {
+  const named: Series[] = types.filter((t) => t.rank <= MAX_NAMED).map((t) => ({ id: t.name, label: t.name, color: SERIES_COLORS[t.rank - 1], types: [t.name], isOther: false }));
+  const rest = types.filter((t) => t.rank > MAX_NAMED);
   if (!rest.length) return named;
-  return [...named, { id: '__other__', label: rest.length === 1 ? rest[0].name : `Other (${rest.length} types)`, color: OTHER_COLOR, types: rest.map((t) => t.name), isOther: true }];
+  return [...named, { id: '__other__', label: rest.length === 1 ? rest[0].name : `Other (${rest.length} ${noun})`, color: OTHER_COLOR, types: rest.map((t) => t.name), isOther: true }];
 };
 
 /** A series' count per month: its types added together. */

@@ -16,6 +16,14 @@ test('the first seven types get the seven palette colors in order, and the rest 
   assert.equal(C.buildSeries(types(8))[7].label, 'T8');            // a lone leftover keeps its own name
   assert.equal(C.buildSeries(types(5)).length, 5);                  // no Other when nothing is left over
   assert.deepEqual(C.buildSeries([]), []);
+  assert.equal(C.buildSeries(types(10), 'clients')[7].label, 'Other (3 clients)');
+});
+
+test('a filtered list that skips ranks keeps each series its color; ranks over 7 are gray even when few are shown', () => {
+  const some = types(12).filter((t) => [2, 5, 9, 11].includes(t.rank));
+  const s = C.buildSeries(some);
+  assert.deepEqual(s.map((x) => [x.id, x.color]), [['T2', C.SERIES_COLORS[1]], ['T5', C.SERIES_COLORS[4]], ['__other__', C.OTHER_COLOR]]);
+  assert.deepEqual(s[2].types, ['T9', 'T11']);
 });
 
 test('a type keeps its color whatever else is shown: color follows rank, not position in a filtered list', () => {

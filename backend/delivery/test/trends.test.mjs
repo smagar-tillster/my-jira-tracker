@@ -1,4 +1,4 @@
-// Trends: counting tickets by month and type, the sync with Jira, and the routes.
+// Trends: counting tickets by month and type, client or assignee, the manual read from Jira, and the routes.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -19,7 +19,7 @@ const { createTrendsRouter } = await import('../../src/routes/trends.js');
 
 const reset = () => { getDb().exec('DELETE FROM trend_tickets; DELETE FROM trend_sync'); };
 const NOW = new Date('2026-11-13T12:00:00');
-const R = (key, type, o = {}) => ({ key, type, created: '2026-01-15T12:00:00.000', resolved: null, firstSprintStart: null, ...o });
+const R = (key, type, o = {}) => ({ key, type, created: '2026-01-15T12:00:00.000', resolved: null, firstSprintStart: null, assignee: null, clients: [], ...o });
 
 // ---------------------------------------------------------------- months
 test('a timestamp belongs to the month it falls in, and junk has none', () => {
@@ -32,11 +32,11 @@ test('a timestamp belongs to the month it falls in, and junk has none', () => {
 
 // ---------------------------------------------------------------- counting
 const rows = () => [
-  R('A-1', 'Story', { firstSprintStart: '2026-09-10T12:00:00', created: '2026-08-20T12:00:00', resolved: '2026-09-25T12:00:00' }),
-  R('A-2', 'Story', { firstSprintStart: '2026-09-20T12:00:00', created: '2026-09-01T12:00:00', resolved: '2026-10-05T12:00:00' }),
-  R('A-3', 'Defect', { firstSprintStart: '2026-10-05T12:00:00', created: '2026-10-01T12:00:00', resolved: '2026-10-09T12:00:00' }),
-  R('A-4', 'Defect', { firstSprintStart: '2026-10-19T12:00:00', created: '2026-10-15T12:00:00' }),
-  R('A-5', 'Task', { firstSprintStart: '2026-11-02T12:00:00', created: '2026-10-30T12:00:00' }),
+  R('A-1', 'Story', { firstSprintStart: '2026-09-10T12:00:00', created: '2026-08-20T12:00:00', resolved: '2026-09-25T12:00:00', assignee: 'Ann', clients: ['BK'] }),
+  R('A-2', 'Story', { firstSprintStart: '2026-09-20T12:00:00', created: '2026-09-01T12:00:00', resolved: '2026-10-05T12:00:00', assignee: 'Bob', clients: ['BK', 'PLK'] }),
+  R('A-3', 'Defect', { firstSprintStart: '2026-10-05T12:00:00', created: '2026-10-01T12:00:00', resolved: '2026-10-09T12:00:00', assignee: 'Ann', clients: ['PLK'] }),
+  R('A-4', 'Defect', { firstSprintStart: '2026-10-19T12:00:00', created: '2026-10-15T12:00:00', assignee: null, clients: [] }),
+  R('A-5', 'Task', { firstSprintStart: '2026-11-02T12:00:00', created: '2026-10-30T12:00:00', assignee: 'Bob', clients: ['BK'] }),
   R('A-6', 'Story', { firstSprintStart: '2026-12-07T12:00:00', created: '2026-11-05T12:00:00' }),   // its sprint has not started
   R('A-7', 'Epic', { firstSprintStart: null, created: '2026-11-01T12:00:00' }),                       // no sprint start
   R('A-8', 'Story', { firstSprintStart: '2025-01-10T12:00:00', created: '2025-01-02T12:00:00', resolved: '2025-02-01T12:00:00' }),   // long ago
@@ -49,99 +49,118 @@ test('tickets are counted in the month of their first sprint, once each, with ev
   assert.deepEqual(a.counts.Defect, [0, 0, 0, 0, 2, 0]);
   assert.deepEqual(a.counts.Task, [0, 0, 0, 0, 0, 1]);
   assert.deepEqual(a.totals, [0, 0, 0, 2, 2, 1]);
-  assert.equal(a.future, 1);                 // A-6: its sprint starts in December
-  assert.equal(a.noDate, 1);                 // A-7: no sprint start (Epic)
-  assert.equal(a.before, 1);                 // A-8: before the 6 months shown
-  assert.equal(a.inRange, 5);
-  assert.equal(a.tickets, 8);
-  assert.deepEqual(a.totals, a.months.map((_, i) => Object.values(a.counts).reduce((n, c) => n + c[i], 0)));   // the columns add up
+  assert.deepEqual([a.future, a.noDate, a.before, a.inRange, a.tickets, a.matching], [1, 1, 1, 5, 8, 8]);
+  assert.deepEqual(a.totals, a.months.map((_, i) => Object.values(a.counts).reduce((n, c) => n + c[i], 0)));   // by type the columns add up
+});
+
+test('3 months is the last three; there is no "all" any more', () => {
+  const a = A.aggregate({ rows: rows(), months: 3, now: NOW });
+  assert.deepEqual(a.months, ['2026-09', '2026-10', '2026-11']);
+  assert.equal(a.before, 1 + 0);                                  // A-8 only: A-1..A-5 start in Sep to Nov
+  assert.equal(A.aggregate({ rows: [], now: NOW }).months.length, 6);   // the default
 });
 
 test('the same tickets can be counted by created month or resolved month instead', () => {
   const c = A.aggregate({ rows: rows(), basis: 'created', months: 6, now: NOW });
-  assert.deepEqual(c.counts.Story, [0, 0, 1, 1, 0, 1]);                // A-1 Aug, A-2 Sep, A-6 Nov
-  assert.equal(c.noDate, 0);
+  assert.deepEqual(c.counts.Story, [0, 0, 1, 1, 0, 1]);
   const r = A.aggregate({ rows: rows(), basis: 'resolved', months: 6, now: NOW });
-  assert.deepEqual(r.counts.Story, [0, 0, 0, 1, 1, 0]);                // A-1 Sep, A-2 Oct
-  assert.deepEqual(r.counts.Defect, [0, 0, 0, 0, 1, 0]);               // only A-3 is resolved
-  assert.equal(r.noDate, 4);                                           // the unresolved ones have no resolved month
-});
-
-test('types are ranked once over all tickets, so a type keeps its rank whatever basis or range is chosen', () => {
-  const ranks = (o) => A.aggregate({ rows: rows(), now: NOW, ...o }).types.map((t) => `${t.name}:${t.rank}`).join(' ');
-  const base = ranks({ basis: 'sprint', months: 12 });
-  assert.equal(base, 'Story:1 Defect:2 Epic:3 Task:4');                // Story 4, Defect 2, then ties by name
-  assert.equal(ranks({ basis: 'created', months: 6 }), base);
-  assert.equal(ranks({ basis: 'resolved', months: 24 }), base);
-  assert.equal(ranks({ basis: 'sprint', months: 'all' }), base);
-});
-
-test('a range is exactly that many months ending now; "all" starts at the first month with a ticket', () => {
-  assert.equal(A.aggregate({ rows: rows(), months: 12, now: NOW }).months.length, 12);
-  assert.equal(A.aggregate({ rows: rows(), months: 24, now: NOW }).months.at(-1), '2026-11');
-  const all = A.aggregate({ rows: rows(), basis: 'sprint', months: 'all', now: NOW });
-  assert.equal(all.months[0], '2025-01'); assert.equal(all.months.at(-1), '2026-11'); assert.equal(all.before, 0);
-  assert.equal(all.counts.Story[0], 1);
-  assert.deepEqual(A.aggregate({ rows: [], now: NOW }).months, ['2025-12', '2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10', '2026-11']);
+  assert.deepEqual(r.counts.Story, [0, 0, 0, 1, 1, 0]);
+  assert.deepEqual(r.counts.Defect, [0, 0, 0, 0, 1, 0]);
+  assert.equal(r.noDate, 4);
   assert.throws(() => A.aggregate({ rows: [], basis: 'nonsense', now: NOW }), /basis must be one of/);
+  assert.throws(() => A.aggregate({ rows: [], group: 'nonsense', now: NOW }), /group must be one of/);
 });
 
-// ---------------------------------------------------------------- sync
-const issue = (key, type, o = {}) => ({ key, fields: { issuetype: { name: type }, created: '2026-01-15T12:00:00.000-0800', resolutiondate: null, status: { statusCategory: { name: 'To Do' } }, updated: '2026-11-01T12:00:00.000-0800', customfield_10007: [], ...o } });
+test('grouped by client a ticket counts under each of its clients, and one with none is "No client"; the month totals stay distinct tickets', () => {
+  const a = A.aggregate({ rows: rows(), group: 'client', months: 6, now: NOW });
+  assert.deepEqual(a.counts.BK, [0, 0, 0, 2, 0, 1]);             // A-1, A-2 in Sep; A-5 in Nov
+  assert.deepEqual(a.counts.PLK, [0, 0, 0, 1, 1, 0]);            // A-2 in Sep; A-3 in Oct
+  assert.deepEqual(a.counts['No client'], [0, 0, 0, 0, 1, 0]);   // A-4
+  assert.deepEqual(a.totals, [0, 0, 0, 2, 2, 1]);                // A-2 is one ticket although it is under two clients
+  assert.deepEqual(a.series.map((s) => s.name), ['No client', 'BK', 'PLK']);   // ranked over all tickets: 4, 3, 2
+});
 
-test('a Jira ticket becomes a row: the earliest valid sprint start, a safe type, nulls for what is missing', () => {
-  const r = S.toRow(issue('N-1', 'Story', { customfield_10007: [{ id: 2, startDate: '2026-10-20T08:00:00.000Z' }, { id: 1, startDate: '2026-10-06T08:00:00.000Z' }, { id: 3 }, { id: 4, startDate: 'garbage' }] }));
+test('grouped by assignee, nobody is "Unassigned"', () => {
+  const a = A.aggregate({ rows: rows(), group: 'assignee', months: 6, now: NOW });
+  assert.deepEqual(a.counts.Ann, [0, 0, 0, 1, 1, 0]);
+  assert.deepEqual(a.counts.Bob, [0, 0, 0, 1, 0, 1]);
+  assert.deepEqual(a.counts.Unassigned, [0, 0, 0, 0, 1, 0]);
+});
+
+test('filters narrow the tickets; FE team keeps the members only; menus list every value', () => {
+  const fe = new Set(['Ann']);
+  const byType = (filters) => A.aggregate({ rows: rows(), group: 'type', months: 6, filters, feMembers: fe, now: NOW });
+  assert.deepEqual(byType({ feTeam: true }).counts, { Story: [0, 0, 0, 1, 0, 0], Defect: [0, 0, 0, 0, 1, 0] });
+  assert.deepEqual(byType({ client: 'PLK' }).totals, [0, 0, 0, 1, 1, 0]);
+  assert.deepEqual(byType({ assignee: 'Unassigned' }).totals, [0, 0, 0, 0, 1, 0]);
+  assert.deepEqual(byType({ type: 'Defect', feTeam: true }).totals, [0, 0, 0, 0, 1, 0]);
+  const none = byType({ client: 'Nobody' });
+  assert.deepEqual([none.series.length, none.matching, none.inRange], [0, 0, 0]);
+  const all = byType({});
+  assert.deepEqual(all.options.clients, ['BK', 'No client', 'PLK']);
+  assert.deepEqual(all.options.assignees, ['Ann', 'Bob', 'Unassigned']);
+  assert.deepEqual(all.options.types, ['Defect', 'Epic', 'Story', 'Task']);
+  assert.equal(byType({ feTeam: true }).options.clients.length, 3);       // menus do not shrink with the filters
+});
+
+test('a series keeps its rank over all tickets, whatever filter, basis or range is chosen', () => {
+  const rk = (o) => A.aggregate({ rows: rows(), now: NOW, ...o }).series.map((t) => `${t.name}:${t.rank}`).join(' ');
+  assert.equal(rk({}), 'Story:1 Defect:2 Epic:3 Task:4');
+  assert.equal(rk({ basis: 'created', months: 3 }), 'Story:1 Defect:2 Epic:3 Task:4');
+  assert.equal(rk({ filters: { client: 'BK' } }), 'Story:1 Task:4');   // Defect and Epic have no BK ticket: gone from the legend, ranks unchanged
+});
+
+// ---------------------------------------------------------------- reading Jira
+const issue = (key, type, o = {}) => ({ key, fields: { issuetype: { name: type }, created: '2026-01-15T12:00:00.000-0800', resolutiondate: null, status: { statusCategory: { name: 'To Do' } }, updated: '2026-11-01T12:00:00.000-0800', assignee: null, customfield_16047: [], customfield_10007: [], ...o } });
+
+test('a Jira ticket becomes a row: earliest valid sprint start, assignee, distinct clients, safe defaults', () => {
+  const r = S.toRow(issue('N-1', 'Story', { assignee: { displayName: 'Ann' }, customfield_16047: [{ value: 'BK' }, { value: 'BK' }, { value: 'PLK' }, {}], customfield_10007: [{ id: 2, startDate: '2026-10-20T08:00:00.000Z' }, { id: 1, startDate: '2026-10-06T08:00:00.000Z' }, { id: 3 }, { id: 4, startDate: 'garbage' }] }));
   assert.equal(r.firstSprintStart, '2026-10-06T08:00:00.000Z');
-  assert.equal(r.type, 'Story'); assert.equal(r.resolved, null); assert.equal(r.statusCategory, 'To Do');
+  assert.equal(r.assignee, 'Ann'); assert.deepEqual(r.clients, ['BK', 'PLK']);
   const bare = S.toRow({ key: 'N-2', fields: {} });
-  assert.deepEqual({ type: bare.type, created: bare.created, firstSprintStart: bare.firstSprintStart, statusCategory: bare.statusCategory }, { type: 'Unknown', created: null, firstSprintStart: null, statusCategory: '' });
-  assert.equal(S.toRow(issue('N-3', 'Story', { customfield_10007: null })).firstSprintStart, null);
+  assert.deepEqual({ type: bare.type, assignee: bare.assignee, clients: bare.clients, firstSprintStart: bare.firstSprintStart }, { type: 'Unknown', assignee: null, clients: [], firstSprintStart: null });
+  assert.equal(S.toRow(issue('N-3', 'Story', { customfield_10007: null, customfield_16047: null })).firstSprintStart, null);
 });
 
-test('the search asks for every ticket in any sprint, or only what changed since the last sync with a margin', () => {
-  assert.equal(S.buildJql({ full: true, project: 'NGK' }), 'project = NGK AND sprint is not EMPTY ORDER BY created ASC');
-  const inc = S.buildJql({ full: false, lastSyncAt: '2026-11-13T20:00:00.000Z', project: 'NGK' });
-  assert.match(inc, /^project = NGK AND sprint is not EMPTY AND updated >= "\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}" ORDER BY created ASC$/);
-  assert.ok(!S.buildJql({ full: true, project: 'NGK' }).includes('updated'));
-  assert.deepEqual(S.FIELDS, ['issuetype', 'created', 'resolutiondate', 'status', 'updated', 'customfield_10007']);   // only what the trends use
+test('the search asks for sprint tickets updated in the window and only the fields the trends use', () => {
+  assert.equal(S.buildJql({ project: 'NGK' }), 'project = NGK AND sprint is not EMPTY AND updated >= -200d ORDER BY created ASC');
+  assert.ok(S.WINDOW_DAYS >= 190);                                  // covers 6 months back from the current one
+  assert.deepEqual(S.FIELDS, ['issuetype', 'created', 'resolutiondate', 'status', 'updated', 'assignee', 'customfield_16047', 'customfield_10007']);
 });
 
-test('the first sync reads everything, later ones only changes, and a full one drops tickets that left every sprint', async () => {
+test('a read replaces the copy with what Jira returned, assignee and clients included', async () => {
   reset();
   const asked = [];
   const search = (data) => async (jql) => { asked.push(jql); return data; };
-  const t = (ms) => () => new Date(ms);
-  const T0 = Date.parse('2026-11-13T10:00:00Z');
-
-  const first = await S.runTrendsSync({ searchJira: search([issue('N-1', 'Story'), issue('N-2', 'Defect'), issue('N-3', 'Task')]), now: t(T0) });
-  assert.deepEqual([first.ok, first.full, first.read, first.total], [true, true, 3, 3]);
-  assert.ok(!asked[0].includes('updated >='));
-
-  const second = await S.runTrendsSync({ searchJira: search([issue('N-2', 'Story'), issue('N-4', 'Epic')]), now: t(T0 + 3600000) });     // N-2 changed type, N-4 is new
-  assert.deepEqual([second.full, second.read, second.total], [false, 2, 4]);
-  assert.match(asked[1], /updated >= /);
-  assert.equal(store.allRows().find((r) => r.key === 'N-2').type, 'Story');                                                              // updated in place
-  assert.equal(store.count(), 4);                                                                                                        // nothing was dropped
-
-  const weekLater = await S.runTrendsSync({ searchJira: search([issue('N-1', 'Story'), issue('N-4', 'Epic')]), now: t(T0 + 8 * 86400000) });
-  assert.equal(weekLater.full, true);                                                                                                    // a week since the last full read
-  assert.deepEqual(store.allRows().map((r) => r.key).sort(), ['N-1', 'N-4']);                                                            // N-2 and N-3 left every sprint
-
-  const forced = await S.runTrendsSync({ searchJira: search([issue('N-1', 'Story')]), force: 'full', now: t(T0 + 8 * 86400000 + 60000) });
-  assert.equal(forced.full, true); assert.equal(store.count(), 1);
+  const first = await S.runTrendsSync({ searchJira: search([issue('N-1', 'Story', { assignee: { displayName: 'Ann' }, customfield_16047: [{ value: 'BK' }] }), issue('N-2', 'Defect')]), now: () => new Date('2026-11-13T10:00:00Z') });
+  assert.deepEqual([first.ok, first.read, first.total], [true, 2, 2]);
+  assert.deepEqual(store.allRows().find((r) => r.key === 'N-1').clients, ['BK']);
+  assert.equal(store.allRows().find((r) => r.key === 'N-1').assignee, 'Ann');
+  const second = await S.runTrendsSync({ searchJira: search([issue('N-2', 'Story'), issue('N-4', 'Epic')]), now: () => new Date('2026-11-13T12:00:00Z') });
+  assert.equal(second.total, 2);
+  assert.deepEqual(store.allRows().map((r) => `${r.key}:${r.type}`).sort(), ['N-2:Story', 'N-4:Epic']);   // N-1 dropped, N-2 updated
+  assert.equal(store.getSync().lastSyncAt, '2026-11-13T12:00:00.000Z');
   reset();
 });
 
-test('a failed sync is reported, keeps the old data and does not move the marks', async () => {
+test('a failed read is reported, keeps the old data and does not move the mark', async () => {
   reset();
   await S.runTrendsSync({ searchJira: async () => [issue('N-1', 'Story')], now: () => new Date('2026-11-13T10:00:00Z') });
   const before = store.getSync();
   const bad = await S.runTrendsSync({ searchJira: async () => { throw new Error('Jira said no'); }, now: () => new Date('2026-11-13T12:00:00Z') });
-  assert.deepEqual(bad, { ok: false, full: false, error: 'Jira said no' });
+  assert.deepEqual(bad, { ok: false, error: 'Jira said no' });
   const after = store.getSync();
-  assert.equal(after.lastStatus, 'failed'); assert.equal(after.lastError, 'Jira said no');
-  assert.equal(after.lastSyncAt, before.lastSyncAt); assert.equal(after.lastFullAt, before.lastFullAt);
+  assert.equal(after.lastStatus, 'failed'); assert.equal(after.lastError, 'Jira said no'); assert.equal(after.lastSyncAt, before.lastSyncAt);
   assert.equal(store.count(), 1);
+  reset();
+});
+
+test('an old table without the assignee and clients columns is upgraded by initDb', () => {
+  const db = getDb();
+  db.exec('DROP TABLE trend_tickets; CREATE TABLE trend_tickets (issue_key TEXT PRIMARY KEY, type TEXT NOT NULL, created TEXT, resolved TEXT, status_category TEXT, first_sprint_start TEXT, updated TEXT)');
+  db.exec("INSERT INTO trend_tickets (issue_key, type) VALUES ('OLD-1', 'Story')");
+  initDb();
+  assert.deepEqual(store.allRows().map((r) => [r.key, r.assignee, r.clients]), [['OLD-1', null, []]]);
   reset();
 });
 
@@ -151,43 +170,46 @@ const call = async (server, method, url, body) => {
   return { status: res.status, json: await res.json() };
 };
 
-test('the service syncs on its own when nothing was read yet or the last read is 2 hours old, never twice at once', async () => {
+test('nothing reads Jira on its own: the service has no timer, and a read is one at a time', async () => {
   reset();
-  let clock = new Date('2026-11-13T10:00:00Z'); let runs = 0; let release;
-  const svc = createTrendsService({ sync: () => { runs++; return new Promise((r) => { release = r; }); }, now: () => clock });
-  svc.tick(); assert.equal(runs, 1); assert.equal(svc.isRunning(), true);
-  svc.tick(); assert.equal(runs, 1);                                          // one at a time
+  let runs = 0; let release;
+  const svc = createTrendsService({ sync: () => { runs++; return new Promise((r) => { release = r; }); }, now: () => NOW });
+  assert.equal(svc.start, undefined); assert.equal(svc.tick, undefined);
+  assert.equal(runs, 0);
+  assert.equal(svc.refresh(), true); assert.equal(svc.refresh(), false); assert.equal(runs, 1);
   release(); await new Promise((r) => setTimeout(r, 5));
-  store.finishSync({ status: 'ok', durationMs: 1, at: clock.toISOString(), full: true, count: 0 });
-  clock = new Date('2026-11-13T11:30:00Z'); svc.tick(); assert.equal(runs, 1);   // 90 minutes: not yet
-  clock = new Date('2026-11-13T12:05:00Z'); svc.tick(); assert.equal(runs, 2);   // over 2 hours
-  release(); await new Promise((r) => setTimeout(r, 5));
+  assert.equal(svc.isRunning(), false);
   reset();
 });
 
-test('the routes: counts by month and type, a bad request, and Run refresh with its guard', async () => {
+test('the routes: counts with group and filters, bad requests, and Refresh with its guard', async () => {
   reset();
   store.upsert(rows().map((r) => ({ ...r, statusCategory: '', updated: null })));
   store.finishSync({ status: 'ok', durationMs: 5, at: '2026-11-13T10:00:00.000Z', full: true, count: 8 });
   let openGate; const gate = new Promise((r) => { openGate = r; });
-  const svc = createTrendsService({ sync: async () => { await gate; return { ok: true }; }, now: () => NOW });
+  const svc = createTrendsService({ sync: async () => { await gate; return { ok: true }; }, now: () => NOW, feMembers: () => new Set(['Ann']) });
   const { default: express } = await import('express');
   const app = express(); app.use(express.json()); app.use('/api', createTrendsRouter({ service: svc }));
   const server = http.createServer(app); await new Promise((r) => server.listen(0, '127.0.0.1', r));
   try {
     const ok = await call(server, 'GET', '/api/trends/sprint-tickets?basis=sprint&months=6');
     assert.equal(ok.status, 200);
-    assert.deepEqual(ok.json.data.months.length, 6);
+    assert.equal(ok.json.data.months.length, 6);
     assert.deepEqual(ok.json.data.counts.Story, [0, 0, 0, 2, 0, 0]);
     assert.equal(ok.json.data.status.tickets, 8);
-    const def = await call(server, 'GET', '/api/trends/sprint-tickets');                  // defaults: sprint basis, 12 months
-    assert.equal(def.json.data.basis, 'sprint'); assert.equal(def.json.data.months.length, 12);
-    assert.equal((await call(server, 'GET', '/api/trends/sprint-tickets?months=all')).json.data.months[0], '2025-01');
-    for (const bad of ['?basis=nope', '?months=7', '?months=abc']) assert.equal((await call(server, 'GET', `/api/trends/sprint-tickets${bad}`)).status, 400, bad);
+    const def = await call(server, 'GET', '/api/trends/sprint-tickets');
+    assert.deepEqual([def.json.data.basis, def.json.data.group, def.json.data.months.length], ['sprint', 'type', 6]);
+    const byClient = await call(server, 'GET', '/api/trends/sprint-tickets?group=client');
+    assert.deepEqual(byClient.json.data.counts.BK, [0, 0, 0, 2, 0, 1]);
+    const fe = await call(server, 'GET', '/api/trends/sprint-tickets?group=assignee&feTeam=1');
+    assert.deepEqual(fe.json.data.series.map((s) => s.name), ['Ann']);
+    const filtered = await call(server, 'GET', `/api/trends/sprint-tickets?client=${encodeURIComponent('No client')}&type=Defect`);
+    assert.deepEqual(filtered.json.data.totals, [0, 0, 0, 0, 1, 0]);
+    for (const bad of ['?basis=nope', '?months=12', '?months=all', '?months=abc', '?group=nope']) assert.equal((await call(server, 'GET', `/api/trends/sprint-tickets${bad}`)).status, 400, bad);
 
     assert.equal((await fetch(`http://127.0.0.1:${server.address().port}/api/trends/refresh`, { method: 'POST' })).status, 415);   // JSON only
     assert.equal((await call(server, 'POST', '/api/trends/refresh', {})).status, 202);
-    assert.equal((await call(server, 'POST', '/api/trends/refresh', {})).status, 409);                                              // already running
+    assert.equal((await call(server, 'POST', '/api/trends/refresh', {})).status, 409);
     assert.equal((await call(server, 'GET', '/api/trends/status')).json.data.running, true);
     openGate();
     for (let i = 0; i < 100 && svc.isRunning(); i++) await new Promise((r) => setTimeout(r, 10));
