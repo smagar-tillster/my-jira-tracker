@@ -93,14 +93,20 @@ export const runQuickAnalysis = async ({
     }
     if (sizeFailed) notes.push(`Size and analysis could not be written for ${sizeFailed} ticket${sizeFailed === 1 ? '' : 's'}${sizeReason ? ` (${sizeReason})` : ''}; the start of the description is shown instead.`);
 
-    // 3. who could take them: by load and related work, from the sprint
-    const workloads = teamWorkload(sprint, feMembers);
+    // 3. who could take them: by load and related work, from the sprint.
+    // The FE team is who the FE Team button shows on the Tasks page: the people flagged as FE team who have a ticket in the sprint.
+    const inSprint = new Set(sprint.map((i) => i.assignee));
+    const team = feMembers.filter((n) => inSprint.has(n));
+    const absent = feMembers.filter((n) => !inSprint.has(n));
+    const workloads = teamWorkload(sprint, team);
     if (!feMembers.length) notes.push('No FE team members are set. Mark them with the FE Team filter on the Tasks page to get assignment suggestions.');
+    else if (!team.length) notes.push('Nobody on the FE Team list has a ticket in this sprint, so there is no one to suggest.');
+    else if (absent.length) notes.push(`${absent.length} FE Team member${absent.length === 1 ? ' has' : 's have'} no ticket in this sprint and ${absent.length === 1 ? 'is' : 'are'} not offered work (${absent.join(', ')}).`);
     // each suggestion counts the ones already made in this report, so one person is not offered everything
     const planned = workloads.map((w) => ({ ...w, clients: { ...w.clients }, components: { ...w.components } }));
     const feCandidates = candidates.map((c) => {
       const a = analysis.get(c.issue.key) || plainAnalysis(c.issue);
-      const suggestion = feMembers.length ? suggestAssignee(c.issue, planned, { exclude: [c.issue.assignee] }) : null;
+      const suggestion = team.length ? suggestAssignee(c.issue, planned, { exclude: [c.issue.assignee] }) : null;
       if (suggestion) addPlannedLoad(planned, suggestion.name, c.issue, a.size);
       return { ...view(c.issue), origin: c.origin, ...a, suggestion };
     });

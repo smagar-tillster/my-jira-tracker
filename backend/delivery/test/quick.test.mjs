@@ -299,6 +299,20 @@ test('when the model fails the run still finishes, with plain analysis, rule-bas
   assert.equal(store.getState().groupHash, null);                                       // a rule fallback is not cached: the model is tried again next time
 });
 
+test('the FE team is who the FE Team button shows: flagged members with a ticket in the sprint, and the page says who was left out', async () => {
+  reset();
+  const { report } = await go({ feMembers: ['Ana', 'Ben', 'Zed', 'Quinn'] });                // Zed and Quinn have nothing in the sprint
+  assert.deepEqual(report.feTeam.map((m) => m.name), ['Ana', 'Ben']);
+  assert.ok(report.feCandidates.every((c) => !c.suggestion || ['Ana', 'Ben'].includes(c.suggestion.name)));
+  assert.ok(report.notes.some((n) => /2 FE Team members have no ticket in this sprint and are not offered work \(Zed, Quinn\)/.test(n)));
+  const one = await go({ feMembers: ['Ana', 'Zed'] });
+  assert.ok(one.report.notes.some((n) => /1 FE Team member has no ticket in this sprint and is not offered work \(Zed\)/.test(n)));
+  const none = await go({ feMembers: ['Zed'] });
+  assert.equal(none.report.feCandidates[0].suggestion, null);
+  assert.ok(none.report.notes.some((n) => /Nobody on the FE Team list has a ticket in this sprint/.test(n)));
+  reset();
+});
+
 test('with no FE team set there is no suggestion and the page is told why; a Jira failure marks the run failed', async () => {
   reset();
   const { report } = await go({ feMembers: [] });
