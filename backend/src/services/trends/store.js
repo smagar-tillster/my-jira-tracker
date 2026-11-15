@@ -2,15 +2,15 @@
 import { getDb } from '../../db/database.js';
 
 export const allRows = () => getDb().prepare(
-  'SELECT issue_key AS key, type, created, resolved, status_category AS statusCategory, first_sprint_start AS firstSprintStart, assignee, clients FROM trend_tickets',
-).all().map((r) => ({ ...r, clients: r.clients ? JSON.parse(r.clients) : [] }));
+  'SELECT issue_key AS key, type, created, resolved, status_category AS statusCategory, first_sprint_start AS firstSprintStart, assignee, clients, summary, component, labels, priority FROM trend_tickets',
+).all().map((r) => ({ ...r, clients: r.clients ? JSON.parse(r.clients) : [], labels: r.labels ? JSON.parse(r.labels) : [] }));
 
 export const count = () => getDb().prepare('SELECT COUNT(*) AS n FROM trend_tickets').get().n;
 
 export const upsert = (rows) => {
-  const ins = getDb().prepare(`INSERT OR REPLACE INTO trend_tickets (issue_key, type, created, resolved, status_category, first_sprint_start, updated, assignee, clients)
-    VALUES (@key, @type, @created, @resolved, @statusCategory, @firstSprintStart, @updated, @assignee, @clients)`);
-  getDb().transaction((list) => list.forEach((r) => ins.run({ assignee: null, ...r, clients: JSON.stringify(r.clients || []) })))(rows);
+  const ins = getDb().prepare(`INSERT OR REPLACE INTO trend_tickets (issue_key, type, created, resolved, status_category, first_sprint_start, updated, assignee, clients, summary, component, labels, priority)
+    VALUES (@key, @type, @created, @resolved, @statusCategory, @firstSprintStart, @updated, @assignee, @clients, @summary, @component, @labels, @priority)`);
+  getDb().transaction((list) => list.forEach((r) => ins.run({ assignee: null, summary: null, component: null, priority: null, ...r, clients: JSON.stringify(r.clients || []), labels: JSON.stringify(r.labels || []) })))(rows);
 };
 
 /** Removes tickets that are no longer in the result of a full sync (moved out of every sprint, deleted, moved to another project). */
@@ -41,3 +41,11 @@ export const finishSync = ({ status, error = null, durationMs, at = null, full =
     if (full) db.prepare('UPDATE trend_sync SET last_full_at = ? WHERE id = 1').run(at);
   }
 };
+
+/** Model answers by hash of the numbers they came from (see trend_ai in db/database.js). */
+export const getAi = (hash) => {
+  const r = getDb().prepare('SELECT kind, model, json, created_at AS createdAt FROM trend_ai WHERE hash = ?').get(hash);
+  return r ? { kind: r.kind, model: r.model, createdAt: r.createdAt, value: JSON.parse(r.json) } : null;
+};
+export const putAi = ({ hash, kind, model, value, at }) =>
+  getDb().prepare('INSERT OR REPLACE INTO trend_ai (hash, kind, model, json, created_at) VALUES (?, ?, ?, ?, ?)').run(hash, kind, model, JSON.stringify(value), at);

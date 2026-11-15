@@ -29,7 +29,7 @@ export const monthRange = (from, to) => {
   return out;
 };
 
-const addMonths = (month, n) => {
+export const addMonths = (month, n) => {
   const [y, m] = month.split('-').map(Number);
   const t = y * 12 + (m - 1) + n;
   return `${Math.floor(t / 12)}-${String((t % 12) + 1).padStart(2, '0')}`;
@@ -65,20 +65,24 @@ const rank = (rows, group) => {
  * Other; ranking over all history would paint almost every assignee gray). A change of filter, basis or range can therefore change colors;
  * hiding series in the legend does not. `options` lists every value over all tickets for the filter menus.
  */
+/** The rows that match the filters: OR inside a filter, AND between them (see aggregate). */
+export const filterRows = (rows, filters = {}, feMembers = new Set()) => {
+  const f = filters || {};
+  const list = (v) => (Array.isArray(v) ? v : v ? [v] : []).filter((x) => typeof x === 'string' && x);
+  const [types, clients, assignees] = [list(f.type), list(f.client), list(f.assignee)];
+  return rows.filter((r) => (!types.length || types.includes(r.type))
+    && (!clients.length || valuesFor(r, 'client').some((c) => clients.includes(c)))
+    && (!assignees.length || assignees.includes(r.assignee || NO_ASSIGNEE))
+    && (!f.feTeam || (!!r.assignee && feMembers.has(r.assignee))));
+};
+
 export const aggregate = ({ rows, basis = 'sprint', group = 'all', months = 6, filters = {}, feMembers = new Set(), now = new Date() }) => {
   if (!BASES.includes(basis)) throw new Error(`basis must be one of ${BASES.join(', ')}`);
   if (!GROUPS.includes(group)) throw new Error(`group must be one of ${GROUPS.join(', ')}`);
   const current = monthOf(now.toISOString());
   const options = { types: rank(rows, 'type').map((t) => t.name).sort(), clients: rank(rows, 'client').map((t) => t.name).sort(), assignees: rank(rows, 'assignee').map((t) => t.name).sort() };
 
-  const f = filters || {};
-  const list_ = (v) => (Array.isArray(v) ? v : v ? [v] : []).filter((x) => typeof x === 'string' && x);
-  const [types, clients, assignees] = [list_(f.type), list_(f.client), list_(f.assignee)];
-  const matches = (r) => (!types.length || types.includes(r.type))
-    && (!clients.length || valuesFor(r, 'client').some((c) => clients.includes(c)))
-    && (!assignees.length || assignees.includes(r.assignee || NO_ASSIGNEE))
-    && (!f.feTeam || (!!r.assignee && feMembers.has(r.assignee)));
-  const kept = rows.filter(matches);
+  const kept = filterRows(rows, filters, feMembers);
 
   const list = monthRange(addMonths(current, -(Number(months) - 1)), current);
   const index = new Map(list.map((m, i) => [m, i]));

@@ -1,0 +1,217 @@
+// Trends defect analysis: the rules over the local copy, the checked and cached model guidance (with a fake model), and the routes.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import http from 'node:http';
+
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mytracker-defects-'));
+process.env.DATA_DIR = tmp;
+process.env.NGK_DATA_DIR = tmp;
+const { initDb, getDb } = await import('../../src/db/database.js');
+initDb();
+const D = await import('../../src/services/trends/defects.js');
+const G = await import('../../src/services/trends/guidance.js');
+const store = await import('../../src/services/trends/store.js');
+const { createTrendsService, scopeText } = await import('../../src/services/trends/service.js');
+const { createTrendsRouter } = await import('../../src/routes/trends.js');
+
+const reset = () => { getDb().exec('DELETE FROM trend_tickets; DELETE FROM trend_sync; DELETE FROM trend_ai'); };
+const NOW = new Date('2026-11-13T12:00:00');
+let n = 0;
+const T = (type, resolved, o = {}) => ({ key: `X-${++n}`, type, created: '2026-05-01T12:00:00', resolved, summary: 'a ticket', clients: [], labels: [], component: null, assignee: null, ...o });
+const Dfx = (resolved, summary, o = {}) => T('Defect', resolved, { summary, ...o });
+
+// ---------------------------------------------------------------- rules
+test('a defect is put in the first category whose words its title, labels or component contain, else "Other or unclear"', () => {
+  const c = (summary, o = {}) => D.categorize({ summary, labels: [], component: null, ...o });
+  assert.equal(c('Card declined but no retry offered'), 'Payment and payterminal');
+  assert.equal(c('Receipt total does not match the order'), 'Receipts and printing');
+  assert.equal(c('Missing image on modifier'), 'Menu, pricing and content data');
+  assert.equal(c('Something odd happens'), 'Other or unclear');
+  assert.equal(c('Odd thing', { labels: ['loyalty'] }), 'Loyalty, coupons and offers');           // labels count
+  assert.equal(c('Odd thing', { component: 'Payterminal' }), 'Payment and payterminal');          // so does the component
+  assert.equal(c('Payment receipt printing fails'), 'Payment and payterminal');                   // first match wins
+});
+
+test('days to fix is whole days created to resolved, empty when a date is missing or the order is impossible; the median handles odd, even and empty', () => {
+  assert.equal(D.daysToFix({ created: '2026-05-01T12:00:00', resolved: '2026-05-04T11:00:00' }), 3);
+  assert.equal(D.daysToFix({ created: '2026-05-01T12:00:00', resolved: null }), null);
+  assert.equal(D.daysToFix({ created: '2026-05-05T12:00:00', resolved: '2026-05-01T12:00:00' }), null);
+  assert.equal(D.median([5, 1, 3]), 3); assert.equal(D.median([1, 2, 3, 4]), 2.5); assert.equal(D.median([]), null);
+});
+
+test('the analysis counts only defect types done in the months shown, with the share of all done tickets', () => {
+  const rows = [
+    Dfx('2026-09-10T12:00:00', 'Receipt total wrong'), Dfx('2026-10-10T12:00:00', 'Receipt total wrong'), T('UAT Defect', '2026-11-02T12:00:00', { summary: 'Missing image' }),
+    T('Product Defect', '2026-07-02T12:00:00', { summary: 'Slow screen' }), T('Story', '2026-09-12T12:00:00'), T('Story', '2026-10-12T12:00:00'), T('Task', '2026-10-13T12:00:00'),
+    Dfx('2026-04-10T12:00:00', 'Old one'),                                                          // before the 6 months
+  ];
+  const f = D.analyzeDefects({ rows, months: 6, now: NOW });
+  assert.equal(f.tiles.defects, 4);
+  assert.equal(f.tiles.ticketsDone, 7);
+  assert.equal(f.tiles.shareOfDone, 57);
+  assert.equal(f.tiles.uat, 1); assert.equal(f.tiles.uatShare, 25);
+  assert.deepEqual(f.months, ['2026-06', '2026-07', '2026-08', '2026-09', '2026-10', '2026-11']);
+  assert.deepEqual(f.perMonth, [0, 1, 0, 1, 1, 1]);
+  assert.deepEqual(D.analyzeDefects({ rows, months: 3, now: NOW }).perMonth, [1, 1, 1]);
+  assert.equal(D.analyzeDefects({ rows: [], now: NOW }).tiles.shareOfDone, 0);                       // no division by zero
+});
+
+test('categories are sorted by size with their share, example tickets and how the monthly rate changed between the halves', () => {
+  const rows = [];
+  for (let i = 0; i < 6; i++) rows.push(Dfx('2026-06-10T12:00:00', 'Card payment issue'));           // earlier half (Jun to Aug): 6 payment defects
+  for (let i = 0; i < 12; i++) rows.push(Dfx('2026-10-10T12:00:00', 'Card payment issue'));          // recent half (Sep to Nov): 12
+  for (let i = 0; i < 3; i++) rows.push(Dfx('2026-10-11T12:00:00', 'Missing image'));                // too few earlier to give a change
+  const f = D.analyzeDefects({ rows, months: 6, now: NOW });
+  assert.deepEqual(f.categories.map((c) => [c.name, c.count, c.share]), [['Payment and payterminal', 18, 86], ['Menu, pricing and content data', 3, 14]]);
+  assert.equal(f.categories[0].changePct, 100);                                                       // 2 a month to 4 a month
+  assert.equal(f.categories[1].changePct, null);                                                      // earlier half has under 5: no percentage
+  assert.equal(f.categories[0].examples.length, 3);
+  assert.ok(f.categories[0].advice.length > 20);
+});
+
+test('client rates are defects per 100 done tickets, only for clients with enough done tickets; a ticket with two clients counts for both', () => {
+  const rows = [];
+  for (let i = 0; i < 20; i++) rows.push(T('Story', '2026-10-05T12:00:00', { clients: ['AA'] }));
+  for (let i = 0; i < 10; i++) rows.push(Dfx('2026-10-06T12:00:00', 'Odd', { clients: ['AA'] }));    // AA: 10 defects of 30 done
+  for (let i = 0; i < 20; i++) rows.push(T('Story', '2026-10-05T12:00:00', { clients: ['BB'] }));
+  rows.push(Dfx('2026-10-06T12:00:00', 'Odd', { clients: ['BB', 'AA'] }));                           // counts for BB and for AA
+  for (let i = 0; i < 5; i++) rows.push(Dfx('2026-10-06T12:00:00', 'Odd', { clients: ['CC'] }));     // CC: too few done tickets
+  const f = D.analyzeDefects({ rows, months: 6, now: NOW });
+  assert.deepEqual(f.clients.map((c) => c.name), ['AA', 'BB']);                                       // CC left out (5 done)
+  assert.deepEqual(f.clients[0], { name: 'AA', defects: 11, done: 31, per100: 35.5, times: f.clients[0].times });
+  assert.equal(f.clients[1].per100, 4.8);                                                              // 1 of 21
+  assert.equal(f.averagePer100, round1((16 / 56) * 100));
+  function round1(x) { return Math.round(x * 10) / 10; }
+});
+
+test('the page filters narrow the analysis, except the Type filter, which it ignores and says so', () => {
+  const rows = [Dfx('2026-10-10T12:00:00', 'Odd', { clients: ['AA'], assignee: 'Ann' }), Dfx('2026-10-11T12:00:00', 'Odd', { clients: ['BB'], assignee: 'Bob' }), T('Story', '2026-10-12T12:00:00', { clients: ['AA'], assignee: 'Ann' })];
+  assert.equal(D.analyzeDefects({ rows, filters: { client: ['AA'] }, now: NOW }).tiles.defects, 1);
+  assert.equal(D.analyzeDefects({ rows, filters: { client: ['AA'] }, now: NOW }).tiles.ticketsDone, 2);
+  assert.equal(D.analyzeDefects({ rows, filters: { feTeam: true }, feMembers: new Set(['Bob']), now: NOW }).tiles.defects, 1);
+  const t = D.analyzeDefects({ rows, filters: { type: ['Story'] }, now: NOW });
+  assert.equal(t.tiles.defects, 2); assert.equal(t.typeFilterIgnored, true);
+  assert.equal(D.analyzeDefects({ rows, now: NOW }).typeFilterIgnored, false);
+});
+
+test('repeats are two-word phrases in 3 or more defects, without client codes, and a cluster is listed once', () => {
+  const ds = [
+    ...['BK-US', 'PLK-US', 'BK-ES'].map((c) => Dfx('2026-10-10T12:00:00', `${c} receipt total mismatch after refund`, { clients: [c] })),
+    Dfx('2026-10-10T12:00:00', 'receipt total mismatch on kiosk', { clients: ['BK-US'] }),
+    Dfx('2026-10-10T12:00:00', 'unrelated thing one'), Dfx('2026-10-10T12:00:00', 'another unrelated thing'),
+  ];
+  const r = D.findRepeats(ds, ['BK-US', 'PLK-US', 'BK-ES']);
+  assert.equal(r[0].phrase, 'receipt total'); assert.equal(r[0].count, 4); assert.equal(r[0].clients, 3);
+  assert.equal(r.filter((x) => x.phrase.includes('mismatch')).length, 0);                             // "total mismatch" is the same cluster, not listed again
+  assert.equal(r.some((x) => /bk|plk/.test(x.phrase)), false);                                        // client codes are not patterns
+  assert.deepEqual(D.findRepeats(ds.slice(0, 2), []), []);                                           // 2 tickets are not a repeat
+});
+
+test('the rule-based focus ranks by size and growth, adds a hot-spot client and the biggest repeat, and is never empty when there are defects', () => {
+  const facts = { months: Array(6).fill('m'), tiles: { defects: 30 }, averagePer100: 10,
+    categories: [{ name: 'A', count: 10, share: 33, changePct: 0, advice: 'do a' }, { name: 'B', count: 8, share: 27, changePct: 100, advice: 'do b' }, { name: 'Other or unclear', count: 12, share: 40, changePct: 0, advice: 'x' }],
+    clients: [{ name: 'Z', defects: 9, done: 30, per100: 30, times: 3 }], repeats: [{ phrase: 'receipt total', count: 5, clients: 2, keys: ['X-1', 'X-2'] }] };
+  const f = D.ruleFocus(facts);
+  assert.deepEqual(f.map((x) => x.title), ['B', 'A', 'Client Z', 'Repeat: "receipt total"']);          // B grows (8 x 2 = 16) so it outranks A (10); "Other" is never a focus
+  assert.ok(f.every((x) => x.why && x.actions.length && x.measure));
+  assert.deepEqual(D.ruleFocus({ ...facts, clients: [{ name: 'Y', per100: 11, times: 1.1 }], repeats: [] }).map((x) => x.title), ['B', 'A']);   // a client barely above average is no hot spot
+});
+
+// ---------------------------------------------------------------- guidance
+const factsFor = (summaries) => D.analyzeDefects({ rows: summaries.map((s) => Dfx('2026-10-10T12:00:00', s, { clients: ['AA'] })), now: NOW });
+const GOOD = JSON.stringify({ headline: 'Payments lead.', focus: [{ title: 'Payment and payterminal', why: '98 defects, 22%.', actions: ['Add decline tests', 'Add timeout tests'], measure: 'Payment defects per month', extra: 'dropped' }], caveats: ['Titles only.'] });
+
+test('what is sent to the model has no secrets or card numbers, no people, and the scope as counts only', () => {
+  const facts = factsFor(['Login fails password=hunter2secret for kiosk', 'Card 4242 4242 4242 4242 charged twice', 'Odd']);   // the card is a processor test number used as a fixture
+  const input = G.buildInput(facts, scopeText({ feTeam: true, client: ['A', 'B'], assignee: ['Smith, Ann'] }));
+  assert.ok(!input.includes('hunter2secret')); assert.ok(!input.includes('4242 4242 4242 4242'));
+  assert.ok(input.includes('[redacted]'));
+  assert.ok(!input.includes('Smith'));
+  assert.equal(scopeText({ feTeam: true, client: ['A', 'B'], assignee: ['Smith, Ann'] }), 'FE team only; 2 clients selected; 1 assignee selected');
+  assert.equal(scopeText({}), 'all done tickets');
+  assert.ok(G.PROMPT.includes('Do not name any person'));
+});
+
+test('a model answer is checked: unknown keys dropped, texts clipped, at most 4 focus items, and no usable focus means no answer', () => {
+  const p = G.parseGuidance(JSON.parse(GOOD));
+  assert.deepEqual(Object.keys(p), ['headline', 'focus', 'caveats']);
+  assert.deepEqual(Object.keys(p.focus[0]), ['title', 'why', 'actions', 'measure']);
+  const many = { focus: Array.from({ length: 7 }, (_, i) => ({ title: `T${i}`, why: 'w', actions: ['a'], measure: 'm' })) };
+  assert.equal(G.parseGuidance(many).focus.length, G.MAX_FOCUS);
+  assert.equal(G.parseGuidance({ focus: [{ title: 'x'.repeat(500), why: 'w', actions: ['a'.repeat(900), 'b', 'c', 'd'], measure: 'm' }] }).focus[0].title.length <= 80, true);
+  assert.equal(G.parseGuidance({ focus: [{ title: 'x', why: 'w', actions: ['a'.repeat(900), 'b', 'c', 'd'], measure: 'm' }] }).focus[0].actions.length, 3);
+  assert.equal(G.parseGuidance({ focus: [{ title: '', why: 'w', actions: ['a'] }, { title: 't', why: 'w', actions: [] }] }), null);
+  assert.equal(G.parseGuidance(null), null); assert.equal(G.parseGuidance({ focus: 'nope' }), null);
+});
+
+test('the guidance is asked once per set of numbers: the second ask is served from the saved answer, force asks again, a different scope is a different answer', async () => {
+  reset();
+  let calls = 0;
+  const claude = async ({ model, input }) => { calls++; assert.ok(input.includes('"categories"')); assert.equal(model, G.MODEL); return { ok: true, text: `Here you go:\n\`\`\`json\n${GOOD}\n\`\`\`` }; };
+  const facts = factsFor(['Receipt total wrong', 'Card declined']);
+  const a = await G.generateGuidance({ facts, scope: 'all done tickets', claude, now: () => new Date('2026-11-13T20:00:00Z') });
+  assert.deepEqual([a.ok, a.cached, calls], [true, false, 1]);
+  assert.equal(a.at, '2026-11-13T20:00:00.000Z');
+  const b = await G.generateGuidance({ facts, scope: 'all done tickets', claude });
+  assert.deepEqual([b.ok, b.cached, calls], [true, true, 1]);
+  assert.equal(b.focus[0].title, 'Payment and payterminal');
+  assert.equal((await G.generateGuidance({ facts, scope: 'all done tickets', claude, force: true })).cached, false); assert.equal(calls, 2);
+  assert.equal((await G.generateGuidance({ facts, scope: 'FE team only', claude })).cached, false); assert.equal(calls, 3);
+  assert.equal(G.cachedGuidance(facts, 'nothing asked for this')?.focus, undefined);
+  reset();
+});
+
+test('when the model fails, answers badly, or there are no defects, the result says why and nothing is saved', async () => {
+  reset();
+  const facts = factsFor(['Receipt total wrong']);
+  const down = await G.generateGuidance({ facts, claude: async () => ({ ok: false, reason: 'the claude CLI took longer than 180s' }) });
+  assert.deepEqual([down.ok, down.reason], [false, 'the claude CLI took longer than 180s']);
+  const junk = await G.generateGuidance({ facts, claude: async () => ({ ok: true, text: 'I think you should test more.' }) });
+  assert.equal(junk.ok, false); assert.match(junk.reason, /not in a usable form/);
+  let asked = false;
+  const none = await G.generateGuidance({ facts: D.analyzeDefects({ rows: [], now: NOW }), claude: async () => { asked = true; return { ok: true, text: GOOD }; } });
+  assert.equal(none.ok, false); assert.equal(asked, false);                                           // no defects: no call
+  assert.equal(G.cachedGuidance(facts, ''), null);
+  reset();
+});
+
+// ---------------------------------------------------------------- routes
+const call = async (server, method, url, body) => {
+  const res = await fetch(`http://127.0.0.1:${server.address().port}${url}`, { method, headers: { 'Content-Type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) });
+  return { status: res.status, json: await res.json() };
+};
+
+test('the routes: the analysis never calls the model, the guidance does (once per numbers) with its guard, and bad requests are refused', async () => {
+  reset();
+  store.upsert([Dfx('2026-10-10T12:00:00', 'Receipt total wrong', { clients: ['AA'], assignee: 'Ann' }), T('Story', '2026-10-12T12:00:00', { clients: ['AA'], assignee: 'Ann' })].map((r) => ({ ...r, statusCategory: '', updated: null, firstSprintStart: null })));
+  let calls = 0; let release; const gate = new Promise((r) => { release = r; });
+  const claude = async () => { calls++; await gate; return { ok: true, text: GOOD }; };
+  const svc = createTrendsService({ now: () => NOW, claude, feMembers: () => new Set(['Ann']) });
+  const { default: express } = await import('express');
+  const app = express(); app.use(express.json()); app.use('/api', createTrendsRouter({ service: svc }));
+  const server = http.createServer(app); await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  try {
+    const a = await call(server, 'GET', '/api/trends/defects?months=6');
+    assert.equal(a.status, 200);
+    assert.equal(a.json.data.facts.tiles.defects, 1); assert.equal(a.json.data.guidance, null); assert.equal(calls, 0);
+    assert.ok(a.json.data.ruleFocus.length >= 1); assert.equal(a.json.data.scope, 'all done tickets');
+    assert.equal((await call(server, 'GET', '/api/trends/defects?months=6&client=Nobody')).json.data.facts.tiles.defects, 0);
+    assert.equal((await call(server, 'GET', '/api/trends/defects?months=12')).status, 400);
+    assert.equal((await call(server, 'POST', '/api/trends/defects/guidance', { months: 12 })).status, 400);
+    assert.equal((await fetch(`http://127.0.0.1:${server.address().port}/api/trends/defects/guidance`, { method: 'POST' })).status, 415);   // JSON only
+
+    const first = call(server, 'POST', '/api/trends/defects/guidance', { months: 6 });
+    for (let i = 0; i < 100 && !svc.isGuiding(); i++) await new Promise((r) => setTimeout(r, 5));
+    assert.equal((await call(server, 'POST', '/api/trends/defects/guidance', { months: 6 })).status, 409);                                  // one at a time
+    release();
+    const done = await first;
+    assert.equal(done.status, 200); assert.equal(done.json.data.cached, false); assert.equal(done.json.data.focus[0].title, 'Payment and payterminal');
+    assert.equal((await call(server, 'GET', '/api/trends/defects?months=6')).json.data.guidance.cached, true);                              // now saved: shown without a call
+    assert.equal((await call(server, 'POST', '/api/trends/defects/guidance', { months: 6 })).json.data.cached, true); assert.equal(calls, 1);
+    assert.equal((await call(server, 'POST', '/api/trends/defects/guidance', { months: 6, client: ['AA'], feTeam: true })).json.data.cached, false); assert.equal(calls, 2);   // other filters: other numbers
+  } finally { release?.(); server.close(); }
+  reset();
+});

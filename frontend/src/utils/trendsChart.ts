@@ -86,3 +86,21 @@ export const trendQuery = (basis: string, months: number, group: string, filters
   if (filters.feTeam) p.set('feTeam', '1');
   return p;
 };
+
+/** The defect analysis uses the page's months and its client, assignee and FE team filters; the Type filter does not apply to it. */
+export const defectQuery = (months: number, filters: { client?: readonly string[]; assignee?: readonly string[]; feTeam?: boolean }): URLSearchParams => {
+  const p = new URLSearchParams({ months: String(months) });
+  for (const k of ['client', 'assignee'] as const) for (const v of filters[k] ?? []) p.append(k, v);
+  if (filters.feTeam) p.set('feTeam', '1');
+  return p;
+};
+
+/** "Jun" + 14 style month list for the little per-month row. */
+export const monthCounts = (months: readonly string[], counts: readonly number[]) => months.map((m, i) => ({ month: m, label: monthLabel(m).short, count: counts[i] ?? 0 }));
+
+/** The trend text for a category: "up 40%", "down 18%", "flat", or "n/a" when the earlier half had too few defects for a percentage. */
+export const trendText = (changePct: number | null): { arrow: string; text: string; tone: 'up' | 'down' | 'flat' | 'none' } =>
+  changePct === null ? { arrow: '', text: 'n/a', tone: 'none' }
+    : changePct > 0 ? { arrow: '▲', text: `${changePct}%`, tone: 'up' }
+    : changePct < 0 ? { arrow: '▼', text: `${-changePct}%`, tone: 'down' }
+    : { arrow: '▬', text: '0%', tone: 'flat' };

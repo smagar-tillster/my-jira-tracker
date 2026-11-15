@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { trendQuery } from '../utils/trendsChart';
+import { trendQuery, defectQuery } from '../utils/trendsChart';
 import { JiraIssue, Accomplishment, CreateAccomplishmentPayload, JiraSprint } from '../types';
 
 // Default to the backend on whatever host served this page, so the app works from any IP/hostname.
@@ -479,10 +479,32 @@ export interface SprintTrend {
   status: TrendsStatus;
 }
 
+export interface DefectCategory { name: string; count: number; share: number; changePct: number | null; medianDaysToFix: number | null; advice: string; examples: { key: string; summary: string }[] }
+export interface DefectClient { name: string; defects: number; done: number; per100: number; times: number | null }
+export interface DefectRepeat { phrase: string; count: number; clients: number; keys: string[] }
+export interface FocusItem { title: string; why: string; actions: string[]; measure: string }
+export interface DefectGuidance { headline: string; focus: FocusItem[]; caveats: string[]; cached: boolean; model: string; at: string }
+export interface DefectFacts {
+  months: string[]; perMonth: number[]; averagePer100: number; minClientDone: number; typesCounted: string[]; typeFilterIgnored: boolean;
+  tiles: { defects: number; ticketsDone: number; shareOfDone: number; medianDaysToFix: number | null; medianDaysRecent: number | null; medianDaysEarlier: number | null; uat: number; uatShare: number };
+  categories: DefectCategory[]; clients: DefectClient[]; repeats: DefectRepeat[];
+}
+export interface DefectAnalysis { facts: DefectFacts; scope: string; ruleFocus: FocusItem[]; guidance: DefectGuidance | null; status: TrendsStatus }
+
+const apiMessage = (e: any, fallback: string) => String(e?.response?.data?.error || (e instanceof Error ? e.message : fallback));
+
 export const trendsApi = {
   status: async (): Promise<TrendsStatus> => (await apiClient.get('/trends/status')).data.data,
   sprintTickets: async (basis: TrendBasis, months: TrendMonths, group: TrendGroup, filters: TrendFilters): Promise<SprintTrend> =>
     (await apiClient.get('/trends/sprint-tickets', { params: trendQuery(basis, months, group, filters) })).data.data,
+  /** The defect analysis for the page's months and filters. Never asks the model; the saved guidance comes with it when there is one. */
+  defects: async (months: TrendMonths, filters: TrendFilters): Promise<DefectAnalysis> =>
+    (await apiClient.get('/trends/defects', { params: defectQuery(months, filters) })).data.data,
+  /** Asks the model to write the guidance for these numbers (takes a while). Throws with the reason when it cannot. */
+  defectGuidance: async (months: TrendMonths, filters: TrendFilters, force = false): Promise<DefectGuidance> => {
+    try { return (await apiClient.post('/trends/defects/guidance', { months, client: filters.client ?? [], assignee: filters.assignee ?? [], feTeam: !!filters.feTeam, force })).data.data; }
+    catch (e: any) { throw new Error(apiMessage(e, 'Could not write the guidance')); }
+  },
   /** Reads the done tickets of the last 6 months from Jira now: the only way the copy is updated. A read already running is not an error. An empty JSON body on purpose: the backend refuses non-JSON POSTs. */
   refresh: async (): Promise<TrendsStatus> => {
     try { return (await apiClient.post('/trends/refresh', {})).data.data; }

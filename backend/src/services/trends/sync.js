@@ -6,7 +6,7 @@ import { search, PROJECT, FIELDS as JIRA_FIELDS } from '../../../delivery/lib/ji
 import * as store from './store.js';
 
 const SPRINT_FIELD = JIRA_FIELDS.sprint;
-export const FIELDS = ['issuetype', 'created', 'resolutiondate', 'status', 'updated', 'assignee', JIRA_FIELDS.client, SPRINT_FIELD];
+export const FIELDS = ['issuetype', 'created', 'resolutiondate', 'status', 'updated', 'assignee', JIRA_FIELDS.client, SPRINT_FIELD, 'summary', 'components', 'labels', 'priority'];
 
 /** A Jira search row as the table keeps it. */
 export const toRow = (issue) => {
@@ -16,6 +16,8 @@ export const toRow = (issue) => {
     key: issue.key, type: f.issuetype?.name || 'Unknown', created: f.created || null, resolved: f.resolutiondate || null,
     statusCategory: f.status?.statusCategory?.name || '', firstSprintStart: starts[0] || null, updated: f.updated || null,
     assignee: f.assignee?.displayName || null,
+    summary: String(f.summary || '').slice(0, 300), component: f.components?.[0]?.name || null,
+    labels: (Array.isArray(f.labels) ? f.labels : []).filter((l) => typeof l === 'string').slice(0, 20), priority: f.priority?.name || null,
     clients: [...new Set((Array.isArray(f[JIRA_FIELDS.client]) ? f[JIRA_FIELDS.client] : []).map((c) => c?.value).filter(Boolean))],
   };
 };

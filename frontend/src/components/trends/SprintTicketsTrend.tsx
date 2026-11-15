@@ -3,6 +3,7 @@ import { trendsApi, SprintTrend, TrendFilters, TrendGroup, TrendMonths } from '.
 import { buildSeries, seriesCounts, monthLabel, OTHER_COLOR, SERIES_COLORS, MAX_NAMED } from '../../utils/trendsChart';
 import LineChart, { LineSeries, INK } from './LineChart';
 import MultiSelect from './MultiSelect';
+import DefectAnalysisModal from './DefectAnalysisModal';
 
 const RANGES: { id: TrendMonths; label: string }[] = [{ id: 3, label: '3 months' }, { id: 6, label: '6 months' }];
 const GROUPS: { id: TrendGroup; label: string; one: string; many: string; hint: string }[] = [
@@ -45,11 +46,11 @@ export interface TrendViewProps {
   data: SprintTrend | null; loading: boolean; error: string | null;
   group: TrendGroup; months: TrendMonths; filters: TrendFilters; hidden: ReadonlySet<string>; view: 'chart' | 'table';
   onGroup: (g: TrendGroup) => void; onMonths: (m: TrendMonths) => void; onFilters: (f: TrendFilters) => void; onToggleSeries: (id: string) => void; onShowAll: () => void;
-  onView: (v: 'chart' | 'table') => void; onRefresh: () => void;
+  onView: (v: 'chart' | 'table') => void; onRefresh: () => void; onDefects: () => void;
 }
 
 /** The Tickets done by month page for given data and choices. No loading here, so it can be rendered on its own. */
-export const SprintTicketsTrendView: React.FC<TrendViewProps> = ({ data, loading, error, group, months, filters, hidden, view, onGroup, onMonths, onFilters, onToggleSeries, onShowAll, onView, onRefresh }) => {
+export const SprintTicketsTrendView: React.FC<TrendViewProps> = ({ data, loading, error, group, months, filters, hidden, view, onGroup, onMonths, onFilters, onToggleSeries, onShowAll, onView, onRefresh, onDefects }) => {
   const status = data?.status;
   const groupInfo = GROUPS.find(g => g.id === group) as (typeof GROUPS)[number];
   const series = useMemo(() => (data ? buildSeries(data.series, groupInfo.many) : []), [data, groupInfo]);
@@ -108,6 +109,8 @@ export const SprintTicketsTrendView: React.FC<TrendViewProps> = ({ data, loading
             <MultiSelect key={k} label={label} options={opts} value={filters[k] ?? []} onChange={v => onFilters({ ...filters, [k]: v.length ? v : undefined })} />
           ))}
           {filtered && <button onClick={() => onFilters({})} className="text-xs text-blue-600 hover:underline">Clear filters</button>}
+          <button onClick={onDefects} disabled={empty} title="Patterns in the defects done in these months, and where to focus to reduce them. Follows the client, assignee and FE team filters."
+            className="ml-auto px-3 py-1.5 rounded-lg text-sm font-medium bg-white ring-1 ring-gray-300 text-gray-700 hover:bg-gray-100 disabled:opacity-60 disabled:cursor-not-allowed">🔎 Defect analysis</button>
         </div>
       )}
 
@@ -228,6 +231,7 @@ const SprintTicketsTrend: React.FC = () => {
   const [filters, setFilters] = useState<TrendFilters>({});
   const [view, setView] = useState<'chart' | 'table'>('chart');
   const [hidden, setHidden] = useState<Set<string>>(new Set());
+  const [defectsOpen, setDefectsOpen] = useState(false);
   const [data, setData] = useState<SprintTrend | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -261,8 +265,11 @@ const SprintTicketsTrend: React.FC = () => {
   const changeGroup = (g: TrendGroup) => { setHidden(new Set()); setGroup(g); };
 
   return (
+    <>
     <SprintTicketsTrendView data={data} loading={loading} error={error} group={group} months={months} filters={filters} hidden={hidden} view={view}
-      onGroup={changeGroup} onMonths={setMonths} onFilters={setFilters} onToggleSeries={toggle} onShowAll={() => setHidden(new Set())} onView={setView} onRefresh={refresh} />
+      onGroup={changeGroup} onMonths={setMonths} onFilters={setFilters} onToggleSeries={toggle} onShowAll={() => setHidden(new Set())} onView={setView} onRefresh={refresh} onDefects={() => setDefectsOpen(true)} />
+      {defectsOpen && <DefectAnalysisModal months={months} filters={filters} onClose={() => setDefectsOpen(false)} />}
+    </>
   );
 };
 

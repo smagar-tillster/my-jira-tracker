@@ -160,7 +160,7 @@ test('the search asks only for done NGK Sprint tickets resolved in the last 6 mo
   assert.equal(S.buildJql({ project: 'NGK' }), 'project = NGK AND sprint in ("NGK Sprint") AND type NOT IN (Release, "Test Case Execution-Smoke/Sanity/Regression", Epic) AND issuetype not in subTaskIssueTypes() AND statusCategory = Done AND resolved >= startOfMonth(-6) ORDER BY created ASC');   // 6 months shown, read one month further
   assert.match(S.buildJql({ project: 'NGK', months: 3 }), /resolved >= startOfMonth\(-3\)/);
   assert.ok(!/openSprints/i.test(S.buildJql()));                    // past sprints count too
-  assert.deepEqual(S.FIELDS, ['issuetype', 'created', 'resolutiondate', 'status', 'updated', 'assignee', 'customfield_16047', 'customfield_10007']);
+  assert.deepEqual(S.FIELDS, ['issuetype', 'created', 'resolutiondate', 'status', 'updated', 'assignee', 'customfield_16047', 'customfield_10007', 'summary', 'components', 'labels', 'priority']);
 });
 
 test('a read replaces the copy with what Jira returned, assignee and clients included', async () => {

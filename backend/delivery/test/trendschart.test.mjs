@@ -113,3 +113,18 @@ test('the request repeats a filter name for each value, leaves out empty filters
   assert.equal(q.get('feTeam'), '1'); assert.equal(q.get('months'), '6'); assert.equal(q.get('group'), 'client'); assert.equal(q.get('basis'), 'resolved');
   assert.equal(C.trendQuery('resolved', 3, 'all', {}).has('feTeam'), false);
 });
+
+test('the defect analysis request carries the months and the client, assignee and FE team filters, and never the type', () => {
+  const q = C.defectQuery(3, { client: ['BK-US'], assignee: ['Smith, Ann'], feTeam: true, type: ['Story'] });
+  assert.equal(q.get('months'), '3'); assert.deepEqual(q.getAll('client'), ['BK-US']); assert.deepEqual(q.getAll('assignee'), ['Smith, Ann']);
+  assert.equal(q.get('feTeam'), '1'); assert.equal(q.has('type'), false); assert.equal(q.has('basis'), false);
+  assert.equal(C.defectQuery(6, {}).toString(), 'months=6');
+});
+
+test('trend text: up, down, flat, and not available when the earlier half was too small', () => {
+  assert.deepEqual(C.trendText(40), { arrow: '▲', text: '40%', tone: 'up' });
+  assert.deepEqual(C.trendText(-18), { arrow: '▼', text: '18%', tone: 'down' });
+  assert.deepEqual(C.trendText(0), { arrow: '▬', text: '0%', tone: 'flat' });
+  assert.deepEqual(C.trendText(null), { arrow: '', text: 'n/a', tone: 'none' });
+  assert.deepEqual(C.monthCounts(['2026-10', '2026-11'], [3]).map((m) => [m.label, m.count]), [['Oct', 3], ['Nov', 0]]);
+});

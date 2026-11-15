@@ -102,7 +102,20 @@ export function initDb() {
       first_sprint_start TEXT,
       updated            TEXT,
       assignee           TEXT,
-      clients            TEXT
+      clients            TEXT,
+      summary            TEXT,
+      component          TEXT,
+      labels             TEXT,
+      priority           TEXT
+    );
+
+    -- Trends: model answers kept by a hash of the numbers they were written from, so the same numbers never cost a second call.
+    CREATE TABLE IF NOT EXISTS trend_ai (
+      hash       TEXT PRIMARY KEY,
+      kind       TEXT NOT NULL,
+      model      TEXT,
+      json       TEXT NOT NULL,
+      created_at TEXT NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS trend_sync (
@@ -120,6 +133,7 @@ export function initDb() {
   const trendCols = db.prepare('PRAGMA table_info(trend_tickets)').all().map((c) => c.name);
   if (!trendCols.includes('assignee')) db.exec('ALTER TABLE trend_tickets ADD COLUMN assignee TEXT');
   if (!trendCols.includes('clients')) db.exec('ALTER TABLE trend_tickets ADD COLUMN clients TEXT');
+  for (const col of ['summary', 'component', 'labels', 'priority']) if (!trendCols.includes(col)) db.exec(`ALTER TABLE trend_tickets ADD COLUMN ${col} TEXT`);
 
   console.log('✓ SQLite database initialized');
   return db;
