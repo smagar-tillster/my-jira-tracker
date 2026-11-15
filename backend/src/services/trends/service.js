@@ -63,10 +63,13 @@ export const createTrendsService = ({ sync = runTrendsSync, now = () => new Date
     const plan = planRepeats(withFiles, patterns);
     return { root, found, patterns, defects, withFiles, plan, clusters: findClusters(withFiles, plan.matched) };
   };
+  // a group the model said is not a pattern worth recording stays decided, so reopening the modal does not offer to ask (and pay) again
+  const declinedKey = (clusterId) => `pattern-declined:${clusterId}`;
+  const declinedFor = (clusterId) => { const h = store.getAi(declinedKey(clusterId)); return h ? { reason: h.value.reason, at: h.createdAt } : null; };
   const patternView = (st) => ({
     ragFound: st.found, ragRoot: st.root, patternCount: st.patterns.length,
     known: st.patterns.map((p) => ({ id: p.id, seen: p.seen, tickets: p.tickets.length, status: p.status, repos: p.repos })), defects: st.defects.length, withPr: st.withFiles.length, recorded: st.plan.recorded,
-    matches: st.plan.matches.map((m) => ({ patternId: m.patternId, seen: m.seen, tickets: m.tickets.map((t) => ({ key: t.key, title: t.title })) })), clusters: st.clusters,
+    matches: st.plan.matches.map((m) => ({ patternId: m.patternId, seen: m.seen, tickets: m.tickets.map((t) => ({ key: t.key, title: t.title })) })), clusters: st.clusters.map((c) => ({ ...c, declined: declinedFor(c.id) })),
   });
 
   /** The numbers, plus the model's guidance if these same numbers were answered before. Never calls the model. */
@@ -120,7 +123,10 @@ export const createTrendsService = ({ sync = runTrendsSync, now = () => new Date
       const tickets = cl.tickets.map((t) => ({ key: t.key, title: t.title, description: rows.get(t.key)?.description || '', prTitle: idx.get(t.key)?.title || '' }));
       const d = new Date(now());
       const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      return await draft({ cluster: cl, tickets, capabilities: capabilityNames(st.root), existingIds: st.patterns.map((p) => p.id), today, ...(claude ? { claude } : {}) });
+      const out = await draft({ cluster: cl, tickets, capabilities: capabilityNames(st.root), existingIds: st.patterns.map((p) => p.id), today, ...(claude ? { claude } : {}) });
+      if (out.notAPattern) store.putAi({ hash: declinedKey(cl.id), kind: 'pattern-declined', model: 'sonnet', value: { reason: out.reason }, at: new Date(now()).toISOString() });
+      else if (out.ok) store.deleteAi(declinedKey(cl.id));       // drafted this time: the earlier "not a pattern" no longer stands
+      return out;
     } finally { drafting = false; }
   };
 

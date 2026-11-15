@@ -317,6 +317,7 @@ test('the analysis shows which defects repeat a pattern and which groups might b
   assert.ok(!fs.existsSync(path.join(root, 'docs', 'defects', 'menu-tile-filter-drops-items.md')));    // a draft never lands in the RAG
   assert.ok(fs.existsSync(d.path));
   assert.deepEqual((await svc.draftForCluster({ months: 6, cluster: 'ffffffff' })).ok, false);
+  assert.equal(a.clusters[0].declined, null);                                                           // nobody has declined it
   const gone = createTrendsService({ now: () => NOW, ledger: () => ledger, ragRoot: () => path.join(tmp, 'nowhere') });
   assert.equal(gone.defectAnalysis({ months: 6 }).patterns.ragFound, false);
   assert.match((await gone.recordRepeats({ months: 6 })).reason, /not found at .*nowhere/);
@@ -438,4 +439,25 @@ test('the add route: guards, size limit, the checks failing, an existing id, and
     const dup = await call(server, 'POST', '/api/trends/patterns/add', { text: good });
     assert.equal(dup.status, 422); assert.match(dup.json.error, /already exists/);
   } finally { release?.(); server.close(); }
+});
+
+test('a group the model declined stays declined across reloads, with its reason, until it is drafted again; a changed group is a new group', async () => {
+  reset();
+  const root = makeRag({ patterns: {}, caps: ['cart-assembly'] });
+  store.upsert([row('NGK-3'), row('NGK-4'), row('NGK-5')]);
+  const ledger = ledgerOf(lpr(3, ['NGK-3'], ['src/menu.js']), lpr(4, ['NGK-4'], ['src/menu.js']), lpr(5, ['NGK-5'], ['src/menu.js']));
+  let mode = 'decline'; let calls = 0;
+  const svc = createTrendsService({ now: () => NOW, ledger: () => ledger, ragRoot: () => root, draft: async () => { calls++; return mode === 'decline' ? { ok: false, notAPattern: true, reason: 'They only share a busy file.' } : { ok: true, id: 'x-pattern', text: 'T', path: '/p', problems: [], needsCapability: false }; } });
+  const id = svc.defectAnalysis({ months: 6 }).patterns.clusters[0].id;
+  const r = await svc.draftForCluster({ months: 6, cluster: id });
+  assert.deepEqual([r.ok, r.notAPattern], [false, true]);
+  const again = svc.defectAnalysis({ months: 6 }).patterns.clusters[0];
+  assert.equal(again.declined.reason, 'They only share a busy file.'); assert.match(again.declined.at, /^2026-11-14T/);   // still declined on the next analysis, and nothing was asked
+  assert.equal(calls, 1);
+  mode = 'draft';
+  assert.equal((await svc.draftForCluster({ months: 6, cluster: id })).ok, true);                                          // asking again is allowed
+  assert.equal(svc.defectAnalysis({ months: 6 }).patterns.clusters[0].declined, null);                                      // and the earlier decline no longer stands
+  store.upsert([row('NGK-6')]);                                                                                             // a fourth defect changes the group's tickets but not its id (files decide the id)
+  assert.equal(svc.defectAnalysis({ months: 6 }).patterns.clusters[0].id, id);
+  reset();
 });

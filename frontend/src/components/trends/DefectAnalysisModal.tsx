@@ -177,6 +177,8 @@ const PatternsSection: React.FC<{ patterns: DefectPatterns } & PatternActions> =
             {patterns.clusters.length === 0 && <p className="text-sm text-gray-600">No group of 3 or more defects without a pattern changed the same files.</p>}
             {patterns.clusters.map(c => {
               const draft = drafts[c.id];
+              // the model's "not a pattern": this session's answer, or one saved earlier (unless a draft has been made since)
+              const declined = draft?.notAPattern ? { reason: draft.reason ?? '' } : (!draft?.id && !draftErrors[c.id] ? c.declined : null);
               const current = edits[c.id] ?? draft?.text ?? '';
               const edited = draft?.text !== undefined && current !== draft.text;
               const shownProblems = edited ? [] : (draft?.problems ?? []).filter(p => !(draft?.needsCapability && /capabilities is empty/.test(p)));
@@ -187,14 +189,21 @@ const PatternsSection: React.FC<{ patterns: DefectPatterns } & PatternActions> =
                       <span className="font-semibold">{c.count} defects</span> changed <span className="font-mono text-xs">{c.files.join(', ') || 'the same files'}</span> in {c.repo}
                       <span className="text-gray-600"> (mostly {c.category.toLowerCase()}): {c.tickets.slice(0, 5).map(t => t.key).join(', ')}{c.tickets.length > 5 ? ' …' : ''}</span>
                     </p>
-                    <button onClick={() => onDraft(c.id)} disabled={drafting !== null} title="One model call that drafts a pattern in the RAG's format. The draft is saved for review in this app's data folder; nothing is written to the RAG."
-                      className="px-3 py-1.5 rounded-lg text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed">
-                      {drafting === c.id ? '⏳ Drafting…' : draft?.id ? 'Draft again' : 'Draft pattern'}
-                    </button>
+                    {declined && drafting !== c.id ? (
+                      <span className="flex items-center gap-2">
+                        <span className="px-3 py-1.5 rounded-lg text-sm font-medium bg-gray-100 text-gray-600 ring-1 ring-gray-200" title={declined.reason}>No pattern needed</span>
+                        <button onClick={() => onDraft(c.id)} disabled={drafting !== null} className="text-xs text-blue-600 hover:underline disabled:text-gray-400 disabled:no-underline" title="Ask the model again (one model call)">Ask again</button>
+                      </span>
+                    ) : (
+                      <button onClick={() => onDraft(c.id)} disabled={drafting !== null} title="One model call that drafts a pattern in the RAG's format. The draft is saved for review in this app's data folder; nothing is written to the RAG."
+                        className="px-3 py-1.5 rounded-lg text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed">
+                        {drafting === c.id ? '⏳ Drafting…' : draft?.id ? 'Draft again' : 'Draft pattern'}
+                      </button>
+                    )}
                   </div>
                   {drafting === c.id && <p className="text-xs text-gray-500">This takes about half a minute.</p>}
                   {draftErrors[c.id] && <p className="px-3 py-2 text-sm bg-red-50 text-red-800 border border-red-200 rounded">❌ {draftErrors[c.id]}</p>}
-                  {draft?.notAPattern && <p className="px-3 py-2 text-sm bg-gray-50 text-gray-800 border border-gray-200 rounded">The model does not think this is a pattern worth recording: {draft.reason}</p>}
+                  {declined && <p className="px-3 py-2 text-sm bg-gray-50 text-gray-800 border border-gray-200 rounded">The model does not think this is a pattern worth recording: {declined.reason}</p>}
                   {draft?.id && draft.text && (
                     <div className="space-y-1.5">
                       <p className="text-sm text-gray-700">Draft <span className="font-semibold">{draft.id}</span>, saved for review at <span className="font-mono text-xs">{draft.path}</span>. Nothing has been written to the RAG yet. Read it and edit it below; when you press Add to RAG it is checked again against the RAG's rules and added as <span className="font-mono text-xs">docs/defects/{draft.id}.md</span>.</p>

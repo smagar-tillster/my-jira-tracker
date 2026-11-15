@@ -499,7 +499,11 @@ export interface DefectFacts {
   prCoverage: { withPr: number; defects: number };
 }
 /** A group of defects with no pattern that changed the same files: a candidate for a new pattern in the RAG. */
-export interface PatternCluster { id: string; repo: string; files: string[]; category: string; count: number; tickets: { key: string; title: string; category: string }[]; suggestedName: string }
+export interface PatternCluster {
+  id: string; repo: string; files: string[]; category: string; count: number; tickets: { key: string; title: string; category: string }[]; suggestedName: string;
+  /** Set when the model has already said this group is not a pattern worth recording. */
+  declined: { reason: string; at: string } | null;
+}
 /** The RAG's defect patterns against the defects in view (matched through the files each fix changed, from the PR ledger). */
 export interface DefectPatterns {
   ragFound: boolean; ragRoot: string; patternCount: number; defects: number; withPr: number; recorded: number;
