@@ -102,14 +102,15 @@ test('the toolbar no longer draws the selected-filter pills with an x: the blue 
   assert.ok(tracker.includes('clearEverything') && tracker.includes('Clear Filters'));   // Clear Filters is still there
 });
 
-test('the top row is Search (shortened), the Jira filter, Refresh, then Full Screen; Clear Filters and the count end line 2, with Clear Filters left of the count', async () => {
+test('the top row is Search (filling the room left), the Jira filter, Refresh, then Full Screen; Clear Filters and the count end line 2, with Clear Filters left of the count', async () => {
   const fs = await import('node:fs');
   const src = fs.readFileSync(new URL('../../../frontend/src/components/JiraTasksTracker.tsx', import.meta.url), 'utf8');
   const top = src.slice(src.indexOf('data-toolbar="top"'), src.indexOf('data-toolbar="line1"'));
   const at = (t, s) => t.indexOf(s);
   assert.ok(at(top, 'placeholder="Search by key') > -1 && at(top, 'placeholder="Search by key') < at(top, '<JiraFilterDropdown'));
   assert.ok(at(top, '<JiraFilterDropdown') < at(top, 'aria-label="Refresh"') && at(top, 'aria-label="Refresh"') < at(top, 'aria-label="Full Screen"'));
-  assert.match(top, /flex-1 min-w-0 max-w-md/);                                           // the search is shortened, not full width
+  assert.match(top, /<div className="flex-1 min-w-0">\s*<input/);                         // the search takes the room that is left
+  assert.ok(!/max-w-/.test(top.slice(0, top.indexOf('<JiraFilterDropdown'))));                // with no maximum width, so the row spans the full width
   assert.match(top, /w-\[232px\] shrink-0/);                                              // the Jira filter keeps its width
   assert.ok(!src.includes('gridTemplateColumns') && !src.includes('col-start-'));           // no reserved column on the right: lines 1 and 2 use the full width
   assert.ok(!/aria-label="Refresh"/.test(src.slice(src.indexOf('data-toolbar="line1"'))));  // Refresh and Full Screen are only on the top row

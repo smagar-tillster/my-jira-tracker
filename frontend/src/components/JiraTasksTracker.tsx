@@ -411,9 +411,9 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
         <div className="bg-white border-b border-gray-200 p-4">
           <div className="flex flex-col gap-3">
 
-            {/* Row 1 – Search (shortened), the Jira Filter, then Refresh and Full Screen */}
+            {/* Row 1 – Search (it takes the room that is left, so the row spans the full width), the Jira Filter, then Refresh and Full Screen */}
             <div data-toolbar="top" className="flex items-center gap-2 min-w-0">
-              <div className="flex-1 min-w-0 max-w-md">
+              <div className="flex-1 min-w-0">
                 <input
                   type="text"
                   placeholder="Search by key, summary, assignee, type..."
