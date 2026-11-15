@@ -12,6 +12,7 @@ import AdditionalFilters from './tasks/AdditionalFilters';
 import StatusFilterGroup from './tasks/StatusFilterGroup';
 import FilterIcon from './tasks/FilterIcon';
 import ViewModeButton from './tasks/ViewModeButton';
+import { useStatusDensity } from './tasks/useStatusDensity';
 import { BoardDatePicker, RegionOptions } from './tasks/ViewOptions';
 import { BTN, EMPTY_QUICK, QuickKey, QuickState, anyFilterActive, stateClass, viewHasOptions, viewSuffix } from '../utils/taskFilters';
 import RegionView from './views/RegionView';
@@ -249,6 +250,7 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
   };
   const toggleQuick = (key: QuickKey) => quickSetters[key](v => !v);
   const filtersActive = anyFilterActive({ filters, searchTerm, quick });
+  const { lineRef, statusRef, density: statusDensity } = useStatusDensity(!fullScreenMode);
   /** Clear Filters resets everything that filters: the dropdown and status filters, the search box and every quick filter (grouping is left alone). */
   const clearEverything = () => {
     clearAllFilters();
@@ -432,7 +434,7 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
 
             {/* Row 2 (line 1) – Source pill + view mode + Group By + status buttons */}
             {/* Layer 45: above line 2 (40) so the Group By menu opens over the filter row, below the Jira filter (50) so that menu still opens over this line */}
-            <div className="flex gap-1.5 items-center flex-wrap min-w-0 col-start-1 relative z-[45]">
+            <div ref={lineRef} className="flex gap-1.5 items-center flex-wrap min-w-0 col-start-1 relative z-[45]">
               {/* Source filter pills */}
               <div className="flex rounded-lg border border-gray-300 overflow-hidden text-sm font-medium">
                 {(['all', 'sprint', 'me'] as SourceFilter[]).map(s => (
@@ -488,7 +490,7 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
               <div className="h-6 w-px bg-gray-300" />
 
               {/* Status buttons close the first line */}
-              <StatusFilterGroup counts={statusCounts} active={effectiveSCFilter} onToggle={toggleStatusCat} />
+              <StatusFilterGroup ref={statusRef} density={statusDensity} counts={statusCounts} active={effectiveSCFilter} onToggle={toggleStatusCat} />
 
               {/* Active filter chips */}
               {Object.keys(filters).length > 0 && (

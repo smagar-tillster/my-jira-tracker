@@ -66,3 +66,20 @@ export const boardDateLabel = (key: BoardDate): string => BOARD_DATES.find((d) =
 export const viewSuffix = (mode: 'list' | 'board' | 'region', boardDate: BoardDate): string | undefined => (mode === 'board' ? boardDateLabel(boardDate) : undefined);
 /** Board and Region have options (the date; Manage Regions); List does not. */
 export const viewHasOptions = (mode: 'list' | 'board' | 'region'): boolean => mode !== 'list';
+
+// ---------------------------------------------------------------- fitting the status buttons on the first line
+/** 0 = full size with the label; 1 = smaller type and padding, same text; 2 = smaller still, icon and count only (the label is in the tooltip). */
+export type StatusDensity = 0 | 1 | 2;
+
+/** The next smaller step when the buttons did not fit on the line, else the same step. */
+export const nextDensity = (current: StatusDensity, wrapped: boolean): StatusDensity => (wrapped && current < 2 ? ((current + 1) as StatusDensity) : current);
+
+/** The text of a status button at a density. A category without an icon always keeps its label. */
+export const statusText = (category: string, count: number, density: StatusDensity): string => {
+  const icon = STATUS_ICONS[category];
+  if (density === 2 && icon) return `${icon} ${count}`;
+  return `${icon ? `${icon} ` : ''}${category}: ${count}`;
+};
+
+export const statusButtonClass = (on: boolean, density: StatusDensity): string =>
+  `${density === 0 ? BTN : 'px-2 py-1 rounded-lg text-xs font-medium transition-colors'} whitespace-nowrap ${stateClass(on)}`;
