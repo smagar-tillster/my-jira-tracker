@@ -43,3 +43,13 @@ const ON = 'bg-blue-600 text-white hover:bg-blue-700';
 const OFF = 'bg-gray-200 text-gray-700 hover:bg-gray-300';
 /** A toggle or dropdown button: blue when selected, gray when not. */
 export const stateClass = (on: boolean): string => (on ? ON : OFF);
+
+// ---------------------------------------------------------------- status buttons
+/** The status buttons in a fixed order, with an icon each. Any other category Jira sends comes after these, in name order, without an icon. */
+export const STATUS_ORDER = ['In Progress', 'Done', 'To Do'];
+export const STATUS_ICONS: Record<string, string> = { 'In Progress': '🔄', 'Done': '✅', 'To Do': '📝' };
+export const orderedStatuses = (counts: Record<string, number>): [string, number][] => {
+  const known = STATUS_ORDER.filter((c) => c in counts).map((c): [string, number] => [c, counts[c]]);
+  const rest = Object.keys(counts).filter((c) => !STATUS_ORDER.includes(c)).sort().map((c): [string, number] => [c, counts[c]]);
+  return [...known, ...rest];
+};

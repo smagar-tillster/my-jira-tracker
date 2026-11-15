@@ -428,7 +428,7 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
               />
             </div>
 
-            {/* Row 2 – Source pill + view mode + Group By */}
+            {/* Row 2 (line 1) – Source pill + view mode + Group By + status buttons */}
             <div className="flex gap-1.5 items-center flex-wrap min-w-0 col-start-1">
               {/* Source filter pills */}
               <div className="flex rounded-lg border border-gray-300 overflow-hidden text-sm font-medium">
@@ -495,6 +495,11 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
                 )}
               </div>
 
+              <div className="h-6 w-px bg-gray-300" />
+
+              {/* Status buttons close the first line */}
+              <StatusFilterGroup counts={statusCounts} active={effectiveSCFilter} onToggle={toggleStatusCat} />
+
               {/* Active filter chips */}
               {Object.keys(filters).length > 0 && (
                 <div className="flex flex-wrap gap-1">
@@ -527,13 +532,12 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
               </span>
             </div>
 
-            {/* Row 3 – Additional Filters, status buttons and the dropdown filters */}
+            {/* Row 3 (line 2) – Additional Filters and the dropdown filters */}
             <div className="flex flex-wrap gap-1.5 items-center relative z-40 min-w-0 col-start-1">
-              {/* Quick filters live in the Additional Filters popover; the status buttons sit beside it, compact */}
+              {/* Quick filters live in the Additional Filters popover */}
               <AdditionalFilters state={quick} open={openDropdown === 'additional'}
                 onToggleOpen={() => setOpenDropdown(openDropdown === 'additional' ? null : 'additional')}
                 onClose={() => setOpenDropdown(null)} onToggle={toggleQuick} />
-              <StatusFilterGroup counts={statusCounts} active={effectiveSCFilter} onToggle={toggleStatusCat} />
 
               <div className="h-6 w-px bg-gray-300" />
 

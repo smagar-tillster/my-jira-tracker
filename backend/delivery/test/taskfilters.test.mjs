@@ -42,3 +42,13 @@ test('buttons are blue when on and gray when off, the same blue as the selected 
   assert.ok(!/bg-(red|orange|yellow|purple|indigo)/.test(T.stateClass(true) + T.stateClass(false)));   // no separate warning colors any more
   assert.ok(T.BTN.includes('rounded-lg') && T.BTN.includes('text-sm'));
 });
+
+test('the status buttons come in a fixed order, In Progress, Done, To Do, with an icon each; any other category follows in name order without one', () => {
+  assert.deepEqual(T.STATUS_ORDER, ['In Progress', 'Done', 'To Do']);
+  assert.deepEqual(T.orderedStatuses({ 'To Do': 115, 'Done': 189, 'In Progress': 198 }), [['In Progress', 198], ['Done', 189], ['To Do', 115]]);   // whatever order the data came in
+  assert.deepEqual(T.orderedStatuses({ 'Done': 1 }), [['Done', 1]]);                                                           // a missing one is simply absent
+  assert.deepEqual(T.orderedStatuses({ 'Zeta': 1, 'To Do': 2, 'Alpha': 3, 'In Progress': 4 }).map(([c]) => c), ['In Progress', 'To Do', 'Alpha', 'Zeta']);
+  assert.deepEqual(T.orderedStatuses({}), []);
+  assert.deepEqual(Object.keys(T.STATUS_ICONS).sort(), [...T.STATUS_ORDER].sort());
+  assert.ok(Object.values(T.STATUS_ICONS).every((i) => i.length > 0));
+});
