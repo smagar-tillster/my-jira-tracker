@@ -62,13 +62,15 @@ test('the Board is built on one of three dates, offered in a fixed order, and it
   assert.deepEqual(['list', 'board', 'region'].map(T.viewHasOptions), [false, true, true]);
 });
 
-test('the status buttons shrink one step at a time, only when they did not fit on the line, never past the smallest, and always keep their words', () => {
+test('In Progress and Done show an icon and the count, To Do keeps its words, and the buttons shrink one step at a time only when they did not fit', () => {
   assert.deepEqual([0, 1, 2].map((d) => T.nextDensity(d, false)), [0, 1, 2]);                 // they fit: stay as they are
   assert.deepEqual([0, 1, 2].map((d) => T.nextDensity(d, true)), [1, 2, 2]);                  // they wrapped: one step smaller, and no further than 2
-  assert.equal(T.statusText('In Progress', 198), '🔄 In Progress 198');                       // icon, words and count, no colon
-  assert.equal(T.statusText('Done', 189), '✅ Done 189'); assert.equal(T.statusText('To Do', 115), '📝 To Do 115');
-  assert.equal(T.statusText('Blocked', 3), 'Blocked 3');                                       // no icon for a category without one
-  assert.equal(T.statusText.length, 2);                                                        // the text does not depend on the size: the words are never dropped
+  assert.equal(T.STATUS_ICONS['In Progress'], '⏳');                                          // the pending icon
+  assert.equal(T.statusText('In Progress', 198), '⏳ 198');                                    // no words
+  assert.equal(T.statusText('Done', 189), '✅ 189');                                           // no words
+  assert.equal(T.statusText('To Do', 115), '📝 To Do 115');                                    // words kept
+  assert.equal(T.statusText('Blocked', 3), 'Blocked 3');                                        // another category keeps its words, and has no icon
+  assert.deepEqual([...T.STATUS_ICON_ONLY].sort(), ['Done', 'In Progress']);
   assert.ok(T.statusButtonClass(true, 0).startsWith(T.BTN) && T.statusButtonClass(true, 0).includes('bg-blue-600'));
   assert.ok(T.statusButtonClass(false, 1).includes('text-xs') && T.statusButtonClass(false, 1).includes('bg-gray-200'));
   assert.ok(T.statusButtonClass(false, 2).includes('text-[11px]') && !T.statusButtonClass(false, 2).includes('text-xs'));

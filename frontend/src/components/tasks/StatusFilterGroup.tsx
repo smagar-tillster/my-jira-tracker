@@ -3,7 +3,7 @@ import { StatusDensity, orderedStatuses, statusButtonClass, statusText } from '.
 
 /**
  * The status buttons (In Progress, Done, To Do with their counts and an icon each). Blue when selected, gray when not. `density` is chosen by the
- * page so the group fits on the first line: full size, then smaller, then smaller still. The words stay at every size.
+ * page so the group fits on the first line: full size, then smaller, then smaller still. In Progress and Done show the icon and the count (the name is in the tooltip); To Do keeps its words.
  */
 const StatusFilterGroup = React.forwardRef<HTMLDivElement, { counts: Record<string, number>; active: readonly string[]; onToggle: (category: string) => void; density?: StatusDensity }>(
   ({ counts, active, onToggle, density = 0 }, ref) => (
@@ -11,7 +11,7 @@ const StatusFilterGroup = React.forwardRef<HTMLDivElement, { counts: Record<stri
       {orderedStatuses(counts).map(([cat, count]) => {
         const on = active.includes(cat);
         return (
-          <button key={cat} onClick={() => onToggle(cat)} aria-pressed={on} aria-label={`${cat}: ${count}`} className={statusButtonClass(on, density)}>
+          <button key={cat} onClick={() => onToggle(cat)} aria-pressed={on} aria-label={`${cat}: ${count}`} title={`${cat}: ${count}`} className={statusButtonClass(on, density)}>
             {statusText(cat, count)}
           </button>
         );

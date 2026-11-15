@@ -47,7 +47,9 @@ export const stateClass = (on: boolean): string => (on ? ON : OFF);
 // ---------------------------------------------------------------- status buttons
 /** The status buttons in a fixed order, with an icon each. Any other category Jira sends comes after these, in name order, without an icon. */
 export const STATUS_ORDER = ['In Progress', 'Done', 'To Do'];
-export const STATUS_ICONS: Record<string, string> = { 'In Progress': '🔄', 'Done': '✅', 'To Do': '📝' };
+export const STATUS_ICONS: Record<string, string> = { 'In Progress': '⏳', 'Done': '✅', 'To Do': '📝' };
+/** These two show the icon and the count only (the name is in the tooltip and the screen reader label); To Do and any other category keep their words. */
+export const STATUS_ICON_ONLY = new Set(['In Progress', 'Done']);
 export const orderedStatuses = (counts: Record<string, number>): [string, number][] => {
   const known = STATUS_ORDER.filter((c) => c in counts).map((c): [string, number] => [c, counts[c]]);
   const rest = Object.keys(counts).filter((c) => !STATUS_ORDER.includes(c)).sort().map((c): [string, number] => [c, counts[c]]);
@@ -68,14 +70,18 @@ export const viewSuffix = (mode: 'list' | 'board' | 'region', boardDate: BoardDa
 export const viewHasOptions = (mode: 'list' | 'board' | 'region'): boolean => mode !== 'list';
 
 // ---------------------------------------------------------------- fitting the status buttons on the first line
-/** 0 = full size; 1 = smaller type and padding; 2 = smaller still. The words stay at every size: only the size changes. */
+/** 0 = full size; 1 = smaller type and padding; 2 = smaller still. The text does not change with the size: only the size changes. */
 export type StatusDensity = 0 | 1 | 2;
 
 /** The next smaller step when the buttons did not fit on the line, else the same step. */
 export const nextDensity = (current: StatusDensity, wrapped: boolean): StatusDensity => (wrapped && current < 2 ? ((current + 1) as StatusDensity) : current);
 
-/** "🔄 In Progress 198": the icon, the words and the count, at every size. A category without an icon has no icon. */
-export const statusText = (category: string, count: number): string => `${STATUS_ICONS[category] ? `${STATUS_ICONS[category]} ` : ''}${category} ${count}`;
+/** "⏳ 198" for In Progress, "✅ 189" for Done, "📝 To Do 115" for To Do: the icon, the count, and the words only where they are kept. */
+export const statusText = (category: string, count: number): string => {
+  const icon = STATUS_ICONS[category];
+  if (icon && STATUS_ICON_ONLY.has(category)) return `${icon} ${count}`;
+  return `${icon ? `${icon} ` : ''}${category} ${count}`;
+};
 
 const SIZES: Record<StatusDensity, string> = {
   0: BTN,
