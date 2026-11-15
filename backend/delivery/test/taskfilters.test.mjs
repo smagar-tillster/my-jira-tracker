@@ -52,3 +52,12 @@ test('the status buttons come in a fixed order, In Progress, Done, To Do, with a
   assert.deepEqual(Object.keys(T.STATUS_ICONS).sort(), [...T.STATUS_ORDER].sort());
   assert.ok(Object.values(T.STATUS_ICONS).every((i) => i.length > 0));
 });
+
+test('the Board is built on one of three dates, offered in a fixed order, and its button says which; Board and Region have options, List does not', () => {
+  assert.deepEqual(T.BOARD_DATES.map((d) => [d.key, d.label]), [['dueDate', 'Due Date'], ['releaseDate', 'Release Date'], ['plannedUatDate', 'UAT Date']]);
+  assert.equal(T.boardDateLabel('releaseDate'), 'Release Date');
+  assert.equal(T.viewSuffix('board', 'plannedUatDate'), 'UAT Date');
+  assert.equal(T.viewSuffix('list', 'dueDate'), undefined);
+  assert.equal(T.viewSuffix('region', 'dueDate'), undefined);
+  assert.deepEqual(['list', 'board', 'region'].map(T.viewHasOptions), [false, true, true]);
+});

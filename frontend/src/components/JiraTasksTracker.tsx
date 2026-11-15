@@ -11,7 +11,9 @@ import DueDateBoard from './views/DueDateBoard';
 import AdditionalFilters from './tasks/AdditionalFilters';
 import StatusFilterGroup from './tasks/StatusFilterGroup';
 import FilterIcon from './tasks/FilterIcon';
-import { BTN, EMPTY_QUICK, QuickKey, QuickState, anyFilterActive, stateClass } from '../utils/taskFilters';
+import ViewModeButton from './tasks/ViewModeButton';
+import { BoardDatePicker, RegionOptions } from './tasks/ViewOptions';
+import { BTN, EMPTY_QUICK, QuickKey, QuickState, anyFilterActive, stateClass, viewHasOptions, viewSuffix } from '../utils/taskFilters';
 import RegionView from './views/RegionView';
 
 // Simple hook that returns a value that only updates after `delay` ms of no changes
@@ -448,31 +450,18 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
 
               <div className="h-6 w-px bg-gray-300" />
 
-              {/* View mode */}
+              {/* View mode: Board and Region open a small popover with their options when clicked again, like Additional Filters */}
               {(['list','board','region'] as const).map(mode => (
-                <button key={mode} onClick={() => setViewMode(mode)}
-                  className={`${BTN} ${stateClass(viewMode === mode)}`}>
-                  {mode === 'list' ? '📋 List' : mode === 'board' ? '🗂 Board' : '🌎 Region'}
-                </button>
+                <ViewModeButton key={mode}
+                  label={mode === 'list' ? '📋 List' : mode === 'board' ? '🗂 Board' : '🌎 Region'}
+                  suffix={viewSuffix(mode, boardDateType)} active={viewMode === mode} hasOptions={viewHasOptions(mode)} open={openDropdown === mode}
+                  onSelect={() => { setViewMode(mode); setOpenDropdown(null); }}
+                  onToggleOpen={() => setOpenDropdown(openDropdown === mode ? null : mode)}
+                  onClose={() => setOpenDropdown(null)}>
+                  {mode === 'board' && <BoardDatePicker value={boardDateType} onPick={dt => { setBoardDateType(dt); setOpenDropdown(null); }} />}
+                  {mode === 'region' && <RegionOptions onManage={() => { setShowRegionManager(true); setOpenDropdown(null); }} />}
+                </ViewModeButton>
               ))}
-
-              {viewMode === 'board' && (
-                <>
-                  {(['dueDate','releaseDate','plannedUatDate'] as const).map(dt => (
-                    <button key={dt} onClick={() => setBoardDateType(dt)}
-                      className={`px-2 py-1 rounded text-xs font-medium transition-colors ${boardDateType === dt ? 'bg-purple-600 text-white' : 'bg-purple-100 text-purple-800 hover:bg-purple-200'}`}>
-                      {dt === 'dueDate' ? 'Due Date' : dt === 'releaseDate' ? 'Release Date' : 'UAT Date'}
-                    </button>
-                  ))}
-                </>
-              )}
-
-              {viewMode === 'region' && (
-                <button onClick={() => setShowRegionManager(true)}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium bg-teal-100 text-teal-800 hover:bg-teal-200">
-                  ⚙ Manage Regions
-                </button>
-              )}
 
               <div className="h-6 w-px bg-gray-300" />
 

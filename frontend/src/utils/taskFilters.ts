@@ -53,3 +53,16 @@ export const orderedStatuses = (counts: Record<string, number>): [string, number
   const rest = Object.keys(counts).filter((c) => !STATUS_ORDER.includes(c)).sort().map((c): [string, number] => [c, counts[c]]);
   return [...known, ...rest];
 };
+
+// ---------------------------------------------------------------- view options (Board and Region)
+export type BoardDate = 'dueDate' | 'releaseDate' | 'plannedUatDate';
+/** The dates the Board can be built on, in the order they are offered. */
+export const BOARD_DATES: { key: BoardDate; label: string }[] = [
+  { key: 'dueDate', label: 'Due Date' }, { key: 'releaseDate', label: 'Release Date' }, { key: 'plannedUatDate', label: 'UAT Date' },
+];
+export const boardDateLabel = (key: BoardDate): string => BOARD_DATES.find((d) => d.key === key)?.label ?? key;
+
+/** What a view button shows after its name: the Board says which date it is built on. */
+export const viewSuffix = (mode: 'list' | 'board' | 'region', boardDate: BoardDate): string | undefined => (mode === 'board' ? boardDateLabel(boardDate) : undefined);
+/** Board and Region have options (the date; Manage Regions); List does not. */
+export const viewHasOptions = (mode: 'list' | 'board' | 'region'): boolean => mode !== 'list';
