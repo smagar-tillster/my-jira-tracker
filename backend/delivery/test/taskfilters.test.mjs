@@ -75,3 +75,19 @@ test('the status buttons shrink one step at a time only when they did not fit on
   assert.ok(!T.statusButtonClass(false, 1).includes('px-3') && T.statusButtonClass(false, 2).includes('px-2'));
   assert.equal(T.statusButtonClass(true, 1), T.statusButtonClass(true, 2));                    // 1 and 2 differ in the words, not the size
 });
+
+test('the toolbar lines sit above every table header, so a menu never opens behind one, and below the Jira filter', async () => {
+  const fs = await import('node:fs');
+  const src = (f) => fs.readFileSync(new URL(`../../../frontend/src/components/${f}`, import.meta.url), 'utf8');
+  const z = (text, re) => { const m = re.exec(text); assert.ok(m, `not found: ${re}`); return Number(m[1] || m[2]); };
+  const num = '(?:z-\\[(\\d+)\\]|z-(\\d+))';
+  const tracker = src('JiraTasksTracker.tsx');
+  const line1 = z(tracker, new RegExp(`ref=\\{lineRef\\} className="[^"]*relative ${num}`));
+  const line2 = z(tracker, new RegExp(`className="flex flex-wrap gap-1\\.5 items-center relative ${num} min-w-0 col-start-1"`));
+  const jira = z(tracker, new RegExp(`className="relative ${num} jira-filter-dropdown`));
+  const regionHeader = z(src('views/RegionView.tsx'), new RegExp(`<ListHeader[^>]*className="${num}"`));
+  const listHeader = z(src('views/ListView.tsx'), /className = 'z-(\d+)'/);
+  assert.ok(line2 > regionHeader && line2 > listHeader, `line 2 (${line2}) must be above the headers (${regionHeader}, ${listHeader})`);
+  assert.ok(line1 > line2, `line 1 (${line1}) must be above line 2 (${line2}) so the Group By menu opens in front of the filter row`);
+  assert.ok(jira > line1, `the Jira filter (${jira}) must stay above line 1 (${line1})`);
+});

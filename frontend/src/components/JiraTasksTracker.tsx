@@ -433,8 +433,9 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
             </div>
 
             {/* Row 2 (line 1) – Source pill + view mode + Group By + status buttons */}
-            {/* Layer 45: above line 2 (40) so the Group By menu opens over the filter row, below the Jira filter (50) so that menu still opens over this line */}
-            <div ref={lineRef} className="flex gap-1.5 items-center flex-wrap min-w-0 col-start-1 relative z-[45]">
+            {/* Layers: line 1 is 48 and line 2 is 47, above every table header (the Region header is 40, the List header 20) so no menu opens behind one,
+                line 1 above line 2 so the Group By menu opens over the filter row, and both below the Jira filter (50) so its menu opens over this line */}
+            <div ref={lineRef} className="flex gap-1.5 items-center flex-wrap min-w-0 col-start-1 relative z-[48]">
               {/* Source filter pills */}
               <div className="flex rounded-lg border border-gray-300 overflow-hidden text-sm font-medium">
                 {(['all', 'sprint', 'me'] as SourceFilter[]).map(s => (
@@ -525,7 +526,7 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
             </div>
 
             {/* Row 3 (line 2) – the dropdown filters, then Additional Filters last */}
-            <div className="flex flex-wrap gap-1.5 items-center relative z-40 min-w-0 col-start-1">
+            <div className="flex flex-wrap gap-1.5 items-center relative z-[47] min-w-0 col-start-1">
               {/* Type filter */}
               <DropdownFilter label="Type" dropKey="type" search={typeSearch} setSearch={setTypeSearch}
                 options={dropdownOptions.type}
