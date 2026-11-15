@@ -13,6 +13,7 @@ export const MONTH_CHOICES = [3, 6];
 export const scopeText = (f = {}) => {
   const bits = [];
   if (f.feTeam) bits.push('FE team only');
+  if (f.component?.length) bits.push(`${f.component.length} component${f.component.length === 1 ? '' : 's'} selected`);
   if (f.client?.length) bits.push(`${f.client.length} client${f.client.length === 1 ? '' : 's'} selected`);
   if (f.assignee?.length) bits.push(`${f.assignee.length} assignee${f.assignee.length === 1 ? '' : 's'} selected`);
   return bits.length ? bits.join('; ') : 'all done tickets';
@@ -48,7 +49,8 @@ export const createTrendsService = ({ sync = runTrendsSync, now = () => new Date
     const scope = scopeText(filters);
     const guidance = cachedGuidance(facts, scope);
     // links are added to what the page gets, after the numbers are fixed: they are not part of what the model sees or what its answer is saved under
-    const linked = { ...facts, categories: facts.categories.map((c) => ({ ...c, examples: c.examples.map((e) => ({ ...e, url: jiraUrl(e.key) })) })) };
+    const link = (list) => list.map((c) => ({ ...c, examples: c.examples.map((e) => ({ ...e, url: jiraUrl(e.key) })) }));
+    const linked = { ...facts, categories: link(facts.categories), components: link(facts.components) };
     return { facts: linked, scope, guidance };
   };
 

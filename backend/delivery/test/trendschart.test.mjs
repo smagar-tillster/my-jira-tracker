@@ -138,3 +138,9 @@ test('the little trend line puts the highest month at the top, zero at the botto
   assert.deepEqual(C.sparkline([7], 100, 30).last, { x: 50, y: 3 });         // one month: centered
   assert.equal(C.sparkline([0, 0], 100, 30, 3).top, 1);                       // all zeros: no division by zero
 });
+
+test('component filters travel in both requests', () => {
+  assert.deepEqual(C.trendQuery('resolved', 6, 'component', { component: ['FE', 'Web Service (WS)'] }).getAll('component'), ['FE', 'Web Service (WS)']);
+  assert.deepEqual(C.defectQuery(6, { component: ['FE'] }).getAll('component'), ['FE']);
+  assert.equal(C.defectQuery(6, { component: [] }).has('component'), false);
+});

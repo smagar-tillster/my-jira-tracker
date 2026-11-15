@@ -80,17 +80,17 @@ export const selectionLabel = (label: string, value: readonly string[]): string 
   `${label}: ${value.length === 0 ? 'all' : value.length === 1 ? value[0] : `${value.length} selected`}`;
 
 /** The query for the trend: a filter with several values repeats its name (client=A&client=B), which is how the backend reads a list. */
-export const trendQuery = (basis: string, months: number, group: string, filters: { type?: readonly string[]; client?: readonly string[]; assignee?: readonly string[]; feTeam?: boolean }): URLSearchParams => {
+export const trendQuery = (basis: string, months: number, group: string, filters: { type?: readonly string[]; client?: readonly string[]; assignee?: readonly string[]; component?: readonly string[]; feTeam?: boolean }): URLSearchParams => {
   const p = new URLSearchParams({ basis, months: String(months), group });
-  for (const k of ['type', 'client', 'assignee'] as const) for (const v of filters[k] ?? []) p.append(k, v);
+  for (const k of ['type', 'client', 'assignee', 'component'] as const) for (const v of filters[k] ?? []) p.append(k, v);
   if (filters.feTeam) p.set('feTeam', '1');
   return p;
 };
 
-/** The defect analysis uses the page's months and its client, assignee and FE team filters; the Type filter does not apply to it. */
-export const defectQuery = (months: number, filters: { client?: readonly string[]; assignee?: readonly string[]; feTeam?: boolean }): URLSearchParams => {
+/** The defect analysis uses the page's months and its client, assignee, component and FE team filters; the Type filter does not apply to it. */
+export const defectQuery = (months: number, filters: { client?: readonly string[]; assignee?: readonly string[]; component?: readonly string[]; feTeam?: boolean }): URLSearchParams => {
   const p = new URLSearchParams({ months: String(months) });
-  for (const k of ['client', 'assignee'] as const) for (const v of filters[k] ?? []) p.append(k, v);
+  for (const k of ['client', 'assignee', 'component'] as const) for (const v of filters[k] ?? []) p.append(k, v);
   if (filters.feTeam) p.set('feTeam', '1');
   return p;
 };

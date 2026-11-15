@@ -35,15 +35,17 @@ export const addMonths = (month, n) => {
   return `${Math.floor(t / 12)}-${String((t % 12) + 1).padStart(2, '0')}`;
 };
 
-export const GROUPS = ['all', 'type', 'client', 'assignee'];
+export const GROUPS = ['all', 'type', 'client', 'component', 'assignee'];
 const ALL = 'All tickets';
 const NO_CLIENT = 'No client';
 const NO_ASSIGNEE = 'Unassigned';
+export const NO_COMPONENT = 'No component';
 
 /** The series a ticket belongs to for a grouping. A ticket with several clients counts under each of them. */
 const valuesFor = (row, group) => {
   if (group === 'all') return [ALL];
   if (group === 'client') return row.clients?.length ? row.clients : [NO_CLIENT];
+  if (group === 'component') return row.components?.length ? row.components : [NO_COMPONENT];
   if (group === 'assignee') return [row.assignee || NO_ASSIGNEE];
   return [row.type || 'Unknown'];
 };
@@ -58,7 +60,7 @@ const rank = (rows, group) => {
  * Tickets per month: all together, or split by type, client or assignee.
  * `summary` is for the tiles, over the tickets counted in the months shown: stories, defects, and the client with the most tickets (tickets with no client are not a client).
  *   months    how many months back from the current one (3 or 6)
- *   filters   { type, client, assignee, feTeam }: type, client and assignee are each a list of values (or one value); a ticket must match one value
+ *   filters   { type, client, assignee, component, feTeam }: type, client and assignee are each a list of values (or one value); a ticket must match one value
  *             of every list given (OR inside a filter, AND between them). feTeam keeps tickets assigned to a member of `feMembers`
  * Months after the current one are not shown (sprints that have not started); their tickets are counted in `future`.
  * `series` are the ones with tickets in the months shown, ranked by those counts (so the top seven in view get the colors and the tail folds into
@@ -69,9 +71,10 @@ const rank = (rows, group) => {
 export const filterRows = (rows, filters = {}, feMembers = new Set()) => {
   const f = filters || {};
   const list = (v) => (Array.isArray(v) ? v : v ? [v] : []).filter((x) => typeof x === 'string' && x);
-  const [types, clients, assignees] = [list(f.type), list(f.client), list(f.assignee)];
+  const [types, clients, assignees, components] = [list(f.type), list(f.client), list(f.assignee), list(f.component)];
   return rows.filter((r) => (!types.length || types.includes(r.type))
     && (!clients.length || valuesFor(r, 'client').some((c) => clients.includes(c)))
+    && (!components.length || valuesFor(r, 'component').some((c) => components.includes(c)))
     && (!assignees.length || assignees.includes(r.assignee || NO_ASSIGNEE))
     && (!f.feTeam || (!!r.assignee && feMembers.has(r.assignee))));
 };
@@ -80,7 +83,7 @@ export const aggregate = ({ rows, basis = 'sprint', group = 'all', months = 6, f
   if (!BASES.includes(basis)) throw new Error(`basis must be one of ${BASES.join(', ')}`);
   if (!GROUPS.includes(group)) throw new Error(`group must be one of ${GROUPS.join(', ')}`);
   const current = monthOf(now.toISOString());
-  const options = { types: rank(rows, 'type').map((t) => t.name).sort(), clients: rank(rows, 'client').map((t) => t.name).sort(), assignees: rank(rows, 'assignee').map((t) => t.name).sort() };
+  const options = { types: rank(rows, 'type').map((t) => t.name).sort(), clients: rank(rows, 'client').map((t) => t.name).sort(), components: rank(rows, 'component').map((t) => t.name).sort(), assignees: rank(rows, 'assignee').map((t) => t.name).sort() };
 
   const kept = filterRows(rows, filters, feMembers);
 

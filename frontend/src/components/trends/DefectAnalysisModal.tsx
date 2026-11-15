@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { trendsApi, DefectAnalysis, DefectCategory, DefectGuidance, TrendFilters, TrendMonths } from '../../services/api';
+import { trendsApi, DefectAnalysis, DefectCategory, DefectComponent, DefectGuidance, TrendFilters, TrendMonths } from '../../services/api';
 import { monthCounts, monthLabel, sparkline, trendText, SERIES_COLORS } from '../../utils/trendsChart';
 
 const ago = (iso: string) => {
@@ -69,12 +69,36 @@ const CategoryRow: React.FC<{ c: DefectCategory }> = ({ c }) => {
       </div>
       <p className="text-sm text-gray-600">{c.meaning}</p>
       <Line label="Top tenants">{c.tenants.length ? c.tenants.map(t => `${t.name} ${t.count}`).join(' · ') : 'none set'}</Line>
-      <Line label="Samples">
-        {c.examples.map((e, i) => (
-          <React.Fragment key={e.key}>{i > 0 && ' · '}<a href={e.url} target="_blank" rel="noopener noreferrer" title={e.summary} className="text-blue-700 hover:underline">{e.key}</a></React.Fragment>
-        ))}
-      </Line>
+      <Line label="Samples"><Samples examples={c.examples} /></Line>
       <Line label="Advice">{adviceFor(c)}</Line>
+    </li>
+  );
+};
+
+/** The samples as links, shared by the category and component rows. */
+const Samples: React.FC<{ examples: { key: string; summary: string; url: string }[] }> = ({ examples }) => (
+  <>
+    {examples.map((e, i) => (
+      <React.Fragment key={e.key}>{i > 0 && ' · '}<a href={e.url} target="_blank" rel="noopener noreferrer" title={e.summary} className="text-blue-700 hover:underline">{e.key}</a></React.Fragment>
+    ))}
+  </>
+);
+
+/** A fix component: the Jira component developers set when the final fix is done, so it says which part of the platform was changed. */
+const ComponentRow: React.FC<{ c: DefectComponent }> = ({ c }) => {
+  const tr = trendText(c.changePct);
+  return (
+    <li className="py-3 space-y-1.5">
+      <div className="flex items-baseline gap-x-3 gap-y-0.5 flex-wrap">
+        <span className="text-base font-semibold text-gray-900">{c.name}</span>
+        <span className="text-sm text-gray-700 tabular-nums">({c.count} · {c.share}%)</span>
+        <span className={`text-sm tabular-nums ${TONE[tr.tone]}`} title={c.changePct === null ? 'Too few defects in the earlier months for a percentage' : 'Defects per month, recent months against the earlier ones'}>{tr.arrow} {tr.text}</span>
+        <span className="text-sm text-gray-500 tabular-nums" title={`${c.count} defects among ${c.done} tickets done in this component`}>{c.per100} per 100 done</span>
+        {c.medianDaysToFix !== null && <span className="text-sm text-gray-500 tabular-nums" title="Median days from created to done">fix {c.medianDaysToFix} d</span>}
+      </div>
+      <Line label="Top categories">{c.categories.map(x => `${x.name} ${x.count}`).join(' · ') || 'none'}</Line>
+      <Line label="Top tenants">{c.tenants.length ? c.tenants.map(t => `${t.name} ${t.count}`).join(' · ') : 'none set'}</Line>
+      <Line label="Samples"><Samples examples={c.examples} /></Line>
     </li>
   );
 };
@@ -120,7 +144,17 @@ export const DefectAnalysisView: React.FC<DefectViewProps> = ({ data, loading, e
               <MonthTrend months={f.months} values={f.perMonth} />
             </section>
 
-            <section>
+            <section aria-label="By fix component">
+              <h3 className="text-base font-semibold text-gray-900">By fix component</h3>
+              <p className="text-sm text-gray-500 mb-1">The Jira component set when the final fix was done. A defect with several components counts under each.</p>
+              <ul className="divide-y divide-gray-100">
+                {f.components.map(c => <ComponentRow key={c.name} c={c} />)}
+              </ul>
+            </section>
+
+            <section aria-label="By category" className="pt-1">
+              <h3 className="text-base font-semibold text-gray-900">By category</h3>
+              <p className="text-sm text-gray-500 mb-1">Picked by keywords in the title, labels and component. The same categories every time.</p>
               <ul className="divide-y divide-gray-100">
                 {f.categories.map(c => <CategoryRow key={c.name} c={c} />)}
               </ul>
@@ -155,7 +189,7 @@ export const DefectAnalysisView: React.FC<DefectViewProps> = ({ data, loading, e
             </section>
 
             <p className="text-xs text-gray-500">
-              {f.typesCounted.join(', ')} done in these months{f.typeFilterIgnored ? '; the Type filter is ignored here' : ''}. Categories are fixed and keyword-based on title, labels and component. Numbers change when you press Refresh on the report.
+              {f.typesCounted.join(', ')} done in these months{f.typeFilterIgnored ? '; the Type filter is ignored here' : ''}. Numbers change when you press Refresh on the report.
             </p>
           </>
         ))}

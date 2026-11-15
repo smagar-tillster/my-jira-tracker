@@ -20,7 +20,7 @@ const { createTrendsRouter } = await import('../../src/routes/trends.js');
 const reset = () => { getDb().exec('DELETE FROM trend_tickets; DELETE FROM trend_sync; DELETE FROM trend_ai'); };
 const NOW = new Date('2026-11-13T12:00:00');
 let n = 0;
-const T = (type, resolved, o = {}) => ({ key: `X-${++n}`, type, created: '2026-05-01T12:00:00', resolved, summary: 'a ticket', clients: [], labels: [], component: null, assignee: null, ...o });
+const T = (type, resolved, o = {}) => ({ key: `X-${++n}`, type, created: '2026-05-01T12:00:00', resolved, summary: 'a ticket', clients: [], labels: [], component: null, components: [], assignee: null, ...o });
 const Dfx = (resolved, summary, o = {}) => T('Defect', resolved, { summary, ...o });
 
 // ---------------------------------------------------------------- rules
@@ -241,4 +241,59 @@ test('the routes: the analysis never calls the model, the guidance does (once pe
     assert.equal((await call(server, 'POST', '/api/trends/defects/guidance', { months: 6, client: ['AA'], feTeam: true })).json.data.cached, false); assert.equal(calls, 2);   // other filters: other numbers
   } finally { release?.(); server.close(); }
   reset();
+});
+
+// ---------------------------------------------------------------- fix components
+test('by fix component: each Jira component counts its defects, share, defects per 100 done tickets, top categories and tenants; several components count under each; "No component" is last', () => {
+  const rows = [];
+  const mk = (type, summary, comps, client, i) => T(type, `2026-10-${String(10 + (i % 15)).padStart(2, '0')}T12:00:00`, { summary, components: comps, clients: [client] });
+  ['AA', 'AA', 'BB'].forEach((c, i) => rows.push(mk('Defect', 'Receipt total wrong', ['FE'], c, i)));       // 3 FE receipt defects
+  rows.push(mk('Defect', 'Missing image', ['FE'], 'AA', 3));                                                 // 1 FE menu defect
+  rows.push(mk('Defect', 'Order not sent to POS', ['Web Service (WS)'], 'CC', 4));                           // 1 WS defect
+  rows.push(mk('Defect', 'Receipt total wrong', ['FE', 'Web Service (WS)'], 'BB', 5));                       // counts under both
+  rows.push(mk('Defect', 'Something odd', [], 'DD', 6));                                                     // no component
+  for (let i = 0; i < 6; i++) rows.push(mk('Story', 'A story', ['FE'], 'AA', i));                            // 6 FE stories done
+  const f = D.analyzeDefects({ rows, months: 6, now: NOW });
+  assert.deepEqual(f.components.map((c) => [c.name, c.count]), [['FE', 5], ['Web Service (WS)', 2], ['No component', 1]]);
+  const fe = f.components[0];
+  assert.equal(fe.share, 71);                                                                                // 5 of 7 defects
+  assert.equal(fe.done, 11); assert.equal(fe.per100, 45.5);                                                  // 5 defects of 11 FE tickets done
+  assert.deepEqual(fe.categories[0], { name: 'Receipts and printing', count: 4 });
+  assert.deepEqual(fe.tenants, [{ name: 'AA', count: 3 }, { name: 'BB', count: 2 }]);
+  assert.equal(fe.examples.length, 3);
+  assert.equal(f.components[1].count, 2);                                                                    // the FE+WS ticket is in both
+  assert.deepEqual(D.analyzeDefects({ rows: [], now: NOW }).components, []);
+});
+
+test('the report can be split and filtered by component, tickets with several components count under each, and the old single-component rows still work', () => {
+  const A = null;
+  return import('../../src/services/trends/aggregate.js').then((Agg) => {
+    const rs = [T('Story', '2026-10-10T12:00:00', { components: ['FE'] }), T('Story', '2026-10-11T12:00:00', { components: ['FE', 'Web Service (WS)'] }), T('Story', '2026-10-12T12:00:00', { components: [] })];
+    const a = Agg.aggregate({ rows: rs, basis: 'resolved', group: 'component', months: 6, now: NOW });
+    assert.deepEqual(a.series.map((s) => [s.name, s.total]), [['FE', 2], ['No component', 1], ['Web Service (WS)', 1]]);
+    assert.deepEqual(a.totals, [0, 0, 0, 0, 3, 0]);                                                          // three tickets, not four
+    assert.deepEqual(a.options.components, ['FE', 'No component', 'Web Service (WS)']);
+    assert.equal(Agg.aggregate({ rows: rs, basis: 'resolved', months: 6, filters: { component: ['Web Service (WS)', 'No component'] }, now: NOW }).inRange, 2);
+    assert.equal(Agg.aggregate({ rows: rs, basis: 'resolved', months: 6, filters: { component: [] }, now: NOW }).inRange, 3);
+    return A;
+  });
+});
+
+test('components are stored in full and read back, and a row saved before the column existed falls back to its single component', () => {
+  reset();
+  store.upsert([{ ...T('Defect', '2026-10-10T12:00:00', { components: ['FE', 'Web Service (WS)'] }), statusCategory: '', updated: null, firstSprintStart: null }]);
+  assert.deepEqual(store.allRows()[0].components, ['FE', 'Web Service (WS)']);
+  getDb().exec("UPDATE trend_tickets SET components = NULL, component = 'Menu Service (MS)'");
+  assert.deepEqual(store.allRows()[0].components, ['Menu Service (MS)']);
+  reset();
+});
+
+test('the model is given the components, and the scope counts them', () => {
+  const rows = [Dfx('2026-10-10T12:00:00', 'Receipt total wrong', { components: ['FE'], clients: ['AA'] })];
+  const f = D.analyzeDefects({ rows, now: NOW });
+  const input = JSON.parse(G.buildInput(f, ''));
+  assert.deepEqual(input.components.map((c) => c.name), ['FE']);
+  assert.equal(input.components[0].defects, 1);
+  assert.ok(G.PROMPT.includes('components (the Jira component developers set when the final fix is done'));
+  assert.equal(scopeText({ component: ['FE', 'WS'] }), '2 components selected');
 });

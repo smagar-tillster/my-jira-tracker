@@ -17,6 +17,7 @@ export const toRow = (issue) => {
     statusCategory: f.status?.statusCategory?.name || '', firstSprintStart: starts[0] || null, updated: f.updated || null,
     assignee: f.assignee?.displayName || null,
     summary: String(f.summary || '').slice(0, 300), component: f.components?.[0]?.name || null,
+    components: [...new Set((Array.isArray(f.components) ? f.components : []).map((c) => c?.name).filter(Boolean))],
     labels: (Array.isArray(f.labels) ? f.labels : []).filter((l) => typeof l === 'string').slice(0, 20), priority: f.priority?.name || null,
     clients: [...new Set((Array.isArray(f[JIRA_FIELDS.client]) ? f[JIRA_FIELDS.client] : []).map((c) => c?.value).filter(Boolean))],
   };

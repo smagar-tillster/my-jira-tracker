@@ -4,7 +4,7 @@
 //
 // A defect is a done ticket of the types in DEFECT_TYPES. Everything is over the months shown (by done date) and the page's filters, except the
 // Type filter, which is ignored here (an analysis of defects cannot be limited to Stories).
-import { addMonths, filterRows, monthOf, monthRange } from './aggregate.js';
+import { addMonths, filterRows, monthOf, monthRange, NO_COMPONENT } from './aggregate.js';
 
 export const DEFECT_TYPES = ['Defect', 'UAT Defect', 'Product Defect'];
 const UAT_TYPE = 'UAT Defect';
@@ -136,6 +136,24 @@ export const analyzeDefects = ({ rows, months = 6, filters = {}, feMembers = new
     };
   }).sort((a, b) => (a.name === OTHER.name) - (b.name === OTHER.name) || b.count - a.count || a.name.localeCompare(b.name));   // "Other or unclear" always last
 
+  // by fix component: the Jira component developers set when the final fix is done, so it says which part of the platform was changed.
+  // A ticket with several components counts under each, so the shares can add up to more than 100%.
+  const compsOf = (r) => (r.components?.length ? r.components : [NO_COMPONENT]);
+  const doneByComp = new Map();
+  for (const r of kept) for (const c of compsOf(r)) doneByComp.set(c, (doneByComp.get(c) || 0) + 1);
+  const byComp = new Map();
+  for (const d of defects) for (const c of compsOf(d)) (byComp.get(c) || byComp.set(c, []).get(c)).push(d);
+  const components = [...byComp.entries()].map(([name, rs]) => {
+    const recent = rs.filter(isRecent).length; const earlier = rs.length - recent; const done = doneByComp.get(name) || rs.length;
+    return {
+      name, count: rs.length, share: pct(rs.length, total), changePct: perMonthChange(recent, earlier), medianDaysToFix: median(fixDays(rs)),
+      done, per100: round1((rs.length / done) * 100),
+      categories: count(rs, (r) => [catOf.get(r.key)]).slice(0, 3).map(([n, c]) => ({ name: n, count: c })),
+      tenants: count(rs, clientsOf).slice(0, 3).map(([n, c]) => ({ name: n, count: c })),
+      examples: [...rs].sort((a, b) => String(b.resolved).localeCompare(String(a.resolved)) || b.key.localeCompare(a.key)).slice(0, 3).map((r) => ({ key: r.key, summary: r.summary })),
+    };
+  }).sort((a, b) => (a.name === NO_COMPONENT) - (b.name === NO_COMPONENT) || b.count - a.count || a.name.localeCompare(b.name));   // "No component" always last
+
   // client rates: a ticket with several clients counts under each; the rate is defects per 100 done tickets
   const perClient = new Map();
   for (const r of kept) for (const c of (r.clients?.length ? r.clients : [])) {
@@ -151,5 +169,5 @@ export const analyzeDefects = ({ rows, months = 6, filters = {}, feMembers = new
 
   const topClients = count(defects, clientsOf).slice(0, 3).map(([name, n]) => ({ name, count: n }));
 
-  return { months: list, perMonth, tiles, topClients, categories, clients, averagePer100: average, repeats, minClientDone: MIN_CLIENT_DONE, typesCounted: DEFECT_TYPES, typeFilterIgnored: !!(ignored && ignored.length) };
+  return { months: list, perMonth, tiles, topClients, categories, components, clients, averagePer100: average, repeats, minClientDone: MIN_CLIENT_DONE, typesCounted: DEFECT_TYPES, typeFilterIgnored: !!(ignored && ignored.length) };
 };

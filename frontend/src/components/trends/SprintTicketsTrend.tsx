@@ -10,6 +10,7 @@ const GROUPS: { id: TrendGroup; label: string; one: string; many: string; hint: 
   { id: 'all', label: 'All tickets', one: 'ticket', many: 'tickets', hint: 'One line with every ticket.' },
   { id: 'client', label: 'By client', one: 'client', many: 'clients', hint: 'One line per client. A ticket with several clients is counted under each; a ticket with none is "No client".' },
   { id: 'type', label: 'By type', one: 'type', many: 'types', hint: 'One line per ticket type.' },
+  { id: 'component', label: 'By component', one: 'component', many: 'components', hint: 'One line per Jira component, which developers set when the final fix is done (FE, a service, and so on). A ticket with several components is counted under each.' },
 ];
 
 const ago = (iso: string) => {
@@ -61,7 +62,7 @@ export const SprintTicketsTrendView: React.FC<TrendViewProps> = ({ data, loading
   const shown = all.filter(d => !hidden.has(d.series.id));
   const sums = all.map(d => d.counts.reduce((a, b) => a + b, 0));
   const empty = !!data && data.tickets === 0;
-  const filtered = !!filters.feTeam || !!filters.type?.length || !!filters.client?.length || !!filters.assignee?.length;
+  const filtered = !!filters.feTeam || !!filters.type?.length || !!filters.client?.length || !!filters.assignee?.length || !!filters.component?.length;
 
   const totals = data?.totals ?? [];
   const busiest = totals.length ? totals.indexOf(Math.max(...totals)) : -1;
@@ -105,7 +106,7 @@ export const SprintTicketsTrendView: React.FC<TrendViewProps> = ({ data, loading
           <button onClick={() => onFilters({ ...filters, feTeam: !filters.feTeam })} aria-pressed={!!filters.feTeam}
             title="Tickets assigned to a member of the FE team (the people flagged on the Tasks page)"
             className={`px-3 py-1.5 rounded-lg text-sm font-medium ring-1 ${filters.feTeam ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-gray-700 ring-gray-300 hover:bg-gray-100'}`}>FE team</button>
-          {([['client', 'Client', data.options.clients], ['assignee', 'Assignee', data.options.assignees], ['type', 'Type', data.options.types]] as const).map(([k, label, opts]) => (
+          {([['client', 'Client', data.options.clients], ['component', 'Component', data.options.components], ['assignee', 'Assignee', data.options.assignees], ['type', 'Type', data.options.types]] as const).map(([k, label, opts]) => (
             <MultiSelect key={k} label={label} options={opts} value={filters[k] ?? []} onChange={v => onFilters({ ...filters, [k]: v.length ? v : undefined })} />
           ))}
           {filtered && <button onClick={() => onFilters({})} className="text-xs text-blue-600 hover:underline">Clear filters</button>}
@@ -171,6 +172,7 @@ export const SprintTicketsTrendView: React.FC<TrendViewProps> = ({ data, loading
               {data.noDate > 0 && ` ${plural(data.noDate, 'ticket')} with no done date.`}
               {' '}The last month is still in progress (dashed).
               {group === 'client' && ' A ticket with several clients is counted under each of them, so the lines add up to more than the ticket count.'}
+              {group === 'component' && ' A ticket with several components is counted under each of them, so the lines add up to more than the ticket count.'}
               {group !== 'all' && ' The seven biggest lines each keep a color; the rest are grouped as Other (the table lists them all).'}
             </p>
           </>

@@ -105,6 +105,7 @@ export function initDb() {
       clients            TEXT,
       summary            TEXT,
       component          TEXT,
+      components         TEXT,
       labels             TEXT,
       priority           TEXT
     );
@@ -133,7 +134,7 @@ export function initDb() {
   const trendCols = db.prepare('PRAGMA table_info(trend_tickets)').all().map((c) => c.name);
   if (!trendCols.includes('assignee')) db.exec('ALTER TABLE trend_tickets ADD COLUMN assignee TEXT');
   if (!trendCols.includes('clients')) db.exec('ALTER TABLE trend_tickets ADD COLUMN clients TEXT');
-  for (const col of ['summary', 'component', 'labels', 'priority']) if (!trendCols.includes(col)) db.exec(`ALTER TABLE trend_tickets ADD COLUMN ${col} TEXT`);
+  for (const col of ['summary', 'component', 'components', 'labels', 'priority']) if (!trendCols.includes(col)) db.exec(`ALTER TABLE trend_tickets ADD COLUMN ${col} TEXT`);
 
   console.log('✓ SQLite database initialized');
   return db;

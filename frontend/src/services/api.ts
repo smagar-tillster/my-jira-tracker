@@ -458,7 +458,7 @@ export const quickApi = {
 
 // ---------------------------------------------------------------- Trends
 export type TrendBasis = 'sprint' | 'created' | 'resolved';
-export type TrendGroup = 'all' | 'type' | 'client' | 'assignee';
+export type TrendGroup = 'all' | 'type' | 'client' | 'component' | 'assignee';
 export type TrendMonths = 3 | 6;
 export interface TrendsStatus {
   running: boolean; lastSyncAt: string | null; lastStatus: 'running' | 'ok' | 'failed' | null; lastError: string | null;
@@ -466,14 +466,14 @@ export interface TrendsStatus {
 }
 export interface TrendSeries { name: string; total: number; rank: number }
 /** Each of type, client and assignee is a list: a ticket must match one value of every list given. An empty list is no filter. */
-export interface TrendFilters { type?: string[]; client?: string[]; assignee?: string[]; feTeam?: boolean }
+export interface TrendFilters { type?: string[]; client?: string[]; assignee?: string[]; component?: string[]; feTeam?: boolean }
 export interface SprintTrend {
   basis: TrendBasis; group: TrendGroup; months: string[]; series: TrendSeries[]; counts: Record<string, number[]>;
   /** For the tiles, over the tickets counted in the months shown. */
   summary: { stories: number; defects: number; topClient: { name: string; count: number } | null };
   /** Distinct tickets per month (a ticket with two clients is one here although it is under both clients in `counts`). */
   totals: number[];
-  options: { types: string[]; clients: string[]; assignees: string[] };
+  options: { types: string[]; clients: string[]; components: string[]; assignees: string[] };
   /** All tickets in the local copy / the ones left after the filters / counted in the months shown / older than the range / in sprints that have not started / with no date of this kind. */
   tickets: number; matching: number; inRange: number; before: number; future: number; noDate: number;
   status: TrendsStatus;
@@ -483,6 +483,10 @@ export interface DefectCategory {
   name: string; meaning: string; count: number; share: number; changePct: number | null; medianDaysToFix: number | null; advice: string;
   tenants: { name: string; count: number }[]; examples: { key: string; summary: string; url: string }[]; repeats: { phrase: string; count: number; clients: number }[];
 }
+export interface DefectComponent {
+  name: string; count: number; share: number; changePct: number | null; medianDaysToFix: number | null; done: number; per100: number;
+  categories: { name: string; count: number }[]; tenants: { name: string; count: number }[]; examples: { key: string; summary: string; url: string }[];
+}
 export interface DefectClient { name: string; defects: number; done: number; per100: number; times: number | null }
 export interface DefectRepeat { phrase: string; count: number; clients: number; keys: string[] }
 export interface FocusItem { title: string; why: string; actions: string[]; measure: string }
@@ -490,7 +494,7 @@ export interface DefectGuidance { headline: string; focus: FocusItem[]; caveats:
 export interface DefectFacts {
   months: string[]; perMonth: number[]; topClients: { name: string; count: number }[]; averagePer100: number; minClientDone: number; typesCounted: string[]; typeFilterIgnored: boolean;
   tiles: { defects: number; ticketsDone: number; shareOfDone: number; medianDaysToFix: number | null; medianDaysRecent: number | null; medianDaysEarlier: number | null; uat: number; uatShare: number; fixedInWeekShare: number };
-  categories: DefectCategory[]; clients: DefectClient[]; repeats: DefectRepeat[];
+  categories: DefectCategory[]; components: DefectComponent[]; clients: DefectClient[]; repeats: DefectRepeat[];
 }
 export interface DefectAnalysis { facts: DefectFacts; scope: string; guidance: DefectGuidance | null; status: TrendsStatus }
 
@@ -505,7 +509,7 @@ export const trendsApi = {
     (await apiClient.get('/trends/defects', { params: defectQuery(months, filters) })).data.data,
   /** Asks the model to write the guidance for these numbers (takes a while). Throws with the reason when it cannot. */
   defectGuidance: async (months: TrendMonths, filters: TrendFilters, force = false): Promise<DefectGuidance> => {
-    try { return (await apiClient.post('/trends/defects/guidance', { months, client: filters.client ?? [], assignee: filters.assignee ?? [], feTeam: !!filters.feTeam, force })).data.data; }
+    try { return (await apiClient.post('/trends/defects/guidance', { months, client: filters.client ?? [], assignee: filters.assignee ?? [], component: filters.component ?? [], feTeam: !!filters.feTeam, force })).data.data; }
     catch (e: any) { throw new Error(apiMessage(e, 'Could not write the guidance')); }
   },
   /** Reads the done tickets of the last 6 months from Jira now: the only way the copy is updated. A read already running is not an error. An empty JSON body on purpose: the backend refuses non-JSON POSTs. */

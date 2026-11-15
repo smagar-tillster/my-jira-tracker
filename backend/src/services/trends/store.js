@@ -2,15 +2,15 @@
 import { getDb } from '../../db/database.js';
 
 export const allRows = () => getDb().prepare(
-  'SELECT issue_key AS key, type, created, resolved, status_category AS statusCategory, first_sprint_start AS firstSprintStart, assignee, clients, summary, component, labels, priority FROM trend_tickets',
-).all().map((r) => ({ ...r, clients: r.clients ? JSON.parse(r.clients) : [], labels: r.labels ? JSON.parse(r.labels) : [] }));
+  'SELECT issue_key AS key, type, created, resolved, status_category AS statusCategory, first_sprint_start AS firstSprintStart, assignee, clients, summary, component, components, labels, priority FROM trend_tickets',
+).all().map((r) => ({ ...r, clients: r.clients ? JSON.parse(r.clients) : [], labels: r.labels ? JSON.parse(r.labels) : [], components: r.components ? JSON.parse(r.components) : (r.component ? [r.component] : []) }));
 
 export const count = () => getDb().prepare('SELECT COUNT(*) AS n FROM trend_tickets').get().n;
 
 export const upsert = (rows) => {
-  const ins = getDb().prepare(`INSERT OR REPLACE INTO trend_tickets (issue_key, type, created, resolved, status_category, first_sprint_start, updated, assignee, clients, summary, component, labels, priority)
-    VALUES (@key, @type, @created, @resolved, @statusCategory, @firstSprintStart, @updated, @assignee, @clients, @summary, @component, @labels, @priority)`);
-  getDb().transaction((list) => list.forEach((r) => ins.run({ assignee: null, summary: null, component: null, priority: null, ...r, clients: JSON.stringify(r.clients || []), labels: JSON.stringify(r.labels || []) })))(rows);
+  const ins = getDb().prepare(`INSERT OR REPLACE INTO trend_tickets (issue_key, type, created, resolved, status_category, first_sprint_start, updated, assignee, clients, summary, component, components, labels, priority)
+    VALUES (@key, @type, @created, @resolved, @statusCategory, @firstSprintStart, @updated, @assignee, @clients, @summary, @component, @components, @labels, @priority)`);
+  getDb().transaction((list) => list.forEach((r) => ins.run({ assignee: null, summary: null, component: null, priority: null, ...r, clients: JSON.stringify(r.clients || []), components: JSON.stringify(r.components || (r.component ? [r.component] : [])), labels: JSON.stringify(r.labels || []) })))(rows);
 };
 
 /** Removes tickets that are no longer in the result of a full sync (moved out of every sprint, deleted, moved to another project). */

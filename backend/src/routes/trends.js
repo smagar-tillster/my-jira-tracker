@@ -9,7 +9,7 @@ export const createTrendsRouter = ({ service = trendsService } = {}) => {
   // GET /api/trends/status  — the sync state
   router.get('/trends/status', (req, res) => res.json({ success: true, data: service.status() }));
 
-  // GET /api/trends/sprint-tickets?basis=sprint|created|resolved&months=3|6&group=all|type|client|assignee&type=&type=&client=&client=&assignee=&feTeam=1
+  // GET /api/trends/sprint-tickets?basis=sprint|created|resolved&months=3|6&group=all|type|client|component|assignee&type=&client=&component=&assignee=&feTeam=1
   router.get('/trends/sprint-tickets', (req, res) => {
     const basis = String(req.query.basis || 'resolved');
     const group = String(req.query.group || 'all');
@@ -19,13 +19,13 @@ export const createTrendsRouter = ({ service = trendsService } = {}) => {
     }
     // a filter can be given several times (client=A&client=B): the ticket must match one of them
     const many = (v) => (Array.isArray(v) ? v : [v]).filter((x) => typeof x === 'string' && x);
-    const filters = { type: many(req.query.type), client: many(req.query.client), assignee: many(req.query.assignee), feTeam: ['1', 'true'].includes(String(req.query.feTeam)) };
+    const filters = { type: many(req.query.type), client: many(req.query.client), assignee: many(req.query.assignee), component: many(req.query.component), feTeam: ['1', 'true'].includes(String(req.query.feTeam)) };
     res.json({ success: true, data: { ...service.sprintTickets({ basis, group, months, filters }), status: service.status() } });
   });
 
   const readFilters = (src) => {
     const many = (v) => (Array.isArray(v) ? v : [v]).filter((x) => typeof x === 'string' && x);
-    return { client: many(src.client), assignee: many(src.assignee), feTeam: ['1', 'true', true].includes(src.feTeam) };
+    return { client: many(src.client), assignee: many(src.assignee), component: many(src.component), feTeam: ['1', 'true', true].includes(src.feTeam) };
   };
 
   // GET /api/trends/defects?months=3|6&client=&assignee=&feTeam=1  — the defect analysis (numbers, rule-based focus, and the saved guidance if there is one). Never calls the model.
