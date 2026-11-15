@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { trendsApi, DefectAnalysis, DefectCategory, DefectGuidance, KbStatus, TrendFilters, TrendMonths } from '../../services/api';
-import { monthCounts, monthLabel, sparkline, trendText, SERIES_COLORS } from '../../utils/trendsChart';
+import { FE_COMPONENT, monthCounts, monthLabel, sparkline, toggleFeFixes, trendText, SERIES_COLORS } from '../../utils/trendsChart';
 
 const ago = (iso: string) => {
   const m = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000));
@@ -103,12 +103,13 @@ export const kbSummary = (kb: KbStatus): string => {
 export interface DefectViewProps {
   data: DefectAnalysis | null; loading: boolean; error: string | null;
   guidance: DefectGuidance | null; guiding: boolean; guideError: string | null;
+  feOnly: boolean; onToggleFe: () => void;
   kb: KbStatus | null; syncing: boolean; kbError: string | null; onSync: () => void;
   onWrite: (force: boolean) => void; onClose: () => void;
 }
 
 /** The defect analysis for given data. No loading here, so it can be rendered on its own. */
-export const DefectAnalysisView: React.FC<DefectViewProps> = ({ data, loading, error, guidance, guiding, guideError, kb, syncing, kbError, onSync, onWrite, onClose }) => {
+export const DefectAnalysisView: React.FC<DefectViewProps> = ({ data, loading, error, guidance, guiding, guideError, feOnly, onToggleFe, kb, syncing, kbError, onSync, onWrite, onClose }) => {
   const f = data?.facts;
   const t = f?.tiles;
   const top = f?.categories.find(c => !c.name.startsWith('Other')) ?? f?.categories[0];
@@ -119,7 +120,9 @@ export const DefectAnalysisView: React.FC<DefectViewProps> = ({ data, loading, e
       <div className="flex items-center gap-3 px-5 py-3 border-b border-gray-200 shrink-0">
         <h2 id="defect-title" className="text-base font-semibold text-gray-900">Defect analysis</h2>
         {f && <span className="text-xs text-gray-500">{range} · {data?.scope}</span>}
-        <button onClick={onClose} aria-label="Close" autoFocus className="ml-auto px-2 py-1 rounded text-gray-500 hover:bg-gray-100">✕</button>
+        <button onClick={onToggleFe} aria-pressed={feOnly} title="Only defects whose fix was made in the FE component (the Jira component developers set when the final fix is done)"
+          className={`ml-auto px-3 py-1 rounded-lg text-sm font-medium ring-1 ${feOnly ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-gray-700 ring-gray-300 hover:bg-gray-100'}`}>FE fixes</button>
+        <button onClick={onClose} aria-label="Close" autoFocus className="px-2 py-1 rounded text-gray-500 hover:bg-gray-100">✕</button>
       </div>
 
       <div className="px-5 py-4 space-y-4 overflow-y-auto min-h-0">
@@ -198,7 +201,9 @@ export const DefectAnalysisView: React.FC<DefectViewProps> = ({ data, loading, e
 };
 
 /** The modal: loads the analysis for the page's months and filters, and asks for the written guidance on request. */
-const DefectAnalysisModal: React.FC<{ months: TrendMonths; filters: TrendFilters; onClose: () => void }> = ({ months, filters, onClose }) => {
+const DefectAnalysisModal: React.FC<{ months: TrendMonths; filters: TrendFilters; onClose: () => void }> = ({ months, filters: pageFilters, onClose }) => {
+  // the modal starts from the report's filters and can flip FE fixes on its own, without changing the report behind it
+  const [filters, setFilters] = useState<TrendFilters>(pageFilters);
   const [data, setData] = useState<DefectAnalysis | null>(null);
   const [guidance, setGuidance] = useState<DefectGuidance | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -245,7 +250,7 @@ const DefectAnalysisModal: React.FC<{ months: TrendMonths; filters: TrendFilters
   // Rendered at the top of the page (not inside the report) so no parent can clip or cover it, and sized to the window: the header stays, the body scrolls.
   return createPortal(
     <div className="fixed inset-0 z-[1000] bg-black/40 flex items-center justify-center p-4" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }} style={{ height: '100dvh' }}>
-      <DefectAnalysisView data={data} loading={loading} error={error} guidance={guidance} guiding={guiding} guideError={guideError} kb={kb} syncing={syncing} kbError={kbError} onSync={sync} onWrite={write} onClose={onClose} />
+      <DefectAnalysisView data={data} loading={loading} error={error} guidance={guidance} guiding={guiding} guideError={guideError} feOnly={(filters.component ?? []).includes(FE_COMPONENT)} onToggleFe={() => setFilters(toggleFeFixes(filters))} kb={kb} syncing={syncing} kbError={kbError} onSync={sync} onWrite={write} onClose={onClose} />
     </div>,
     document.body,
   );

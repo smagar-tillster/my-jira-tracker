@@ -117,3 +117,13 @@ export const sparkline = (values: readonly number[], width: number, height: numb
   const pts = values.map((v, i) => ({ x: Math.round(x(i) * 10) / 10, y: Math.round(y(v) * 10) / 10 }));
   return { points: pts.map((p) => `${p.x},${p.y}`).join(' '), last: pts[n - 1] ?? null, top };
 };
+
+/** The Jira component for work fixed in the front end. */
+export const FE_COMPONENT = 'FE';
+/** The filters with the FE-fixes toggle flipped: on selects only the FE component; off removes FE and keeps any other component picked. */
+export const toggleFeFixes = <F extends { component?: string[] }>(filters: F): F => {
+  const have = filters.component ?? [];
+  const on = have.includes(FE_COMPONENT);
+  const rest = have.filter((c) => c !== FE_COMPONENT);
+  return { ...filters, component: on ? (rest.length ? rest : undefined) : [FE_COMPONENT] };
+};

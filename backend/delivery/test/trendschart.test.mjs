@@ -144,3 +144,13 @@ test('component filters travel in both requests', () => {
   assert.deepEqual(C.defectQuery(6, { component: ['FE'] }).getAll('component'), ['FE']);
   assert.equal(C.defectQuery(6, { component: [] }).has('component'), false);
 });
+
+test('the FE fixes toggle selects only FE, or removes FE and keeps other components, and leaves other filters alone', () => {
+  const eq = (a, b) => assert.deepEqual(a, b);
+  eq(C.toggleFeFixes({}), { component: ['FE'] });
+  eq(C.toggleFeFixes({ component: ['Menu'] }), { component: ['FE'] });
+  eq(C.toggleFeFixes({ component: ['FE'] }), { component: undefined });
+  eq(C.toggleFeFixes({ component: ['FE', 'Menu'] }), { component: ['Menu'] });
+  eq(C.toggleFeFixes({ client: ['AA'], feTeam: true }), { client: ['AA'], feTeam: true, component: ['FE'] });
+  assert.equal(C.FE_COMPONENT, 'FE');
+});
