@@ -84,6 +84,11 @@ const Samples: React.FC<{ examples: { key: string; summary: string; url: string 
   </>
 );
 
+/** How many component rows are shown in full; the rest are one line. Real data has 30+ components, most with a defect or two. */
+export const TOP_COMPONENTS = 8;
+/** Defects in the components that are not shown in full (a defect with several components is counted under each). */
+export const otherDefects = (components: { count: number }[]) => components.slice(TOP_COMPONENTS).reduce((n, c) => n + c.count, 0);
+
 /** A fix component: the Jira component developers set when the final fix is done, so it says which part of the platform was changed. */
 const ComponentRow: React.FC<{ c: DefectComponent }> = ({ c }) => {
   const tr = trendText(c.changePct);
@@ -163,8 +168,14 @@ export const DefectAnalysisView: React.FC<DefectViewProps> = ({ data, loading, e
               <h3 className="text-base font-semibold text-gray-900">By fix component</h3>
               <p className="text-sm text-gray-500 mb-1">The Jira component set when the final fix was done. A defect with several components counts under each.</p>
               <ul className="divide-y divide-gray-100">
-                {f.components.map(c => <ComponentRow key={c.name} c={c} />)}
+                {f.components.slice(0, TOP_COMPONENTS).map(c => <ComponentRow key={c.name} c={c} />)}
               </ul>
+              {f.components.length > TOP_COMPONENTS && (
+                <p className="text-sm text-gray-600 pt-2 border-t border-gray-100">
+                  <span className="font-semibold text-gray-900">{f.components.length - TOP_COMPONENTS} more components</span>
+                  {` (${otherDefects(f.components)} defects): ${f.components.slice(TOP_COMPONENTS, TOP_COMPONENTS + 10).map(c => `${c.name} ${c.count}`).join(' · ')}${f.components.length > TOP_COMPONENTS + 10 ? ' …' : ''}`}
+                </p>
+              )}
             </section>
 
             <section aria-label="By category" className="pt-1">
