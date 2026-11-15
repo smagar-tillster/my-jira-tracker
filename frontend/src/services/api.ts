@@ -507,6 +507,7 @@ export interface DefectPatterns {
 }
 export interface RecordResult { updated: { id: string; added: string[]; seen: number }[]; skipped: { id: string; reason: string }[]; ingest: 'none' | 'ok' | 'failed'; reason: string }
 export interface PatternDraft { id?: string; text?: string; path?: string; problems?: string[]; needsCapability?: boolean; notAPattern?: boolean; reason?: string }
+export interface PatternAdded { id: string; path: string; ingest: 'ok' | 'failed'; reason: string }
 export interface DefectAnalysis { facts: DefectFacts; scope: string; guidance: DefectGuidance | null; patterns: DefectPatterns | null; status: TrendsStatus }
 
 const apiMessage = (e: any, fallback: string) => String(e?.response?.data?.error || (e instanceof Error ? e.message : fallback));
@@ -532,6 +533,11 @@ export const trendsApi = {
   draftPattern: async (months: TrendMonths, filters: TrendFilters, cluster: string): Promise<PatternDraft> => {
     try { return (await apiClient.post('/trends/patterns/draft', { months, client: filters.client ?? [], assignee: filters.assignee ?? [], component: filters.component ?? [], feTeam: !!filters.feTeam, cluster })).data.data; }
     catch (e: any) { throw new Error(apiMessage(e, 'Could not draft the pattern')); }
+  },
+  /** Adds a reviewed pattern to the RAG as docs/defects/<id>.md (checked again, never overwriting) and runs ingest. Throws with the reason when it cannot. */
+  addPattern: async (text: string): Promise<PatternAdded> => {
+    try { return (await apiClient.post('/trends/patterns/add', { text })).data.data; }
+    catch (e: any) { throw new Error(apiMessage(e, 'Could not add the pattern')); }
   },
   /** Reads the done tickets of the last 6 months from Jira now: the only way the copy is updated. A read already running is not an error. An empty JSON body on purpose: the backend refuses non-JSON POSTs. */
   refresh: async (): Promise<TrendsStatus> => {

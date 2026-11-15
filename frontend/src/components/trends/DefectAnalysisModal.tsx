@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { trendsApi, DefectAnalysis, DefectCategory, DefectGuidance, DefectPatterns, PatternDraft, RecordResult, TrendFilters, TrendMonths } from '../../services/api';
+import { trendsApi, DefectAnalysis, DefectCategory, DefectGuidance, DefectPatterns, PatternAdded, PatternDraft, RecordResult, TrendFilters, TrendMonths } from '../../services/api';
 import { FE_COMPONENT, monthCounts, monthLabel, sparkline, toggleFeFixes, trendText, SERIES_COLORS } from '../../utils/trendsChart';
 
 const ago = (iso: string) => {
@@ -101,11 +101,17 @@ export const recordSummary = (r: RecordResult): string => {
 export interface PatternActions {
   recording: boolean; recordResult: RecordResult | null; recordError: string | null; onRecord: () => void;
   drafting: string | null; drafts: Record<string, PatternDraft>; draftErrors: Record<string, string>; onDraft: (cluster: string) => void;
+  edits: Record<string, string>; onEdit: (cluster: string, text: string) => void;
+  adding: string | null; added: Record<string, PatternAdded>; addErrors: Record<string, string>; onAdd: (cluster: string) => void;
 }
+
+/** What adding a pattern to the RAG did, in words. */
+export const addedSummary = (a: PatternAdded): string =>
+  `Added docs/defects/${a.id}.md to the RAG. It is a new, uncommitted file in the RAG's git working tree: run the RAG's tests and commit it. ${a.ingest === 'ok' ? 'Ingest ran.' : `The file is there but ingest failed: ${a.reason}`}`;
 
 const newRepeats = (p: DefectPatterns) => p.matches.reduce((n, m) => n + m.tickets.length, 0);
 
-const PatternsSection: React.FC<{ patterns: DefectPatterns } & PatternActions> = ({ patterns, recording, recordResult, recordError, onRecord, drafting, drafts, draftErrors, onDraft }) => {
+const PatternsSection: React.FC<{ patterns: DefectPatterns } & PatternActions> = ({ patterns, recording, recordResult, recordError, onRecord, drafting, drafts, draftErrors, onDraft, edits, onEdit, adding, added, addErrors, onAdd }) => {
   const total = newRepeats(patterns);
   const copy = (text: string) => { try { navigator.clipboard?.writeText(text); } catch { /* the text is on screen to copy by hand */ } };
   return (
@@ -145,6 +151,9 @@ const PatternsSection: React.FC<{ patterns: DefectPatterns } & PatternActions> =
             {patterns.clusters.length === 0 && <p className="text-sm text-gray-600">No group of 3 or more defects without a pattern changed the same files.</p>}
             {patterns.clusters.map(c => {
               const draft = drafts[c.id];
+              const current = edits[c.id] ?? draft?.text ?? '';
+              const edited = draft?.text !== undefined && current !== draft.text;
+              const shownProblems = edited ? [] : (draft?.problems ?? []).filter(p => !(draft?.needsCapability && /capabilities is empty/.test(p)));
               return (
                 <div key={c.id} className="border border-gray-200 rounded-lg px-3 py-2 space-y-1.5">
                   <div className="flex items-start gap-3 flex-wrap">
@@ -162,13 +171,21 @@ const PatternsSection: React.FC<{ patterns: DefectPatterns } & PatternActions> =
                   {draft?.notAPattern && <p className="px-3 py-2 text-sm bg-gray-50 text-gray-800 border border-gray-200 rounded">The model does not think this is a pattern worth recording: {draft.reason}</p>}
                   {draft?.id && draft.text && (
                     <div className="space-y-1.5">
-                      <p className="text-sm text-gray-700">Draft <span className="font-semibold">{draft.id}</span>, saved for review at <span className="font-mono text-xs">{draft.path}</span>. Nothing was written to the RAG: read it, fix what needs fixing, then copy it into <span className="font-mono text-xs">docs/defects/{draft.id}.md</span>.</p>
-                      {draft.needsCapability && <p className="text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded px-3 py-1.5">Pick a capability name from docs/implementations before adding it: the model did not name one that exists.</p>}
-                      {(draft.problems ?? []).filter(p => !(draft.needsCapability && /capabilities is empty/.test(p))).length > 0 && (
-                        <ul className="list-disc pl-5 text-sm text-amber-900">{(draft.problems ?? []).filter(p => !(draft.needsCapability && /capabilities is empty/.test(p))).map(p => <li key={p}>The RAG's checks would fail: {p}</li>)}</ul>
+                      <p className="text-sm text-gray-700">Draft <span className="font-semibold">{draft.id}</span>, saved for review at <span className="font-mono text-xs">{draft.path}</span>. Nothing has been written to the RAG yet. Read it and edit it below; when you press Add to RAG it is checked again against the RAG's rules and added as <span className="font-mono text-xs">docs/defects/{draft.id}.md</span>.</p>
+                      {draft.needsCapability && !edited && <p className="text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded px-3 py-1.5">Pick a capability name from docs/implementations and put it on the capabilities line before adding it: the model did not name one that exists.</p>}
+                      {shownProblems.length > 0 && (
+                        <ul className="list-disc pl-5 text-sm text-amber-900">{shownProblems.map(p => <li key={p}>The RAG's checks would fail: {p}</li>)}</ul>
                       )}
-                      <pre className="text-xs font-mono bg-gray-50 border border-gray-200 rounded p-3 max-h-64 overflow-auto whitespace-pre-wrap">{draft.text}</pre>
-                      <button onClick={() => copy(draft.text as string)} className="px-3 py-1 rounded-lg text-sm font-medium bg-white ring-1 ring-gray-300 text-gray-700 hover:bg-gray-100">Copy</button>
+                      <textarea value={current} onChange={e => onEdit(c.id, e.target.value)} rows={14} spellCheck={false} aria-label={`Draft pattern ${draft.id}`}
+                        className="w-full text-xs font-mono bg-gray-50 border border-gray-200 rounded p-3 leading-relaxed" />
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <button onClick={() => onAdd(c.id)} disabled={adding !== null || !!added[c.id]} title="Checks the text against the RAG's rules, creates the file in the RAG's docs/defects (never overwriting one), and runs ingest"
+                          className="px-3 py-1.5 rounded-lg text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed">{adding === c.id ? '⏳ Adding…' : added[c.id] ? 'Added' : 'Add to RAG'}</button>
+                        <button onClick={() => copy(current)} className="px-3 py-1 rounded-lg text-sm font-medium bg-white ring-1 ring-gray-300 text-gray-700 hover:bg-gray-100">Copy</button>
+                        {edited && <span className="text-xs text-gray-500">Edited. It is checked again when you add it.</span>}
+                      </div>
+                      {addErrors[c.id] && <p className="px-3 py-2 text-sm bg-red-50 text-red-800 border border-red-200 rounded">❌ {addErrors[c.id]}</p>}
+                      {added[c.id] && <p className="px-3 py-2 text-sm bg-green-50 text-green-900 border border-green-200 rounded">{addedSummary(added[c.id])}</p>}
                     </div>
                   )}
                 </div>
@@ -290,6 +307,10 @@ const DefectAnalysisModal: React.FC<{ months: TrendMonths; filters: TrendFilters
   const [drafting, setDrafting] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, PatternDraft>>({});
   const [draftErrors, setDraftErrors] = useState<Record<string, string>>({});
+  const [edits, setEdits] = useState<Record<string, string>>({});
+  const [adding, setAdding] = useState<string | null>(null);
+  const [added, setAdded] = useState<Record<string, PatternAdded>>({});
+  const [addErrors, setAddErrors] = useState<Record<string, string>>({});
   const latest = useRef(0);
 
   useEffect(() => {
@@ -325,15 +346,32 @@ const DefectAnalysisModal: React.FC<{ months: TrendMonths; filters: TrendFilters
 
   const draft = useCallback(async (cluster: string) => {
     setDrafting(cluster); setDraftErrors(({ [cluster]: _gone, ...rest }) => rest);
-    try { const d = await trendsApi.draftPattern(months, filters, cluster); setDrafts(prev => ({ ...prev, [cluster]: d })); }
+    try {
+      const d = await trendsApi.draftPattern(months, filters, cluster);
+      setDrafts(prev => ({ ...prev, [cluster]: d }));
+      const drop = <T,>(m: Record<string, T>) => { const { [cluster]: _gone, ...rest } = m; return rest; };
+      setEdits(drop); setAdded(drop); setAddErrors(drop);        // a new draft starts clean
+    }
     catch (e) { setDraftErrors(prev => ({ ...prev, [cluster]: e instanceof Error ? e.message : 'Could not draft the pattern' })); }
     finally { setDrafting(null); }
   }, [months, filters]);
 
+  const add = useCallback(async (cluster: string) => {
+    const text = edits[cluster] ?? drafts[cluster]?.text;
+    if (!text) return;
+    setAdding(cluster); setAddErrors(({ [cluster]: _gone, ...rest }) => rest);
+    try {
+      const a = await trendsApi.addPattern(text);
+      setAdded(prev => ({ ...prev, [cluster]: a }));
+      setData(await trendsApi.defects(months, filters));         // the new pattern is part of the matching now
+    } catch (e) { setAddErrors(prev => ({ ...prev, [cluster]: e instanceof Error ? e.message : 'Could not add the pattern' })); }
+    finally { setAdding(null); }
+  }, [edits, drafts, months, filters]);
+
   // Rendered at the top of the page (not inside the report) so no parent can clip or cover it, and sized to the window: the header stays, the body scrolls.
   return createPortal(
     <div className="fixed inset-0 z-[1000] bg-black/40 flex items-center justify-center p-4" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }} style={{ height: '100dvh' }}>
-      <DefectAnalysisView data={data} loading={loading} error={error} guidance={guidance} guiding={guiding} guideError={guideError} feOnly={(filters.component ?? []).includes(FE_COMPONENT)} onToggleFe={() => setFilters(toggleFeFixes(filters))} actions={{ recording, recordResult, recordError, onRecord: record, drafting, drafts, draftErrors, onDraft: draft }} onWrite={write} onClose={onClose} />
+      <DefectAnalysisView data={data} loading={loading} error={error} guidance={guidance} guiding={guiding} guideError={guideError} feOnly={(filters.component ?? []).includes(FE_COMPONENT)} onToggleFe={() => setFilters(toggleFeFixes(filters))} actions={{ recording, recordResult, recordError, onRecord: record, drafting, drafts, draftErrors, onDraft: draft, edits, onEdit: (c: string, t: string) => setEdits(prev => ({ ...prev, [c]: t })), adding, added, addErrors, onAdd: add }} onWrite={write} onClose={onClose} />
     </div>,
     document.body,
   );

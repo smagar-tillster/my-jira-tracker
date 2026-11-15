@@ -4,8 +4,10 @@ import { runTrendsSync } from './sync.js';
 import { aggregate, BASES, GROUPS } from './aggregate.js';
 import { getAllFETeamMembers } from '../feteamService.js';
 import { analyzeDefects, defectsInView, categorize } from './defects.js';
-import { loadPatterns, capabilityNames, defectsWithFiles, planRepeats, applyRepeats, findClusters } from './patterns.js';
-import { draftPattern } from './patternDraft.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import { loadPatterns, capabilityNames, defectsWithFiles, planRepeats, applyRepeats, findClusters, parseFrontMatter } from './patterns.js';
+import { draftPattern, validatePattern } from './patternDraft.js';
 import { runIngest } from './ragIngest.js';
 import { reviewConfig } from '../../../delivery/lib/reviews.mjs';
 import { loadPrLedger } from '../../../delivery/lib/prledger.mjs';
@@ -30,6 +32,7 @@ export const createTrendsService = ({ sync = runTrendsSync, now = () => new Date
   let guiding = false;
   let recording = false;
   let drafting = false;
+  let adding = false;
 
   /** Starts a read from Jira unless one is going. Returns true when started. */
   const refresh = () => {
@@ -120,7 +123,34 @@ export const createTrendsService = ({ sync = runTrendsSync, now = () => new Date
     } finally { drafting = false; }
   };
 
-  return { refresh, status, sprintTickets, defectAnalysis, defectGuidance, recordRepeats, draftForCluster, isRunning: () => running, isGuiding: () => guiding };
+  /**
+   * Adds a reviewed pattern to the RAG as docs/defects/<id>.md, then runs ingest once. The text is checked again here against the RAG's own rules, whatever
+   * was shown before, because a person may have edited it. Never overwrites: an id that already has a file is refused.
+   */
+  const addPattern = async ({ text } = {}) => {
+    if (adding) return { busy: true };
+    adding = true;
+    try {
+      const root = ragRoot();
+      const { found, patterns } = loadPatterns(root);
+      if (!found) return { ok: false, reason: `The RAG's defect patterns folder was not found at ${root}/docs/defects` };
+      const body = String(text || '');
+      const problems = validatePattern(body, { capabilities: capabilityNames(root) });
+      if (problems.length) return { ok: false, reason: `The RAG's checks would fail: ${problems.join('; ')}`, problems };
+      const meta = parseFrontMatter(body)?.meta || {};
+      const id = String(meta.id || '');
+      if (meta.type !== 'defect-pattern' || !/^[a-z0-9][a-z0-9-]{0,59}$/.test(id)) return { ok: false, reason: 'The pattern needs type: defect-pattern and an id of lowercase words joined by hyphens', problems: [] };
+      const dir = path.resolve(root, 'docs', 'defects');
+      const file = path.join(dir, `${id}.md`);
+      if (patterns.some((p) => p.id === id) || fs.existsSync(file)) return { ok: false, reason: `A pattern named ${id} already exists in the RAG; it was not overwritten. Change the id, or record the repeat on the existing one.`, problems: [] };
+      try { fs.writeFileSync(file, body.endsWith('\n') ? body : `${body}\n`, { flag: 'wx' }); }
+      catch (e) { return { ok: false, reason: `The pattern could not be written (${e.code || 'error'})`, problems: [] }; }
+      const r = await ingest({ ragRoot: root });
+      return { ok: true, id, path: file, ingest: r.ok ? 'ok' : 'failed', reason: r.reason || '' };
+    } finally { adding = false; }
+  };
+
+  return { refresh, status, sprintTickets, defectAnalysis, defectGuidance, recordRepeats, draftForCluster, addPattern, isRunning: () => running, isGuiding: () => guiding };
 };
 
 export const trendsService = createTrendsService();

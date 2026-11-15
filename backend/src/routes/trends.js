@@ -73,6 +73,18 @@ export const createTrendsRouter = ({ service = trendsService } = {}) => {
     res.json({ success: true, data });
   });
 
+  // POST /api/trends/patterns/add  {text}  — add a reviewed pattern to the RAG as docs/defects/<id>.md (checked again against the RAG's rules, never overwriting)
+  // and run the RAG's ingest. 422 with the problems when the checks fail or the id exists; 409 when another add is running.
+  router.post('/trends/patterns/add', sameMachineOnly, async (req, res) => {
+    const text = req.body?.text;
+    if (typeof text !== 'string' || !text.trim() || text.length > 20000) return res.status(400).json({ success: false, error: 'Send {"text": "<the pattern file>"} (at most 20000 characters)' });
+    const r = await service.addPattern({ text });
+    if (r.busy) return res.status(409).json({ success: false, error: 'A pattern is already being added' });
+    if (!r.ok) return res.status(/not found|could not be written/.test(r.reason) ? 502 : 422).json({ success: false, error: r.reason, problems: r.problems || [] });
+    const { ok, ...data } = r;
+    res.json({ success: true, data });
+  });
+
   // POST /api/trends/refresh  — read from Jira now (the only way the copy is updated). 202 when it started, 409 when a read is already going.
   router.post('/trends/refresh', sameMachineOnly, (req, res) => {
     if (!service.refresh()) return res.status(409).json({ success: false, error: 'A sync is already running', data: service.status() });

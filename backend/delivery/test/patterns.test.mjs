@@ -365,3 +365,75 @@ test('the routes: record and draft with their guards, bad requests, busy and fai
   } finally { release?.(); server.close(); }
   reset();
 });
+
+// ---------------------------------------------------------------- adding a reviewed pattern to the RAG
+const GOODFILE = () => { const draft = Dr.parseDraft(GOODDRAFT, { capabilities: ['cart-assembly'] }); return Dr.renderPattern(draft, cluster, '2026-11-14'); };
+
+test('adding writes docs/defects/<id>.md from the reviewed text, checks it again against the RAG rules, never overwrites, and runs ingest once', async () => {
+  const root = makeRag({ patterns: { 'shared-promotion-config-blast-radius': PROMO }, caps: ['cart-assembly', 'coupons'] });
+  let ingests = 0;
+  const svc = createTrendsService({ now: () => NOW, ragRoot: () => root, ingest: async () => { ingests++; return { ok: true }; } });
+  const before = snapshot(root);
+  const good = GOODFILE();
+  const r = await svc.addPattern({ text: good });
+  assert.deepEqual([r.ok, r.id, r.ingest, ingests], [true, 'menu-tile-filter-drops-items', 'ok', 1]);
+  assert.equal(r.path, path.join(root, 'docs', 'defects', 'menu-tile-filter-drops-items.md'));
+  assert.equal(fs.readFileSync(r.path, 'utf8'), good);
+  const after = snapshot(root);
+  assert.deepEqual(Object.keys(after).sort(), [...Object.keys(before), 'menu-tile-filter-drops-items.md'].sort());       // one new file, nothing else touched
+  for (const k of Object.keys(before)) assert.equal(after[k], before[k]);
+  assert.deepEqual(P.loadPatterns(root).patterns.map((p) => p.id), ['menu-tile-filter-drops-items', 'shared-promotion-config-blast-radius']);   // and the RAG can read it
+
+  const dup = await svc.addPattern({ text: good });                                                                         // the same id again: refused, file untouched
+  assert.equal(dup.ok, false); assert.match(dup.reason, /already exists in the RAG; it was not overwritten/); assert.equal(ingests, 1);
+  assert.equal(fs.readFileSync(r.path, 'utf8'), good);
+
+  const edited = good.replace('capabilities: ["cart-assembly"]', 'capabilities: ["made-up"]').replace('id: menu-tile-filter-drops-items', 'id: another-one');
+  const bad = await svc.addPattern({ text: edited });
+  assert.equal(bad.ok, false); assert.match(bad.reason, /The RAG's checks would fail: unknown capability: made-up/); assert.deepEqual(bad.problems, ['unknown capability: made-up']);
+  assert.ok(!fs.existsSync(path.join(root, 'docs', 'defects', 'another-one.md')));
+  const noCap = await svc.addPattern({ text: good.replace('capabilities: ["cart-assembly"]', 'capabilities: []').replace('id: menu-tile-filter-drops-items', 'id: no-cap') });
+  assert.match(noCap.reason, /capabilities is empty/);
+  for (const badId of ['../escape', 'Has Caps', '-lead', 'a'.repeat(61)]) {
+    const r2 = await svc.addPattern({ text: good.replace('id: menu-tile-filter-drops-items', `id: ${badId}`) });
+    assert.equal(r2.ok, false, badId);
+  }
+  assert.deepEqual(Object.keys(snapshot(root)).sort(), Object.keys(after).sort());                                           // nothing else was written, nothing outside docs/defects
+  assert.equal(fs.existsSync(path.join(root, 'docs', 'escape.md')), false);
+  assert.equal((await svc.addPattern({ text: 'not a pattern' })).ok, false);
+  assert.equal((await svc.addPattern({})).ok, false);
+});
+
+test('adding reports a missing RAG folder, and an ingest failure after the file is written', async () => {
+  const none = createTrendsService({ now: () => NOW, ragRoot: () => path.join(tmp, 'nowhere') });
+  assert.match((await none.addPattern({ text: GOODFILE() })).reason, /not found at .*nowhere/);
+  const root = makeRag({ caps: ['cart-assembly'] });
+  const svc = createTrendsService({ now: () => NOW, ragRoot: () => root, ingest: async () => ({ ok: false, reason: 'ingest exited with code 1' }) });
+  const r = await svc.addPattern({ text: GOODFILE() });
+  assert.deepEqual([r.ok, r.ingest, r.reason], [true, 'failed', 'ingest exited with code 1']);
+  assert.ok(fs.existsSync(r.path));                                                                                         // the file stays; only ingest failed
+});
+
+test('the add route: guards, size limit, the checks failing, an existing id, and a busy answer', async () => {
+  const root = makeRag({ caps: ['cart-assembly'] });
+  let release; const gate = new Promise((r) => { release = r; }); let wait = false;
+  const svc = createTrendsService({ now: () => NOW, ragRoot: () => root, ingest: async () => { if (wait) await gate; return { ok: true }; } });
+  const { default: express } = await import('express');
+  const app = express(); app.use(express.json({ limit: '1mb' })); app.use('/api', createTrendsRouter({ service: svc }));
+  const server = http.createServer(app); await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  try {
+    assert.equal((await fetch(`http://127.0.0.1:${server.address().port}/api/trends/patterns/add`, { method: 'POST' })).status, 415);
+    for (const bad of [{}, { text: '' }, { text: 5 }, { text: 'x'.repeat(20001) }]) assert.equal((await call(server, 'POST', '/api/trends/patterns/add', bad)).status, 400);
+    const good = GOODFILE();
+    const fail = await call(server, 'POST', '/api/trends/patterns/add', { text: good.replace('capabilities: ["cart-assembly"]', 'capabilities: []') });
+    assert.equal(fail.status, 422); assert.match(fail.json.error, /capabilities is empty/); assert.ok(fail.json.problems.length >= 1);
+    wait = true; const first = call(server, 'POST', '/api/trends/patterns/add', { text: good });
+    await new Promise((r) => setTimeout(r, 40));
+    assert.equal((await call(server, 'POST', '/api/trends/patterns/add', { text: good })).status, 409);
+    release(); const ok = await first;
+    assert.equal(ok.status, 200); assert.deepEqual([ok.json.data.id, ok.json.data.ingest], ['menu-tile-filter-drops-items', 'ok']);
+    wait = false;
+    const dup = await call(server, 'POST', '/api/trends/patterns/add', { text: good });
+    assert.equal(dup.status, 422); assert.match(dup.json.error, /already exists/);
+  } finally { release?.(); server.close(); }
+});
