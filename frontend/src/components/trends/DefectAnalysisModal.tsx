@@ -120,6 +120,10 @@ const PatternsSection: React.FC<{ patterns: DefectPatterns } & PatternActions> =
         <h3 className="text-base font-semibold text-gray-900">Defect patterns</h3>
         <p className="text-sm text-gray-500">Matched against the RAG's review patterns through the files each fix changed (PR ledger).</p>
       </div>
+      {/* what was added stays here: once a pattern is added its group is matched and leaves the list below, so a message kept inside the group would vanish */}
+      {Object.values(added).map(a => (
+        <p key={a.id} className="px-3 py-2 text-sm bg-green-50 text-green-900 border border-green-200 rounded">{addedSummary(a)}</p>
+      ))}
       {!patterns.ragFound ? (
         <p className="text-sm text-gray-700">The RAG's defect patterns were not found at {patterns.ragRoot}/docs/defects, so nothing can be matched.</p>
       ) : (
@@ -185,7 +189,6 @@ const PatternsSection: React.FC<{ patterns: DefectPatterns } & PatternActions> =
                         {edited && <span className="text-xs text-gray-500">Edited. It is checked again when you add it.</span>}
                       </div>
                       {addErrors[c.id] && <p className="px-3 py-2 text-sm bg-red-50 text-red-800 border border-red-200 rounded">❌ {addErrors[c.id]}</p>}
-                      {added[c.id] && <p className="px-3 py-2 text-sm bg-green-50 text-green-900 border border-green-200 rounded">{addedSummary(added[c.id])}</p>}
                     </div>
                   )}
                 </div>
