@@ -120,12 +120,16 @@ export const syncKb = async ({ ragRoot = reviewConfig().ragRoot, now = () => new
   const at = now().toISOString();
   const state = store.kbState();
   const file = path.join(ragRoot, 'datafeeds', 'defects.csv');
-  let text = null;
-  try { text = fs.readFileSync(file, 'utf8'); } catch { /* handled below */ }
+  let text = null; let readError = null;
+  try { text = fs.readFileSync(file, 'utf8'); } catch (e) { readError = e?.code || String(e?.message || e).slice(0, 80); }
   const feed = text === null ? null : parseCsv(text);
   const result = { at, written: 0, matched: 0, exists: 0, pending: 0, ingest: 'none', reason: '' };
   if (!feed?.header?.length) {
-    result.reason = 'The defects feed was not found, so nothing was written. The queue is kept for the next run.';
+    // say which problem it is and where it looked: a missing file, a file the backend may not read, and a file with no header need different fixes
+    const why = readError === 'ENOENT' ? `The defects feed was not found at ${file}`
+      : readError ? `The defects feed at ${file} could not be read (${readError})`
+      : `The defects feed at ${file} has no header row`;
+    result.reason = `${why}, so nothing was written. The queue is kept for the next run.`;
     result.pending = store.kbPending().length;
     store.kbSaveRun({ at, result, ingestPending: state.ingestPending });
     return { ok: false, ...result };

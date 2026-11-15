@@ -169,10 +169,16 @@ test('a missing feed or a feed with no header writes nothing and keeps the queue
   const none = fs.mkdtempSync(path.join(tmp, 'rag-empty-'));
   let ingests = 0;
   const a = await K.syncKb({ ragRoot: none, now: () => NOW, ingest: async () => { ingests++; return { ok: true }; } });
-  assert.deepEqual([a.ok, a.written, a.pending, ingests], [false, 0, 1, 0]); assert.match(a.reason, /not found/);
+  assert.deepEqual([a.ok, a.written, a.pending, ingests], [false, 0, 1, 0]);
+  assert.ok(a.reason.includes(`not found at ${path.join(none, 'datafeeds', 'defects.csv')}`));                    // it names the exact path it looked at
   assert.equal(fs.existsSync(path.join(none, 'datafeeds')), false);                                      // it never creates the feed or its folder
   const noHeader = makeRag('', { header: '' });
-  assert.equal((await K.syncKb({ ragRoot: noHeader.root, now: () => NOW, ingest: async () => ({ ok: true }) })).ok, false);
+  const nh = await K.syncKb({ ragRoot: noHeader.root, now: () => NOW, ingest: async () => ({ ok: true }) });
+  assert.equal(nh.ok, false); assert.match(nh.reason, /has no header row/);
+  const unreadable = fs.mkdtempSync(path.join(tmp, 'rag-unreadable-'));
+  fs.mkdirSync(path.join(unreadable, 'datafeeds', 'defects.csv'), { recursive: true });                      // a folder where the file should be: cannot be read as a file
+  const ur = await K.syncKb({ ragRoot: unreadable, now: () => NOW, ingest: async () => ({ ok: true }) });
+  assert.equal(ur.ok, false); assert.match(ur.reason, /could not be read \(EISDIR\)/); assert.ok(!ur.reason.includes('not found'));
   assert.equal(fs.readFileSync(noHeader.file, 'utf8'), '');
   assert.equal(store.kbCounts().pending, 1);
   reset();
