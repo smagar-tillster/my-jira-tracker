@@ -8,6 +8,9 @@ import { useIssueFiltering } from '../hooks/useIssueFiltering';
 import { jiraApi } from '../services/api';
 import ListView from './views/ListView';
 import DueDateBoard from './views/DueDateBoard';
+import AdditionalFilters from './tasks/AdditionalFilters';
+import StatusFilterGroup from './tasks/StatusFilterGroup';
+import { BTN, EMPTY_QUICK, QuickKey, QuickState, anyFilterActive, stateClass } from '../utils/taskFilters';
 import RegionView from './views/RegionView';
 
 // Simple hook that returns a value that only updates after `delay` ms of no changes
@@ -232,6 +235,24 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
     next.length > 0 ? addFilter('statusCategory', next) : removeFilter('statusCategory');
   };
 
+  // The quick filters as one object, for the Additional Filters popover, its count and Clear Filters
+  const quick: QuickState = {
+    important: showImportantOnly, myDay: showMyDayOnly, urgent: showUrgentOnly, attention: showAttentionOnly,
+    noDueDate: showNoDueDate, noSubtasks: showNoSubtasks, feTeam: showFETeamOnly, unassigned: showUnassigned,
+  };
+  const quickSetters: Record<QuickKey, React.Dispatch<React.SetStateAction<boolean>>> = {
+    important: setShowImportantOnly, myDay: setShowMyDayOnly, urgent: setShowUrgentOnly, attention: setShowAttentionOnly,
+    noDueDate: setShowNoDueDate, noSubtasks: setShowNoSubtasks, feTeam: setShowFETeamOnly, unassigned: setShowUnassigned,
+  };
+  const toggleQuick = (key: QuickKey) => quickSetters[key](v => !v);
+  const filtersActive = anyFilterActive({ filters, searchTerm, quick });
+  /** Clear Filters resets everything that filters: the dropdown and status filters, the search box and every quick filter (grouping is left alone). */
+  const clearEverything = () => {
+    clearAllFilters();
+    (Object.keys(EMPTY_QUICK) as QuickKey[]).forEach(k => quickSetters[k](false));
+    setOpenDropdown(null);
+  };
+
   // Close dropdowns on outside click
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -406,7 +427,7 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
               />
             </div>
 
-            {/* Row 2 – Source pill + view mode + quick filters */}
+            {/* Row 2 – Source pill + view mode + Additional Filters + status */}
             <div className="flex gap-1.5 items-center flex-wrap min-w-0 col-start-1">
               {/* Source filter pills */}
               <div className="flex rounded-lg border border-gray-300 overflow-hidden text-sm font-medium">
@@ -428,8 +449,8 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
               {/* View mode */}
               {(['list','board','region'] as const).map(mode => (
                 <button key={mode} onClick={() => setViewMode(mode)}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${viewMode === mode ? 'bg-indigo-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
-                  {mode === 'list' ? '📋 List' : mode === 'board' ? '🗂 Due-date board' : '🌎 Region'}
+                  className={`${BTN} ${stateClass(viewMode === mode)}`}>
+                  {mode === 'list' ? '📋 List' : mode === 'board' ? '🗂 Board' : '🌎 Region'}
                 </button>
               ))}
 
@@ -453,36 +474,11 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
 
               <div className="h-6 w-px bg-gray-300" />
 
-              {/* Quick filters */}
-              <button onClick={() => setShowImportantOnly(!showImportantOnly)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${showImportantOnly ? 'bg-yellow-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
-                ⭐ Imp
-              </button>
-              <button onClick={() => setShowMyDayOnly(!showMyDayOnly)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${showMyDayOnly ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
-                ☀️ My Day
-              </button>
-              <button onClick={() => setShowUrgentOnly(!showUrgentOnly)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${showUrgentOnly ? 'bg-red-600 text-white' : 'bg-red-100 text-red-800 hover:bg-red-200'}`}>
-                🚨 Urgent
-              </button>
-              <button onClick={() => setShowAttentionOnly(!showAttentionOnly)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${showAttentionOnly ? 'bg-orange-600 text-white' : 'bg-orange-100 text-orange-800 hover:bg-orange-200'}`}>
-                ⚠️ Attention
-              </button>
-              <button onClick={() => setShowNoDueDate(!showNoDueDate)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${showNoDueDate ? 'bg-gray-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
-                📅 No Due Date
-              </button>
-              <button onClick={() => setShowFETeamOnly(!showFETeamOnly)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${showFETeamOnly ? 'bg-purple-600 text-white' : 'bg-purple-100 text-purple-800 hover:bg-purple-200'}`}>
-                👥 FE Team
-              </button>
-              <button onClick={() => setShowUnassigned(!showUnassigned)}
-                title="Tickets nobody is assigned to"
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${showUnassigned ? 'bg-indigo-600 text-white' : 'bg-indigo-100 text-indigo-800 hover:bg-indigo-200'}`}>
-                🙋 Unassigned
-              </button>
+              {/* Quick filters live in the Additional Filters popover; the status buttons sit beside it, compact */}
+              <AdditionalFilters state={quick} open={openDropdown === 'additional'}
+                onToggleOpen={() => setOpenDropdown(openDropdown === 'additional' ? null : 'additional')}
+                onClose={() => setOpenDropdown(null)} onToggle={toggleQuick} />
+              <StatusFilterGroup counts={statusCounts} active={effectiveSCFilter} onToggle={toggleStatusCat} />
 
               {/* Active filter chips */}
               {Object.keys(filters).length > 0 && (
@@ -497,13 +493,13 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
               )}
             </div>
 
-            {/* Under the Jira Filter: No Sub tasks, Refresh and Full Screen on one line, the issue count below */}
+            {/* Under the Jira Filter: Clear Filters (when something is filtered), Refresh and Full Screen on one line, the issue count below */}
             <div className="col-start-2 row-start-2 row-span-2 flex flex-col gap-3 items-end">
               <div className="flex gap-1.5 items-center">
-                <button onClick={() => setShowNoSubtasks(!showNoSubtasks)}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${showNoSubtasks ? 'bg-indigo-600 text-white' : 'bg-indigo-100 text-indigo-800 hover:bg-indigo-200'}`}>
-                  📋 No Sub tasks
-                </button>
+                {filtersActive && (
+                  <button onClick={clearEverything} title="Clear the search, the dropdown filters, the status choice and every quick filter"
+                    className="px-1 py-1.5 text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline whitespace-nowrap">Clear Filters</button>
+                )}
                 <button onClick={() => { usingCustomSprintQuery ? handleGetData() : onRefreshSprint(); onRefreshMe(); }}
                   title="Refresh" aria-label="Refresh"
                   className="px-2.5 py-1.5 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600">🔄</button>
@@ -516,30 +512,12 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
               </span>
             </div>
 
-            {/* Row 3 – Status counts + dropdown filters */}
+            {/* Row 3 – dropdown filters */}
             <div className="flex flex-wrap gap-1.5 items-center relative z-40 min-w-0 col-start-1">
-              {Object.entries(statusCounts).map(([cat, count]) => {
-                const isActive = effectiveSCFilter.includes(cat);
-                const colors: Record<string, [string, string]> = {
-                  'To Do':       ['bg-blue-100', 'bg-blue-600'],
-                  'In Progress': ['bg-yellow-100', 'bg-yellow-600'],
-                  'Done':        ['bg-green-100', 'bg-green-600'],
-                };
-                const [bg, active] = colors[cat] || ['bg-gray-200', 'bg-gray-600'];
-                return (
-                  <button key={cat} onClick={() => toggleStatusCat(cat)}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${isActive ? `${active} text-white` : `${bg} text-gray-700 hover:opacity-80`}`}>
-                    {cat}: {count}
-                  </button>
-                );
-              })}
-
-              <div className="h-6 w-px bg-gray-300" />
-
               {/* Group By */}
               <div className="relative z-40 filter-dropdown">
                 <button onClick={() => setOpenDropdown(openDropdown === 'groupby' ? null : 'groupby')}
-                  className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm bg-white hover:bg-gray-50 text-left">
+                  className={`${BTN} text-left ${stateClass(!!groupConfig.column)}`}>
                   Group By{groupConfig.column ? ` (${DEFAULT_COLUMNS.find(c => c.key === groupConfig.column)?.label})` : '...'}
                 </button>
                 {openDropdown === 'groupby' && (
@@ -597,10 +575,6 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
                 options={dropdownOptions.component}
                 openDropdown={openDropdown} onOpen={handleDropdownOpen}
                 isSelected={isFilterSelected} onToggle={togglePendingFilter} countFn={v => countOcc('components', v)} />
-
-              {(Object.keys(filters).length > 0 || searchTerm) && (
-                <button onClick={clearAllFilters} className="px-3 py-1.5 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600">Clear Filters</button>
-              )}
 
             </div>
           </div>
@@ -667,7 +641,7 @@ const DropdownFilter: React.FC<DropdownFilterProps> = ({
   return (
     <div className="relative z-40 filter-dropdown">
       <button onClick={() => onOpen(dropKey)}
-        className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm bg-white hover:bg-gray-50 text-left">
+        className={`${BTN} text-left ${stateClass(activeCount > 0)}`}>
         {label}{activeCount > 0 ? ` (${activeCount})` : '...'}
       </button>
       {openDropdown === dropKey && (
