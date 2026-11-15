@@ -9,7 +9,6 @@ import reviewsRouter from './routes/reviews.js';
 import quickRouter from './routes/quick.js';
 import jiraIconRouter from './routes/jiraIcon.js';
 import trendsRouter from './routes/trends.js';
-import { trendsService } from './services/trends/service.js';
 import { quickService } from './services/quick/service.js';
 import { initDb } from './db/database.js';
 import { migrateFromJson } from './db/migrate.js';
@@ -58,6 +57,5 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Jira Tracker Backend running on http://localhost:${PORT}`);
   console.log(`📝 API available at http://localhost:${PORT}/api`);
   console.log(`🏥 Health check at http://localhost:${PORT}/api/health`);
-  trendsService.startKb(); // defects knowledge base: once a day, appends new defect patterns to the RAG feed and runs ingest (see delivery/config.json "defectsKb")
   quickService.start(); // Quick Analysis: every 15 minutes during working hours (see delivery/config.json "quickAnalysis")
 });

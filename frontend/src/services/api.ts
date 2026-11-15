@@ -500,9 +500,6 @@ export interface DefectFacts {
 }
 export interface DefectAnalysis { facts: DefectFacts; scope: string; guidance: DefectGuidance | null; status: TrendsStatus }
 
-export interface KbRun { at: string; written: number; matched: number; exists: number; pending: number; ingest: 'none' | 'ok' | 'failed'; reason: string }
-export interface KbStatus { pending: number; written: number; matched: number; exists: number; lastRunAt: string | null; lastResult: KbRun | null; ingestPending: boolean; hour: number; disabled: boolean }
-
 const apiMessage = (e: any, fallback: string) => String(e?.response?.data?.error || (e instanceof Error ? e.message : fallback));
 
 export const trendsApi = {
@@ -516,13 +513,6 @@ export const trendsApi = {
   defectGuidance: async (months: TrendMonths, filters: TrendFilters, force = false): Promise<DefectGuidance> => {
     try { return (await apiClient.post('/trends/defects/guidance', { months, client: filters.client ?? [], assignee: filters.assignee ?? [], component: filters.component ?? [], feTeam: !!filters.feTeam, force })).data.data; }
     catch (e: any) { throw new Error(apiMessage(e, 'Could not write the guidance')); }
-  },
-  /** The defects knowledge base queue: waiting, written, matched an existing pattern, already there; and the last run. */
-  kbStatus: async (): Promise<KbStatus> => (await apiClient.get('/trends/kb/status')).data.data,
-  /** Writes the new patterns to the defects feed now and runs ingest (what the daily sync does). Throws with the reason when it cannot. */
-  kbSync: async (): Promise<KbStatus> => {
-    try { return (await apiClient.post('/trends/kb/sync', {})).data.data; }
-    catch (e: any) { throw new Error(apiMessage(e, 'Could not sync')); }
   },
   /** Reads the done tickets of the last 6 months from Jira now: the only way the copy is updated. A read already running is not an error. An empty JSON body on purpose: the backend refuses non-JSON POSTs. */
   refresh: async (): Promise<TrendsStatus> => {

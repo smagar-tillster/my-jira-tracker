@@ -47,17 +47,6 @@ export const createTrendsRouter = ({ service = trendsService } = {}) => {
     res.json({ success: true, data: guidance });
   });
 
-  // GET /api/trends/kb/status  — the defects knowledge base queue: waiting, written, matched an existing pattern, already there; the last run
-  router.get('/trends/kb/status', (req, res) => res.json({ success: true, data: service.kbStatus() }));
-
-  // POST /api/trends/kb/sync  — write the new patterns to the defects feed now and run ingest (what the daily sync does). 409 when one is running.
-  router.post('/trends/kb/sync', sameMachineOnly, async (req, res) => {
-    const r = await service.kbSyncNow();
-    if (r.busy) return res.status(409).json({ success: false, error: 'A sync is already running' });
-    if (!r.ok) return res.status(502).json({ success: false, error: r.reason, data: { ...service.kbStatus() } });
-    res.json({ success: true, data: { ...service.kbStatus(), run: r } });
-  });
-
   // POST /api/trends/refresh  — read from Jira now (the only way the copy is updated). 202 when it started, 409 when a read is already going.
   router.post('/trends/refresh', sameMachineOnly, (req, res) => {
     if (!service.refresh()) return res.status(409).json({ success: false, error: 'A sync is already running', data: service.status() });

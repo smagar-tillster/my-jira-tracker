@@ -345,3 +345,11 @@ test('a placement that rests only on the description or the PR title is counted 
   assert.deepEqual(by['Other or unclear'], [1, 0]);
   assert.equal(D.classify({ summary: 'Odd', description: 'loyalty' }).score, 1); assert.equal(D.classify({ summary: 'Offer missing' }).score, 3);
 });
+
+test('the ledger index maps a ticket to its latest merged PR, and an empty or missing ledger maps nothing', async () => {
+  const { ledgerIndex } = await import('../../src/services/trends/ledger.js');
+  const pr = (n, keys, mergedAt) => ({ id: `kiosk-ui#${n}`, repo: 'kiosk-ui', number: String(n), keys, mergedAt, files: [] });
+  const idx = ledgerIndex({ prs: { a: pr(1, ['NGK-1'], '2026-10-01T00:00:00Z'), b: pr(2, ['NGK-1', 'NGK-9'], '2026-11-01T00:00:00Z') } });
+  assert.equal(idx.get('NGK-1').number, '2'); assert.equal(idx.get('NGK-9').number, '2'); assert.equal(idx.get('NGK-404'), undefined);
+  assert.equal(ledgerIndex({}).size, 0); assert.equal(ledgerIndex(undefined).size, 0);
+});
