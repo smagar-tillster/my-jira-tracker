@@ -106,7 +106,7 @@ export const queueDefects = ({ defects, ledger, categorize, now = () => new Date
   const idx = ledgerIndex(ledger);
   const candidates = []; let noPr = 0;
   for (const d of defects) {
-    const c = candidateFor({ ...d, category: categorize(d) }, idx.get(d.key));
+    const c = candidateFor({ ...d, category: categorize(d, idx.get(d.key)) }, idx.get(d.key));
     if (c) candidates.push(c); else noPr++;
   }
   return { queued: store.kbQueue(candidates, now().toISOString()), noPr };

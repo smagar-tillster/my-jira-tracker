@@ -244,25 +244,42 @@ test('the routes: the analysis never calls the model, the guidance does (once pe
 });
 
 // ---------------------------------------------------------------- fix components
-test('by fix component: each Jira component counts its defects, share, defects per 100 done tickets, top categories and tenants; several components count under each; "No component" is last', () => {
-  const rows = [];
-  const mk = (type, summary, comps, client, i) => T(type, `2026-10-${String(10 + (i % 15)).padStart(2, '0')}T12:00:00`, { summary, components: comps, clients: [client] });
-  ['AA', 'AA', 'BB'].forEach((c, i) => rows.push(mk('Defect', 'Receipt total wrong', ['FE'], c, i)));       // 3 FE receipt defects
-  rows.push(mk('Defect', 'Missing image', ['FE'], 'AA', 3));                                                 // 1 FE menu defect
-  rows.push(mk('Defect', 'Order not sent to POS', ['Web Service (WS)'], 'CC', 4));                           // 1 WS defect
-  rows.push(mk('Defect', 'Receipt total wrong', ['FE', 'Web Service (WS)'], 'BB', 5));                       // counts under both
-  rows.push(mk('Defect', 'Something odd', [], 'DD', 6));                                                     // no component
-  for (let i = 0; i < 6; i++) rows.push(mk('Story', 'A story', ['FE'], 'AA', i));                            // 6 FE stories done
-  const f = D.analyzeDefects({ rows, months: 6, now: NOW });
-  assert.deepEqual(f.components.map((c) => [c.name, c.count]), [['FE', 5], ['Web Service (WS)', 2], ['No component', 1]]);
-  const fe = f.components[0];
-  assert.equal(fe.share, 71);                                                                                // 5 of 7 defects
-  assert.equal(fe.done, 11); assert.equal(fe.per100, 45.5);                                                  // 5 defects of 11 FE tickets done
-  assert.deepEqual(fe.categories[0], { name: 'Receipts and printing', count: 4 });
-  assert.deepEqual(fe.tenants, [{ name: 'AA', count: 3 }, { name: 'BB', count: 2 }]);
-  assert.equal(fe.examples.length, 3);
-  assert.equal(f.components[1].count, 2);                                                                    // the FE+WS ticket is in both
-  assert.deepEqual(D.analyzeDefects({ rows: [], now: NOW }).components, []);
+test('the category is decided by evidence: title, the component set when the fix was done, the files the fix changed, then description and PR title; a tie goes to the earlier category', () => {
+  const c = (row, pr) => D.categorize({ summary: '', labels: [], description: '', components: [], ...row }, pr);
+  assert.equal(c({ summary: 'Totals are off', components: ['Receipt.xsl'] }), 'Receipts and printing');                       // the component says what it was about
+  assert.equal(c({ summary: 'Something odd', components: ['FE'] }), 'Other or unclear');                                        // where a fix was made says nothing about the topic
+  assert.equal(c({ summary: 'Offer missing', components: ['PROD/config.json (AKA "Global Config" - all current PROD stores )'] }), 'Loyalty, coupons and offers');   // a config component does not turn a loyalty defect into a config one
+  assert.equal(c({ summary: 'Odd' }, { files: [{ name: 'src/payment/refund.js' }] }), 'Payment and payterminal');                // the PR files decide when the title does not
+  assert.equal(c({ summary: 'Odd' }, { files: ['src/payment/refund.js'] }), 'Payment and payterminal');                         // plain file names work too
+  assert.equal(c({ summary: 'Odd', description: 'The loyalty reward is not applied' }), 'Loyalty, coupons and offers');           // the description decides when nothing else speaks
+  assert.equal(c({ summary: 'Receipt total wrong', description: 'loyalty coupon offer reward' }), 'Receipts and printing');    // the title outweighs the description
+  assert.equal(c({ summary: 'Odd', components: ['Skumap'] }, { files: [{ name: 'src/menu/list.js' }] }), 'POS and fiscal integration');   // component (3) beats a file hit (2)
+  assert.equal(c({ summary: 'Odd', components: ['Skumap'] }, { files: [{ name: 'src/menu/list.js' }], title: 'NGK-1: sku map pos' }), 'POS and fiscal integration');
+  assert.equal(c({ summary: 'Payment receipt printing fails' }), 'Payment and payterminal');                                     // a tie: the earlier category
+  assert.equal(c({ summary: 'Odd' }, { files: [{ name: 'package-lock.json' }], title: 'NGK-9: bump' }), 'Other or unclear');      // no evidence
+  assert.equal(c({ summary: 'x', labels: ['accessibility'] }), 'Accessibility');
+  assert.equal(D.componentHint('FE'), null); assert.equal(D.componentHint('  Device Service '), 'Hardware and device'); assert.equal(D.componentHint(null), null);
+});
+
+test('each category says where its defects were fixed (the Jira component, else the PR\'s), the PR ledger coverage is counted, and the PR files can place a defect', () => {
+  const rows = [
+    Dfx('2026-10-10T12:00:00', 'Receipt total wrong', { components: ['FE'] }), Dfx('2026-10-11T12:00:00', 'Receipt total wrong', { components: ['FE', 'Receipt.xsl'] }),
+    Dfx('2026-10-12T12:00:00', 'Receipt total wrong', { components: ['Kiosk Web Service'] }), Dfx('2026-10-13T12:00:00', 'Receipt total wrong', { components: [] }),
+    Dfx('2026-10-14T12:00:00', 'Receipt total wrong', { components: [] }),
+    Dfx('2026-10-15T12:00:00', 'Odd', { components: [] }),                                                                // no words at all: only the PR files can place it
+  ];
+  const prs = new Map([[rows[3].key, { component: 'Device Service (DS)', files: [] }], [rows[5].key, { component: 'FE', files: [{ name: 'src/payment/cards.js' }] }]]);
+  const f = D.analyzeDefects({ rows, months: 6, prs, now: NOW });
+  const receipts = f.categories.find((x) => x.name === 'Receipts and printing');
+  assert.deepEqual(receipts.fixedIn, [{ name: 'FE', count: 2, pct: 40 }, { name: 'Device Service (DS)', count: 1, pct: 20 }, { name: 'Kiosk Web Service', count: 1, pct: 20 }]);   // top 3 of 5; the PR's component when Jira has none
+  assert.equal(f.categories.find((x) => x.name === 'Payment and payterminal').count, 1);                                  // placed by its PR files
+  assert.deepEqual(f.prCoverage, { withPr: 2, defects: 6 });
+  assert.equal(D.analyzeDefects({ rows, months: 6, now: NOW }).categories.find((x) => x.name === 'Payment and payterminal'), undefined);   // without the ledger it stays "Other"
+  const none = D.analyzeDefects({ rows: [Dfx('2026-10-10T12:00:00', 'Receipt total wrong')], months: 6, now: NOW });
+  assert.deepEqual(none.categories[0].fixedIn, [{ name: 'Not set', count: 1, pct: 100 }]);
+  const long = D.analyzeDefects({ rows: [Dfx('2026-10-10T12:00:00', 'Receipt total wrong', { components: ['PROD/config.json (AKA "Global Config" - all current PROD stores )'] })], months: 6, now: NOW });
+  assert.ok(long.categories[0].fixedIn[0].name.length <= 40);
+  assert.equal(f.components, undefined);                                                                                  // there is no analysis view by component any more
 });
 
 test('the report can be split and filtered by component, tickets with several components count under each, and the old single-component rows still work', () => {
@@ -288,12 +305,26 @@ test('components are stored in full and read back, and a row saved before the co
   reset();
 });
 
-test('the model is given the components, and the scope counts them', () => {
+test('the model is given where each category was fixed, not a component list, and the scope names the component filter', () => {
   const rows = [Dfx('2026-10-10T12:00:00', 'Receipt total wrong', { components: ['FE'], clients: ['AA'] })];
   const f = D.analyzeDefects({ rows, now: NOW });
   const input = JSON.parse(G.buildInput(f, ''));
-  assert.deepEqual(input.components.map((c) => c.name), ['FE']);
-  assert.equal(input.components[0].defects, 1);
-  assert.ok(G.PROMPT.includes('components (the Jira component developers set when the final fix is done'));
-  assert.equal(scopeText({ component: ['FE', 'WS'] }), '2 components selected');
+  assert.deepEqual(input.categories[0].fixedIn, [{ name: 'FE', count: 1, pct: 100 }]);
+  assert.equal(input.components, undefined);
+  assert.ok(G.PROMPT.includes('fixedIn: where the fixes were made'));
+  assert.equal(scopeText({ component: ['FE'] }), 'fix component FE');
+  assert.equal(scopeText({ feTeam: true, component: ['FE', 'WS', 'MS', 'DS'] }), 'FE team only; fix component FE, WS, MS and more');
+});
+
+test('a Jira description (rich text) is stored as clipped plain text, and a missing one as empty', async () => {
+  const S = await import('../../src/services/trends/sync.js');
+  const adf = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'The main menu shows' }] }, { type: 'paragraph', content: [{ type: 'text', text: '  no   tiles.' }] }] };
+  assert.equal(S.toRow({ key: 'N-1', fields: { description: adf } }).description, 'The main menu shows no tiles.');
+  assert.equal(S.toRow({ key: 'N-2', fields: {} }).description, '');
+  const big = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'x'.repeat(5000) }] }] };
+  assert.equal(S.toRow({ key: 'N-3', fields: { description: big } }).description.length, 1500);
+  reset();
+  store.upsert([{ ...Dfx('2026-10-10T12:00:00', 'Odd'), description: 'The loyalty reward is not applied', statusCategory: '', updated: null, firstSprintStart: null }]);
+  assert.equal(store.allRows()[0].description, 'The loyalty reward is not applied');
+  reset();
 });

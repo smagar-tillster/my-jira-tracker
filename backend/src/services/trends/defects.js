@@ -4,7 +4,7 @@
 //
 // A defect is a done ticket of the types in DEFECT_TYPES. Everything is over the months shown (by done date) and the page's filters, except the
 // Type filter, which is ignored here (an analysis of defects cannot be limited to Stories).
-import { addMonths, filterRows, monthOf, monthRange, NO_COMPONENT } from './aggregate.js';
+import { addMonths, filterRows, monthOf, monthRange } from './aggregate.js';
 
 export const DEFECT_TYPES = ['Defect', 'UAT Defect', 'Product Defect'];
 const UAT_TYPE = 'UAT Defect';
@@ -28,7 +28,45 @@ export const CATEGORIES = [
 ].map((c) => ({ ...c, re: new RegExp(c.pattern, 'i') }));
 export const OTHER = { name: 'Other or unclear', meaning: 'Titles that match none of the other categories; worth a look for new patterns.', advice: 'Ask reporters for a category when logging so these can be routed, and review a sample for new patterns.' };
 
-export const categorize = (row) => (CATEGORIES.find((c) => c.re.test(`${row.summary || ''} ${(row.labels || []).join(' ')} ${row.component || ''}`)) || OTHER).name;
+// Components that say what the defect was ABOUT (a receipt file, the device service, the menu, translations, JAWS). The component is set by the
+// developer when the final fix is done, so it is strong evidence for the category. Components that only say WHERE a fix was made (FE, a service,
+// config.json files, the portal) are deliberately not here: they do not change what the defect is about, and are reported as "fixed in".
+const COMPONENT_HINTS = new Map([
+  ['receipt.xsl', 'Receipts and printing'], ['receipt localization properties', 'Receipts and printing'],
+  ['device service', 'Hardware and device'], ['payterminal', 'Payment and payterminal'],
+  ['skumap', 'POS and fiscal integration'], ['pos', 'POS and fiscal integration'],
+  ['menu', 'Menu, pricing and content data'], ['kiosk menu service', 'Menu, pricing and content data'], ['tce menu', 'Menu, pricing and content data'],
+  ['occ (menu metadata - calories, drink tabs)', 'Menu, pricing and content data'], ['translationfiles', 'Menu, pricing and content data'], ['languageinfo.json', 'Menu, pricing and content data'],
+  ['promotion/config.json', 'Loyalty, coupons and offers'], ['campaign/config.json', 'Loyalty, coupons and offers'], ['avolta loyalty client', 'Loyalty, coupons and offers'], ['rbi loyalty', 'Loyalty, coupons and offers'],
+  ['layout/config.json', 'UI layout and display'], ['media/layout/images', 'UI layout and display'], ['avol-us - style override', 'UI layout and display'],
+  ['jaws configs', 'Accessibility'], ['media/accessibility', 'Accessibility'],
+]);
+export const componentHint = (name) => COMPONENT_HINTS.get(String(name || '').trim().toLowerCase()) || null;
+const componentsOf = (row) => (row.components?.length ? row.components : (row.component ? [row.component] : []));
+
+/**
+ * The category of a defect, decided by evidence from four places and not by the first keyword hit:
+ *   the title and labels (3 points), the component developers set when the fix was done (3), the files the fix changed in the PR ledger (2),
+ *   the description and the PR title (1 each). The highest score wins; a tie goes to the earlier category in CATEGORIES; no evidence is "Other".
+ * `pr` is the defect's merged PR from the app's PR ledger, if it has one (never fetched).
+ */
+export const categorize = (row, pr = null) => {
+  const title = `${row.summary || ''} ${(row.labels || []).join(' ')}`;
+  const hints = new Set(componentsOf(row).map(componentHint).filter(Boolean));
+  const files = (pr?.files || []).map((f) => (typeof f === 'string' ? f : f?.name)).filter(Boolean).join(' ');
+  const prTitle = String(pr?.title || '').replace(/^NGK-\d+:\s*/i, '');
+  let best = null;
+  for (const c of CATEGORIES) {
+    let score = 0;
+    if (c.re.test(title)) score += 3;
+    if (hints.has(c.name)) score += 3;
+    if (files && c.re.test(files)) score += 2;
+    if (row.description && c.re.test(row.description)) score += 1;
+    if (prTitle && c.re.test(prTitle)) score += 1;
+    if (score > (best?.score ?? 0)) best = { name: c.name, score };
+  }
+  return best ? best.name : OTHER.name;
+};
 const infoFor = (name) => CATEGORIES.find((c) => c.name === name) || OTHER;
 
 const DAY = 86400000;
@@ -94,7 +132,7 @@ export const defectsInView = ({ rows, months = 6, filters = {}, feMembers = new 
   return { list, index, kept, defects: kept.filter((r) => DEFECT_TYPES.includes(r.type)), ignored };
 };
 
-export const analyzeDefects = ({ rows, months = 6, filters = {}, feMembers = new Set(), now = new Date() }) => {
+export const analyzeDefects = ({ rows, months = 6, filters = {}, feMembers = new Set(), prs = new Map(), now = new Date() }) => {
   const { list, index, kept, defects, ignored } = defectsInView({ rows, months, filters, feMembers, now });
   const monthOfRow = (r) => index.get(monthOf(r.resolved));
 
@@ -115,7 +153,7 @@ export const analyzeDefects = ({ rows, months = 6, filters = {}, feMembers = new
   };
 
   const byCat = new Map(); const catOf = new Map();
-  for (const d of defects) { const c = categorize(d); catOf.set(d.key, c); (byCat.get(c) || byCat.set(c, []).get(c)).push(d); }
+  for (const d of defects) { const c = categorize(d, prs.get(d.key)); catOf.set(d.key, c); (byCat.get(c) || byCat.set(c, []).get(c)).push(d); }
 
   const allClientNames = [...new Set(rows.flatMap((r) => r.clients || []))];
   const repeatsAll = findRepeats(defects, allClientNames);
@@ -130,34 +168,20 @@ export const analyzeDefects = ({ rows, months = 6, filters = {}, feMembers = new
 
   const count = (rs, f) => { const m = new Map(); for (const r of rs) for (const k of f(r)) m.set(k, (m.get(k) || 0) + 1); return [...m.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])); };
   const clientsOf = (r) => (r.clients?.length ? r.clients : []);
+  // where the fix was made: the Jira component (set by the developer when the final fix is done), else the component of the PR in the ledger
+  const placesOf = (r) => (r.components?.length ? r.components : (prs.get(r.key)?.component ? [prs.get(r.key).component] : ['Not set']));
+  const short = (n) => (n.length > 40 ? `${n.slice(0, 39)}…` : n);
+  const fixedIn = (rs) => count(rs, placesOf).slice(0, 3).map(([name, n]) => ({ name: short(name), count: n, pct: pct(n, rs.length) }));
   const categories = [...byCat.entries()].map(([name, rs]) => {
     const recent = rs.filter(isRecent).length; const earlier = rs.length - recent;
     const examples = [...rs].sort((a, b) => String(b.resolved).localeCompare(String(a.resolved)) || b.key.localeCompare(a.key)).slice(0, 3).map((r) => ({ key: r.key, summary: r.summary }));
     const info = infoFor(name);
     return {
       name, meaning: info.meaning, count: rs.length, share: pct(rs.length, total), changePct: perMonthChange(recent, earlier), medianDaysToFix: median(fixDays(rs)),
-      tenants: count(rs, clientsOf).slice(0, 3).map(([n, c]) => ({ name: n, count: c })),
+      tenants: count(rs, clientsOf).slice(0, 3).map(([n, c]) => ({ name: n, count: c })), fixedIn: fixedIn(rs),
       examples, advice: info.advice, repeats: (repeatsByCat.get(name) || []).slice(0, 2),
     };
   }).sort((a, b) => (a.name === OTHER.name) - (b.name === OTHER.name) || b.count - a.count || a.name.localeCompare(b.name));   // "Other or unclear" always last
-
-  // by fix component: the Jira component developers set when the final fix is done, so it says which part of the platform was changed.
-  // A ticket with several components counts under each, so the shares can add up to more than 100%.
-  const compsOf = (r) => (r.components?.length ? r.components : [NO_COMPONENT]);
-  const doneByComp = new Map();
-  for (const r of kept) for (const c of compsOf(r)) doneByComp.set(c, (doneByComp.get(c) || 0) + 1);
-  const byComp = new Map();
-  for (const d of defects) for (const c of compsOf(d)) (byComp.get(c) || byComp.set(c, []).get(c)).push(d);
-  const components = [...byComp.entries()].map(([name, rs]) => {
-    const recent = rs.filter(isRecent).length; const earlier = rs.length - recent; const done = doneByComp.get(name) || rs.length;
-    return {
-      name, count: rs.length, share: pct(rs.length, total), changePct: perMonthChange(recent, earlier), medianDaysToFix: median(fixDays(rs)),
-      done, per100: round1((rs.length / done) * 100),
-      categories: count(rs, (r) => [catOf.get(r.key)]).slice(0, 3).map(([n, c]) => ({ name: n, count: c })),
-      tenants: count(rs, clientsOf).slice(0, 3).map(([n, c]) => ({ name: n, count: c })),
-      examples: [...rs].sort((a, b) => String(b.resolved).localeCompare(String(a.resolved)) || b.key.localeCompare(a.key)).slice(0, 3).map((r) => ({ key: r.key, summary: r.summary })),
-    };
-  }).sort((a, b) => (a.name === NO_COMPONENT) - (b.name === NO_COMPONENT) || b.count - a.count || a.name.localeCompare(b.name));   // "No component" always last
 
   // client rates: a ticket with several clients counts under each; the rate is defects per 100 done tickets
   const perClient = new Map();
@@ -174,5 +198,7 @@ export const analyzeDefects = ({ rows, months = 6, filters = {}, feMembers = new
 
   const topClients = count(defects, clientsOf).slice(0, 3).map(([name, n]) => ({ name, count: n }));
 
-  return { months: list, perMonth, tiles, topClients, categories, components, clients, averagePer100: average, repeats, minClientDone: MIN_CLIENT_DONE, typesCounted: DEFECT_TYPES, typeFilterIgnored: !!(ignored && ignored.length) };
+  const prCoverage = { withPr: defects.filter((d) => prs.has(d.key)).length, defects: total };
+
+  return { months: list, perMonth, tiles, topClients, categories, prCoverage, clients, averagePer100: average, repeats, minClientDone: MIN_CLIENT_DONE, typesCounted: DEFECT_TYPES, typeFilterIgnored: !!(ignored && ignored.length) };
 };

@@ -482,10 +482,8 @@ export interface SprintTrend {
 export interface DefectCategory {
   name: string; meaning: string; count: number; share: number; changePct: number | null; medianDaysToFix: number | null; advice: string;
   tenants: { name: string; count: number }[]; examples: { key: string; summary: string; url: string }[]; repeats: { phrase: string; count: number; clients: number }[];
-}
-export interface DefectComponent {
-  name: string; count: number; share: number; changePct: number | null; medianDaysToFix: number | null; done: number; per100: number;
-  categories: { name: string; count: number }[]; tenants: { name: string; count: number }[]; examples: { key: string; summary: string; url: string }[];
+  /** Where the fixes were made: the Jira component developers set when the final fix is done (else the PR's), as a share of this category's defects. */
+  fixedIn: { name: string; count: number; pct: number }[];
 }
 export interface DefectClient { name: string; defects: number; done: number; per100: number; times: number | null }
 export interface DefectRepeat { phrase: string; count: number; clients: number; keys: string[] }
@@ -494,7 +492,9 @@ export interface DefectGuidance { headline: string; focus: FocusItem[]; caveats:
 export interface DefectFacts {
   months: string[]; perMonth: number[]; topClients: { name: string; count: number }[]; averagePer100: number; minClientDone: number; typesCounted: string[]; typeFilterIgnored: boolean;
   tiles: { defects: number; ticketsDone: number; shareOfDone: number; medianDaysToFix: number | null; medianDaysRecent: number | null; medianDaysEarlier: number | null; uat: number; uatShare: number; fixedInWeekShare: number };
-  categories: DefectCategory[]; components: DefectComponent[]; clients: DefectClient[]; repeats: DefectRepeat[];
+  categories: DefectCategory[]; clients: DefectClient[]; repeats: DefectRepeat[];
+  /** How many of the defects have their merged PR in the app's PR ledger (the PR files help decide the category). */
+  prCoverage: { withPr: number; defects: number };
 }
 export interface DefectAnalysis { facts: DefectFacts; scope: string; guidance: DefectGuidance | null; status: TrendsStatus }
 

@@ -9,17 +9,17 @@ import * as store from './store.js';
 // Sonnet: it runs only when someone clicks AI analysis (never on a refresh or when the modal opens), so the extra cost per call is a choice made per click.
 export const MODEL = 'sonnet';
 export const TIMEOUT_MS = 180000;
-const PROMPT_VERSION = 3;
+const PROMPT_VERSION = 4;
 export const MAX_FOCUS = 3;
 
 const clip = (s, n) => { const t = String(s ?? '').replace(/\s+/g, ' ').trim(); return t.length > n ? `${t.slice(0, n - 1).trimEnd()}…` : t; };
 const safe = (s, n) => redactSecrets(clip(s, n)).text;
 
-export const PROMPT = `You advise an engineering lead on how to cut defects in a restaurant kiosk and ordering platform. On stdin is a JSON object of facts about defects fixed ("done") in recent months: tiles (counts, share of all done tickets, median days to fix), topClients, categories (count, share, change in defects per month between the earlier and recent half, median days to fix, top tenants, repeated phrases, example titles), components (the Jira component developers set when the final fix is done, so it says which part of the platform was changed, for example FE or a service: defects, share, defects per 100 done tickets, trend, median days to fix, top categories), clients (defects per 100 done tickets and how many times the average), and the scope the numbers are filtered to. Be brief and concrete: the lead will act on this next sprint. Answer with ONE JSON object and nothing else (no prose, no code fence): {"headline","focus":[{"title","why","actions","measure"}],"caveats"}.
+export const PROMPT = `You advise an engineering lead on how to cut defects in a restaurant kiosk and ordering platform. On stdin is a JSON object of facts about defects fixed ("done") in recent months: tiles (counts, share of all done tickets, median days to fix), topClients, categories (count, share, change in defects per month between the earlier and recent half, median days to fix, fixedIn: where the fixes were made according to the Jira component developers set when the final fix is done, for example FE, a service or a config file, as a share of the category's defects; top tenants, repeated phrases, example titles), clients (defects per 100 done tickets and how many times the average), and the scope the numbers are filtered to. Be brief and concrete: the lead will act on this next sprint. Answer with ONE JSON object and nothing else (no prose, no code fence): {"headline","focus":[{"title","why","actions","measure"}],"caveats"}.
 
 - headline: one sentence, at most 25 words, on the main thing the numbers say.
 - focus: exactly three items, most worthwhile first. Rank by how many defects it could remove, how fast it is growing, and how fixable it looks.
-- title: the category, component, client or repeat it is about, in a few words. When the same category or repeat shows up mostly in one component, say which component to change.
+- title: the category, client or repeat it is about, in a few words. Use fixedIn to say where the fixes are made (for example mostly FE, or mostly config), so the step targets the right place.
 - why: one sentence, at most 25 words, using only numbers from stdin. Never state a number that is not on stdin.
 - actions: one or two steps, each at most 20 words, that a team can do in the next sprint or two (a test to add, a check to automate, a review to hold). Prefer a step that removes a whole class of defect over a one-off fix.
 - measure: at most 12 words: the number on this page that would show it worked.
@@ -32,9 +32,8 @@ export const buildInput = (facts, scope = '') => JSON.stringify({
   topClients: facts.topClients,
   categories: facts.categories.slice(0, 8).map((c) => ({
     name: c.name, count: c.count, sharePct: c.share, changePctPerMonth: c.changePct, medianDaysToFix: c.medianDaysToFix,
-    topTenants: c.tenants, repeats: c.repeats.map((r) => ({ phrase: safe(r.phrase, 60), defects: r.count, clients: r.clients })), examples: c.examples.map((e) => safe(e.summary, 110)),
+    topTenants: c.tenants, fixedIn: c.fixedIn, repeats: c.repeats.map((r) => ({ phrase: safe(r.phrase, 60), defects: r.count, clients: r.clients })), examples: c.examples.map((e) => safe(e.summary, 110)),
   })),
-  components: facts.components.slice(0, 6).map((c) => ({ name: c.name, defects: c.count, sharePct: c.share, per100DoneTickets: c.per100, changePctPerMonth: c.changePct, medianDaysToFix: c.medianDaysToFix, topCategories: c.categories, topTenants: c.tenants })),
   clients: facts.clients.slice(0, 4).map((c) => ({ name: c.name, defects: c.defects, doneTickets: c.done, per100: c.per100, timesAverage: c.times })),
   note: `Rates are only shown for clients with at least ${facts.minClientDone} done tickets. Types counted as defects: ${facts.typesCounted.join(', ')}.`,
 });

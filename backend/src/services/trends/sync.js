@@ -3,10 +3,11 @@
 // (Jira's Done category: passed QA or later) and were resolved in the last 6 months, the current month included. Jira filters that exactly, so
 // the read is the tickets the page counts and nothing else. Past sprints count too, not only open ones. The copy is replaced by what Jira returned.
 import { search, PROJECT, FIELDS as JIRA_FIELDS } from '../../../delivery/lib/jira.mjs';
+import { adfText } from '../../../delivery/lib/releases.mjs';
 import * as store from './store.js';
 
 const SPRINT_FIELD = JIRA_FIELDS.sprint;
-export const FIELDS = ['issuetype', 'created', 'resolutiondate', 'status', 'updated', 'assignee', JIRA_FIELDS.client, SPRINT_FIELD, 'summary', 'components', 'labels', 'priority'];
+export const FIELDS = ['issuetype', 'created', 'resolutiondate', 'status', 'updated', 'assignee', JIRA_FIELDS.client, SPRINT_FIELD, 'summary', 'description', 'components', 'labels', 'priority'];
 
 /** A Jira search row as the table keeps it. */
 export const toRow = (issue) => {
@@ -16,7 +17,7 @@ export const toRow = (issue) => {
     key: issue.key, type: f.issuetype?.name || 'Unknown', created: f.created || null, resolved: f.resolutiondate || null,
     statusCategory: f.status?.statusCategory?.name || '', firstSprintStart: starts[0] || null, updated: f.updated || null,
     assignee: f.assignee?.displayName || null,
-    summary: String(f.summary || '').slice(0, 300), component: f.components?.[0]?.name || null,
+    summary: String(f.summary || '').slice(0, 300), description: String(adfText(f.description) || '').replace(/\s+/g, ' ').trim().slice(0, 1500), component: f.components?.[0]?.name || null,
     components: [...new Set((Array.isArray(f.components) ? f.components : []).map((c) => c?.name).filter(Boolean))],
     labels: (Array.isArray(f.labels) ? f.labels : []).filter((l) => typeof l === 'string').slice(0, 20), priority: f.priority?.name || null,
     clients: [...new Set((Array.isArray(f[JIRA_FIELDS.client]) ? f[JIRA_FIELDS.client] : []).map((c) => c?.value).filter(Boolean))],

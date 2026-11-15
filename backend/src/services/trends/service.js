@@ -5,7 +5,7 @@ import { aggregate, BASES, GROUPS } from './aggregate.js';
 import { getAllFETeamMembers } from '../feteamService.js';
 import { analyzeDefects, defectsInView, categorize } from './defects.js';
 import { loadPrLedger } from '../../../delivery/lib/prledger.mjs';
-import { queueDefects, syncKb, kbStatus, kbConfig, syncDue } from './kb.js';
+import { queueDefects, ledgerIndex, syncKb, kbStatus, kbConfig, syncDue } from './kb.js';
 import { jiraUrl } from '../../../delivery/lib/jira.mjs';
 import { generateGuidance, cachedGuidance } from './guidance.js';
 
@@ -15,7 +15,7 @@ export const MONTH_CHOICES = [3, 6];
 export const scopeText = (f = {}) => {
   const bits = [];
   if (f.feTeam) bits.push('FE team only');
-  if (f.component?.length) bits.push(`${f.component.length} component${f.component.length === 1 ? '' : 's'} selected`);
+  if (f.component?.length) bits.push(`fix component ${f.component.slice(0, 3).join(', ')}${f.component.length > 3 ? ' and more' : ''}`);   // component names are not personal data
   if (f.client?.length) bits.push(`${f.client.length} client${f.client.length === 1 ? '' : 's'} selected`);
   if (f.assignee?.length) bits.push(`${f.assignee.length} assignee${f.assignee.length === 1 ? '' : 's'} selected`);
   return bits.length ? bits.join('; ') : 'all done tickets';
@@ -45,7 +45,7 @@ export const createTrendsService = ({ sync = runTrendsSync, now = () => new Date
   const sprintTickets = ({ basis = 'resolved', group = 'all', months = 6, filters = {} } = {}) =>
     aggregate({ rows: store.allRows(), basis, group, months, filters, feMembers: filters.feTeam ? feMembers() : new Set(), now: now() });
 
-  const defectFacts = ({ months = 6, filters = {} } = {}) => analyzeDefects({ rows: store.allRows(), months, filters, feMembers: filters.feTeam ? feMembers() : new Set(), now: now() });
+  const defectFacts = ({ months = 6, filters = {} } = {}) => analyzeDefects({ rows: store.allRows(), months, filters, feMembers: filters.feTeam ? feMembers() : new Set(), prs: ledgerIndex(ledger()), now: now() });
 
   /** The numbers and the rule-based focus, plus the model's guidance if these same numbers were answered before. Never calls the model. */
   const defectAnalysis = ({ months = 6, filters = {} } = {}) => {
@@ -53,8 +53,7 @@ export const createTrendsService = ({ sync = runTrendsSync, now = () => new Date
     const scope = scopeText(filters);
     const guidance = cachedGuidance(facts, scope);
     // links are added to what the page gets, after the numbers are fixed: they are not part of what the model sees or what its answer is saved under
-    const link = (list) => list.map((c) => ({ ...c, examples: c.examples.map((e) => ({ ...e, url: jiraUrl(e.key) })) }));
-    const linked = { ...facts, categories: link(facts.categories), components: link(facts.components) };
+    const linked = { ...facts, categories: facts.categories.map((c) => ({ ...c, examples: c.examples.map((e) => ({ ...e, url: jiraUrl(e.key) })) })) };
     return { facts: linked, scope, guidance };
   };
 

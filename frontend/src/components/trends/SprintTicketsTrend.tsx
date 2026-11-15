@@ -5,6 +5,14 @@ import LineChart, { LineSeries, INK } from './LineChart';
 import MultiSelect from './MultiSelect';
 import DefectAnalysisModal from './DefectAnalysisModal';
 
+/** The Jira component for work fixed in the front end. */
+export const FE_COMPONENT = 'FE';
+/** The filters with the FE-fixes toggle flipped: on selects only the FE component; off removes FE and keeps any other component picked. */
+export const toggleFeFixes = (filters: TrendFilters): TrendFilters => {
+  const on = (filters.component ?? []).includes(FE_COMPONENT);
+  const rest = (filters.component ?? []).filter(c => c !== FE_COMPONENT);
+  return { ...filters, component: on ? (rest.length ? rest : undefined) : [FE_COMPONENT] };
+};
 const RANGES: { id: TrendMonths; label: string }[] = [{ id: 3, label: '3 months' }, { id: 6, label: '6 months' }];
 const GROUPS: { id: TrendGroup; label: string; one: string; many: string; hint: string }[] = [
   { id: 'all', label: 'All tickets', one: 'ticket', many: 'tickets', hint: 'One line with every ticket.' },
@@ -62,6 +70,7 @@ export const SprintTicketsTrendView: React.FC<TrendViewProps> = ({ data, loading
   const shown = all.filter(d => !hidden.has(d.series.id));
   const sums = all.map(d => d.counts.reduce((a, b) => a + b, 0));
   const empty = !!data && data.tickets === 0;
+  const feDefects = (filters.component ?? []).includes(FE_COMPONENT);
   const filtered = !!filters.feTeam || !!filters.type?.length || !!filters.client?.length || !!filters.assignee?.length || !!filters.component?.length;
 
   const totals = data?.totals ?? [];
@@ -106,6 +115,9 @@ export const SprintTicketsTrendView: React.FC<TrendViewProps> = ({ data, loading
           <button onClick={() => onFilters({ ...filters, feTeam: !filters.feTeam })} aria-pressed={!!filters.feTeam}
             title="Tickets assigned to a member of the FE team (the people flagged on the Tasks page)"
             className={`px-3 py-1.5 rounded-lg text-sm font-medium ring-1 ${filters.feTeam ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-gray-700 ring-gray-300 hover:bg-gray-100'}`}>FE team</button>
+          <button onClick={() => onFilters(toggleFeFixes(filters))} aria-pressed={feDefects}
+            title="Only tickets whose fix was made in the FE component (the Jira component developers set when the final fix is done)"
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium ring-1 ${feDefects ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-gray-700 ring-gray-300 hover:bg-gray-100'}`}>FE fixes</button>
           {([['client', 'Client', data.options.clients], ['component', 'Component', data.options.components], ['assignee', 'Assignee', data.options.assignees], ['type', 'Type', data.options.types]] as const).map(([k, label, opts]) => (
             <MultiSelect key={k} label={label} options={opts} value={filters[k] ?? []} onChange={v => onFilters({ ...filters, [k]: v.length ? v : undefined })} />
           ))}

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { trendsApi, DefectAnalysis, DefectCategory, DefectComponent, DefectGuidance, KbStatus, TrendFilters, TrendMonths } from '../../services/api';
+import { trendsApi, DefectAnalysis, DefectCategory, DefectGuidance, KbStatus, TrendFilters, TrendMonths } from '../../services/api';
 import { monthCounts, monthLabel, sparkline, trendText, SERIES_COLORS } from '../../utils/trendsChart';
 
 const ago = (iso: string) => {
@@ -68,6 +68,7 @@ const CategoryRow: React.FC<{ c: DefectCategory }> = ({ c }) => {
         {c.medianDaysToFix !== null && <span className="text-sm text-gray-500 tabular-nums" title="Median days from created to done">fix {c.medianDaysToFix} d</span>}
       </div>
       <p className="text-sm text-gray-600">{c.meaning}</p>
+      <Line label="Fixed in">{c.fixedIn.map(x => `${x.name} ${x.pct}%`).join(' · ')}</Line>
       <Line label="Top tenants">{c.tenants.length ? c.tenants.map(t => `${t.name} ${t.count}`).join(' · ') : 'none set'}</Line>
       <Line label="Samples"><Samples examples={c.examples} /></Line>
       <Line label="Advice">{adviceFor(c)}</Line>
@@ -83,30 +84,6 @@ const Samples: React.FC<{ examples: { key: string; summary: string; url: string 
     ))}
   </>
 );
-
-/** How many component rows are shown in full; the rest are one line. Real data has 30+ components, most with a defect or two. */
-export const TOP_COMPONENTS = 8;
-/** Defects in the components that are not shown in full (a defect with several components is counted under each). */
-export const otherDefects = (components: { count: number }[]) => components.slice(TOP_COMPONENTS).reduce((n, c) => n + c.count, 0);
-
-/** A fix component: the Jira component developers set when the final fix is done, so it says which part of the platform was changed. */
-const ComponentRow: React.FC<{ c: DefectComponent }> = ({ c }) => {
-  const tr = trendText(c.changePct);
-  return (
-    <li className="py-3 space-y-1.5">
-      <div className="flex items-baseline gap-x-3 gap-y-0.5 flex-wrap">
-        <span className="text-base font-semibold text-gray-900">{c.name}</span>
-        <span className="text-sm text-gray-700 tabular-nums">({c.count} · {c.share}%)</span>
-        <span className={`text-sm tabular-nums ${TONE[tr.tone]}`} title={c.changePct === null ? 'Too few defects in the earlier months for a percentage' : 'Defects per month, recent months against the earlier ones'}>{tr.arrow} {tr.text}</span>
-        <span className="text-sm text-gray-500 tabular-nums" title={`${c.count} defects among ${c.done} tickets done in this component`}>{c.per100} per 100 done</span>
-        {c.medianDaysToFix !== null && <span className="text-sm text-gray-500 tabular-nums" title="Median days from created to done">fix {c.medianDaysToFix} d</span>}
-      </div>
-      <Line label="Top categories">{c.categories.map(x => `${x.name} ${x.count}`).join(' · ') || 'none'}</Line>
-      <Line label="Top tenants">{c.tenants.length ? c.tenants.map(t => `${t.name} ${t.count}`).join(' · ') : 'none set'}</Line>
-      <Line label="Samples"><Samples examples={c.examples} /></Line>
-    </li>
-  );
-};
 
 /** What the defects knowledge base queue says, in words. */
 export const kbSummary = (kb: KbStatus): string => {
@@ -164,23 +141,9 @@ export const DefectAnalysisView: React.FC<DefectViewProps> = ({ data, loading, e
               <MonthTrend months={f.months} values={f.perMonth} />
             </section>
 
-            <section aria-label="By fix component">
-              <h3 className="text-base font-semibold text-gray-900">By fix component</h3>
-              <p className="text-sm text-gray-500 mb-1">The Jira component set when the final fix was done. A defect with several components counts under each.</p>
-              <ul className="divide-y divide-gray-100">
-                {f.components.slice(0, TOP_COMPONENTS).map(c => <ComponentRow key={c.name} c={c} />)}
-              </ul>
-              {f.components.length > TOP_COMPONENTS && (
-                <p className="text-sm text-gray-600 pt-2 border-t border-gray-100">
-                  <span className="font-semibold text-gray-900">{f.components.length - TOP_COMPONENTS} more components</span>
-                  {` (${otherDefects(f.components)} defects): ${f.components.slice(TOP_COMPONENTS, TOP_COMPONENTS + 10).map(c => `${c.name} ${c.count}`).join(' · ')}${f.components.length > TOP_COMPONENTS + 10 ? ' …' : ''}`}
-                </p>
-              )}
-            </section>
-
             <section aria-label="By category" className="pt-1">
               <h3 className="text-base font-semibold text-gray-900">By category</h3>
-              <p className="text-sm text-gray-500 mb-1">Picked by keywords in the title, labels and component. The same categories every time.</p>
+              <p className="text-sm text-gray-500 mb-1">Decided from the title, the component the fix was made in, the files the fix changed (PR ledger) and the description. The same categories every time.</p>
               <ul className="divide-y divide-gray-100">
                 {f.categories.map(c => <CategoryRow key={c.name} c={c} />)}
               </ul>
@@ -224,7 +187,7 @@ export const DefectAnalysisView: React.FC<DefectViewProps> = ({ data, loading, e
             )}
 
             <p className="text-xs text-gray-500">
-              {f.typesCounted.join(', ')} done in these months{f.typeFilterIgnored ? '; the Type filter is ignored here' : ''}. Numbers change when you press Refresh on the report.
+              {f.typesCounted.join(', ')} done in these months{f.typeFilterIgnored ? '; the Type filter is ignored here' : ''}. The PR ledger holds the fix PR for {f.prCoverage.withPr} of {f.prCoverage.defects} defects; the others are placed by title, component and description. Numbers change when you press Refresh on the report.
             </p>
           </>
         ))}
