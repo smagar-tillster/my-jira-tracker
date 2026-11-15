@@ -60,6 +60,15 @@ test('3 months is the last three; there is no "all" any more', () => {
   assert.equal(A.aggregate({ rows: [], now: NOW }).months.length, 6);   // the default
 });
 
+test('the first and last instants of a month fall in that month (this machine\'s time), and the month before the range is not shown', () => {
+  const edge = [R('E-1', 'Story', { resolved: '2026-06-01T00:00:00' }), R('E-2', 'Story', { resolved: '2026-05-31T23:59:59' }), R('E-3', 'Story', { resolved: '2026-11-13T23:59:59' }), R('E-4', 'Story', { resolved: '2026-06-30T23:59:59' }), R('E-5', 'Story', { resolved: '2026-07-01T00:00:00' })];
+  const a = A.aggregate({ rows: edge, basis: 'resolved', months: 6, now: NOW });
+  assert.deepEqual(a.months[0], '2026-06');
+  assert.deepEqual(a.totals, [2, 1, 0, 0, 0, 1]);                      // June: E-1, E-4; July: E-5; November: E-3
+  assert.equal(a.before, 1);                                           // E-2 is May 31: read for safety, not shown
+  assert.equal(A.aggregate({ rows: edge, basis: 'resolved', months: 3, now: NOW }).before, 4);   // a 3-month range starts in September
+});
+
 test('the same tickets can be counted by created month or resolved month instead', () => {
   const c = A.aggregate({ rows: rows(), basis: 'created', group: 'type', months: 6, now: NOW });
   assert.deepEqual(c.counts.Story, [0, 0, 1, 1, 0, 1]);
@@ -148,8 +157,8 @@ test('a Jira ticket becomes a row: earliest valid sprint start, assignee, distin
 });
 
 test('the search asks only for done NGK Sprint tickets resolved in the last 6 months, and only the fields the trends use', () => {
-  assert.equal(S.buildJql({ project: 'NGK' }), 'project = NGK AND sprint in ("NGK Sprint") AND type NOT IN (Release, "Test Case Execution-Smoke/Sanity/Regression", Epic) AND issuetype not in subTaskIssueTypes() AND statusCategory = Done AND resolved >= startOfMonth(-5) ORDER BY created ASC');
-  assert.match(S.buildJql({ project: 'NGK', months: 3 }), /resolved >= startOfMonth\(-2\)/);
+  assert.equal(S.buildJql({ project: 'NGK' }), 'project = NGK AND sprint in ("NGK Sprint") AND type NOT IN (Release, "Test Case Execution-Smoke/Sanity/Regression", Epic) AND issuetype not in subTaskIssueTypes() AND statusCategory = Done AND resolved >= startOfMonth(-6) ORDER BY created ASC');   // 6 months shown, read one month further
+  assert.match(S.buildJql({ project: 'NGK', months: 3 }), /resolved >= startOfMonth\(-3\)/);
   assert.ok(!/openSprints/i.test(S.buildJql()));                    // past sprints count too
   assert.deepEqual(S.FIELDS, ['issuetype', 'created', 'resolutiondate', 'status', 'updated', 'assignee', 'customfield_16047', 'customfield_10007']);
 });

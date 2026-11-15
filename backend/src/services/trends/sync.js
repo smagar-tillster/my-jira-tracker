@@ -22,10 +22,15 @@ export const toRow = (issue) => {
 
 export const EXCLUDED_TYPES = ['Release', 'Test Case Execution-Smoke/Sanity/Regression', 'Epic'];
 
-/** `months` back from the current one: 6 reads the current month and the five before it. */
+/**
+ * `months` back from the current one: 6 shows the current month and the five before it. The read goes one month further back (MARGIN_MONTHS)
+ * because Jira works out startOfMonth in its own account's timezone and the page counts months in this machine's: with the extra month the
+ * first month's edge can never be clipped, and the page itself cuts the months it shows (the extra tickets are counted as "before this range").
+ */
+export const MARGIN_MONTHS = 1;
 export const buildJql = ({ project = PROJECT, months = 6 } = {}) =>
   `project = ${project} AND sprint in ("NGK Sprint") AND type NOT IN (${EXCLUDED_TYPES.map((t) => (/^\w+$/.test(t) ? t : `"${t}"`)).join(', ')}) `
-  + `AND issuetype not in subTaskIssueTypes() AND statusCategory = Done AND resolved >= startOfMonth(-${months - 1}) ORDER BY created ASC`;
+  + `AND issuetype not in subTaskIssueTypes() AND statusCategory = Done AND resolved >= startOfMonth(-${months - 1 + MARGIN_MONTHS}) ORDER BY created ASC`;
 
 export const runTrendsSync = async ({ searchJira = search, now = () => new Date() } = {}) => {
   const started = now();
