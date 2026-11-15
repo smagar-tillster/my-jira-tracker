@@ -6,7 +6,8 @@ import { redactSecrets } from '../../../delivery/lib/reviews.mjs';
 import { runClaude, parseModelJson } from '../../../delivery/lib/reviewgen.mjs';
 import * as store from './store.js';
 
-export const MODEL = 'haiku';
+// Sonnet: it runs only when someone clicks AI analysis (never on a refresh or when the modal opens), so the extra cost per call is a choice made per click.
+export const MODEL = 'sonnet';
 export const TIMEOUT_MS = 180000;
 const PROMPT_VERSION = 2;
 export const MAX_FOCUS = 3;

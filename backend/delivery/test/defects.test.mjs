@@ -135,7 +135,18 @@ test('each category has a one-line meaning, its top 3 tenants, 3 sample tickets,
 const factsFor = (summaries) => D.analyzeDefects({ rows: summaries.map((s) => Dfx('2026-10-10T12:00:00', s, { clients: ['AA'] })), now: NOW });
 const GOOD = JSON.stringify({ headline: 'Payments lead.', focus: [{ title: 'Payment and payterminal', why: '98 defects, 22%.', actions: ['Add decline tests', 'Add timeout tests'], measure: 'Payment defects per month', extra: 'dropped' }], caveats: ['Titles only.', 'Second caveat is dropped.'] });
 
-test('the default model is the small fast one', () => { assert.equal(G.MODEL, 'haiku'); });
+test('the default model is sonnet, and the analysis is only ever asked for by a click: reading it never calls the model', async () => {
+  assert.equal(G.MODEL, 'sonnet');
+  reset();
+  let calls = 0;
+  const svc = createTrendsService({ now: () => NOW, claude: async () => { calls++; return { ok: true, text: GOOD }; } });
+  store.upsert([Dfx('2026-10-10T12:00:00', 'Receipt total wrong', { clients: ['AA'] })].map((r) => ({ ...r, statusCategory: '', updated: null, firstSprintStart: null })));
+  svc.defectAnalysis({ months: 6 }); svc.defectAnalysis({ months: 3 }); svc.sprintTickets({}); svc.status();
+  assert.equal(calls, 0);
+  await svc.defectGuidance({ months: 6 });
+  assert.equal(calls, 1);
+  reset();
+});
 
 test('what is sent to the model has no secrets or card numbers, no people, and the scope as counts only', () => {
   const facts = factsFor(['Login fails password=hunter2secret for kiosk', 'Card 4242 4242 4242 4242 charged twice', 'Odd']);   // the card is a processor test number used as a fixture
@@ -175,7 +186,7 @@ test('the guidance is asked once per set of numbers: the second ask is served fr
   assert.equal((await G.generateGuidance({ facts, scope: 'all done tickets', claude, force: true })).cached, false); assert.equal(calls, 2);
   assert.equal((await G.generateGuidance({ facts, scope: 'FE team only', claude })).cached, false); assert.equal(calls, 3);
   assert.equal(G.cachedGuidance(facts, 'nothing asked for this')?.focus, undefined);
-  assert.equal((await G.generateGuidance({ facts, scope: 'all done tickets', claude, model: 'sonnet' })).cached, false); assert.equal(calls, 4);   // another model is another answer
+  assert.equal((await G.generateGuidance({ facts, scope: 'all done tickets', claude, model: 'haiku' })).cached, false); assert.equal(calls, 4);   // another model is another answer
   reset();
 });
 
