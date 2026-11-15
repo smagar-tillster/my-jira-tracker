@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { trendQuery, defectQuery } from '../utils/trendsChart';
 import { JiraIssue, Accomplishment, CreateAccomplishmentPayload, JiraSprint } from '../types';
 
 // Default to the backend on whatever host served this page, so the app works from any IP/hostname.
@@ -453,4 +454,69 @@ export const quickApi = {
   },
   markRead: async (key: string, read: boolean): Promise<QuickStatus> => (await apiClient.put(`/quick/new/${encodeURIComponent(key)}/read`, { read })).data.data,
   viewed: async (): Promise<QuickStatus> => (await apiClient.post('/quick/viewed', {})).data.data,
+};
+
+// ---------------------------------------------------------------- Trends
+export type TrendBasis = 'sprint' | 'created' | 'resolved';
+export type TrendGroup = 'all' | 'type' | 'client' | 'component' | 'assignee';
+export type TrendMonths = 3 | 6;
+export interface TrendsStatus {
+  running: boolean; lastSyncAt: string | null; lastStatus: 'running' | 'ok' | 'failed' | null; lastError: string | null;
+  lastDurationMs: number | null; tickets: number; firstLoad: boolean;
+}
+export interface TrendSeries { name: string; total: number; rank: number }
+/** Each of type, client and assignee is a list: a ticket must match one value of every list given. An empty list is no filter. */
+export interface TrendFilters { type?: string[]; client?: string[]; assignee?: string[]; component?: string[]; feTeam?: boolean }
+export interface SprintTrend {
+  basis: TrendBasis; group: TrendGroup; months: string[]; series: TrendSeries[]; counts: Record<string, number[]>;
+  /** For the tiles, over the tickets counted in the months shown. */
+  summary: { stories: number; defects: number; topClient: { name: string; count: number } | null };
+  /** Distinct tickets per month (a ticket with two clients is one here although it is under both clients in `counts`). */
+  totals: number[];
+  options: { types: string[]; clients: string[]; components: string[]; assignees: string[] };
+  /** All tickets in the local copy / the ones left after the filters / counted in the months shown / older than the range / in sprints that have not started / with no date of this kind. */
+  tickets: number; matching: number; inRange: number; before: number; future: number; noDate: number;
+  status: TrendsStatus;
+}
+
+export interface DefectCategory {
+  name: string; meaning: string; count: number; share: number; changePct: number | null; medianDaysToFix: number | null; advice: string;
+  tenants: { name: string; count: number }[]; examples: { key: string; summary: string; url: string }[]; repeats: { phrase: string; count: number; clients: number }[];
+  /** Where the fixes were made: the Jira component developers set when the final fix is done (else the PR's), as a share of this category's defects. */
+  fixedIn: { name: string; count: number; pct: number }[];
+  /** How many of this category's defects were placed on the description or PR title alone (the weakest evidence). */
+  weak: number;
+}
+export interface DefectClient { name: string; defects: number; done: number; per100: number; times: number | null }
+export interface DefectRepeat { phrase: string; count: number; clients: number; keys: string[] }
+export interface FocusItem { title: string; why: string; actions: string[]; measure: string }
+export interface DefectGuidance { headline: string; focus: FocusItem[]; caveats: string[]; cached: boolean; model: string; at: string }
+export interface DefectFacts {
+  months: string[]; perMonth: number[]; topClients: { name: string; count: number }[]; averagePer100: number; minClientDone: number; typesCounted: string[]; typeFilterIgnored: boolean;
+  tiles: { defects: number; ticketsDone: number; shareOfDone: number; medianDaysToFix: number | null; medianDaysRecent: number | null; medianDaysEarlier: number | null; uat: number; uatShare: number; fixedInWeekShare: number };
+  categories: DefectCategory[]; clients: DefectClient[]; repeats: DefectRepeat[];
+  /** How many of the defects have their merged PR in the app's PR ledger (the PR files help decide the category). */
+  prCoverage: { withPr: number; defects: number };
+}
+export interface DefectAnalysis { facts: DefectFacts; scope: string; guidance: DefectGuidance | null; status: TrendsStatus }
+
+const apiMessage = (e: any, fallback: string) => String(e?.response?.data?.error || (e instanceof Error ? e.message : fallback));
+
+export const trendsApi = {
+  status: async (): Promise<TrendsStatus> => (await apiClient.get('/trends/status')).data.data,
+  sprintTickets: async (basis: TrendBasis, months: TrendMonths, group: TrendGroup, filters: TrendFilters): Promise<SprintTrend> =>
+    (await apiClient.get('/trends/sprint-tickets', { params: trendQuery(basis, months, group, filters) })).data.data,
+  /** The defect analysis for the page's months and filters. Never asks the model; the saved guidance comes with it when there is one. */
+  defects: async (months: TrendMonths, filters: TrendFilters): Promise<DefectAnalysis> =>
+    (await apiClient.get('/trends/defects', { params: defectQuery(months, filters) })).data.data,
+  /** Asks the model to write the guidance for these numbers (takes a while). Throws with the reason when it cannot. */
+  defectGuidance: async (months: TrendMonths, filters: TrendFilters, force = false): Promise<DefectGuidance> => {
+    try { return (await apiClient.post('/trends/defects/guidance', { months, client: filters.client ?? [], assignee: filters.assignee ?? [], component: filters.component ?? [], feTeam: !!filters.feTeam, force })).data.data; }
+    catch (e: any) { throw new Error(apiMessage(e, 'Could not write the guidance')); }
+  },
+  /** Reads the done tickets of the last 6 months from Jira now: the only way the copy is updated. A read already running is not an error. An empty JSON body on purpose: the backend refuses non-JSON POSTs. */
+  refresh: async (): Promise<TrendsStatus> => {
+    try { return (await apiClient.post('/trends/refresh', {})).data.data; }
+    catch (e: any) { if (e?.response?.status === 409) return e.response.data.data; throw e; }
+  },
 };

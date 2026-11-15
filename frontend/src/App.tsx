@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import JiraTasksTracker from './components/JiraTasksTracker';
 import QuickAnalysis from './components/QuickAnalysis';
+import Trends from './components/Trends';
 import ReleasePrReports from './components/ReleasePrReports';
 import AppDrawer from './components/shell/AppDrawer';
 import TabStrip from './components/shell/TabStrip';
@@ -244,6 +245,8 @@ function App() {
         );
       case 'quickAnalysis':
         return <QuickAnalysis active={activeId === 'quickAnalysis'} />;
+      case 'trends':
+        return <Trends />;
       case 'releases':
         return <ReleasePrReports />;
       case 'prReviews':
