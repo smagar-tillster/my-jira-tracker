@@ -112,7 +112,7 @@ export const DefectAnalysisView: React.FC<DefectViewProps> = ({ data, loading, e
                 </button>
               </div>
               {guideError && <div className="mt-2 px-3 py-2 text-sm bg-red-50 text-red-800 border border-red-200 rounded">❌ {guideError}</div>}
-              {guiding && <p className="mt-2 text-xs text-gray-500">This takes a few seconds.</p>}
+              {guiding && <p className="mt-2 text-xs text-gray-500">This takes about 20 seconds.</p>}
               {guidance && (
                 <div className="mt-2 bg-gray-50 rounded-lg px-4 py-3 space-y-2">
                   {guidance.headline && <p className="text-sm font-medium text-gray-900">{guidance.headline}</p>}
