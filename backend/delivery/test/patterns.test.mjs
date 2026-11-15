@@ -108,6 +108,9 @@ test('a defect matches a pattern when its repo is listed and a changed file is c
   assert.deepEqual(m({}, { files: ['./configs/a.js'] }), ['configs/a.js']);
 });
 
+/** Waits until the background ingest of a service is not running (it is not part of the answer any more). */
+const settle = async (svc) => { for (let i = 0; i < 200 && svc.ingestStatus().state === 'running'; i++) await new Promise((r) => setTimeout(r, 5)); };
+
 const prIdx = (m) => new Map(Object.entries(m));
 const pr = (repo, files, title = 'fix') => ({ repo, title, files: files.map((name) => ({ name, status: 'modified' })) });
 const cat = () => 'Menu, pricing and content data';
@@ -303,13 +306,14 @@ test('the analysis shows which defects repeat a pattern and which groups might b
   assert.deepEqual([ingests, modelCalls], [0, 0]); assert.deepEqual(snapshot(root), before);           // looking changes and costs nothing
 
   const rec = await svc.recordRepeats({ months: 6 });
-  assert.deepEqual([rec.ok, rec.updated.map((u) => [u.id, u.added, u.seen]), rec.ingest, ingests], [true, [['shared-promotion-config-blast-radius', ['NGK-1', 'NGK-2'], 3]], 'ok', 1]);
+  assert.deepEqual([rec.ok, rec.updated.map((u) => [u.id, u.added, u.seen]), rec.ingest, rec.ingestStatus.state], [true, [['shared-promotion-config-blast-radius', ['NGK-1', 'NGK-2'], 3]], 'queued', 'running']);   // answered at once; ingest runs behind it
+  await settle(svc); assert.equal(ingests, 1); assert.equal(svc.ingestStatus().state, 'done');
   assert.match(snapshot(root)['shared-promotion-config-blast-radius.md'], /seen: 3\n[\s\S]*tickets: \["NGK-98319", "NGK-1", "NGK-2"\]/);
   const after = svc.defectAnalysis({ months: 6 }).patterns;
   assert.deepEqual([after.matches, after.recorded], [[], 2]);                                           // now recorded: nothing left to plan
   assert.deepEqual(after.known.map((k) => [k.id, k.seen, k.tickets]), [['shared-promotion-config-blast-radius', 3, 3]]);   // and the list shows the new seen count
   const again = await svc.recordRepeats({ months: 6 });
-  assert.deepEqual([again.updated, again.ingest, ingests], [[], 'none', 1]);                           // no change, no ingest
+  await settle(svc); assert.deepEqual([again.updated, again.ingest, ingests], [[], 'none', 1]);         // no change, no ingest
 
   const d = await svc.draftForCluster({ months: 6, cluster: a.clusters[0].id });
   assert.deepEqual([d.ok, d.id, modelCalls], [true, 'menu-tile-filter-drops-items', 1]);
@@ -330,7 +334,9 @@ test('when ingest fails after recording, the files stay updated and the failure 
   store.upsert([row('NGK-1')]);
   const svc = createTrendsService({ now: () => NOW, ledger: () => ledgerOf(lpr(1, ['NGK-1'], ['configs/promotion.js'])), ragRoot: () => root, ingest: async () => ({ ok: false, reason: 'ingest exited with code 1' }) });
   const r = await svc.recordRepeats({ months: 6 });
-  assert.deepEqual([r.ok, r.updated.length, r.ingest, r.reason], [true, 1, 'failed', 'ingest exited with code 1']);
+  assert.deepEqual([r.ok, r.updated.length, r.ingest], [true, 1, 'queued']);
+  await settle(svc);
+  assert.deepEqual([svc.ingestStatus().state, svc.ingestStatus().reason], ['failed', 'ingest exited with code 1']);          // reported on the status, after the answer
   assert.match(snapshot(root)['shared-promotion-config-blast-radius.md'], /seen: 2/);
   reset();
 });
@@ -354,7 +360,7 @@ test('the routes: record and draft with their guards, bad requests, busy and fai
     assert.equal((await call(server, 'POST', '/api/trends/patterns/record', { months: 12 })).status, 400);
     for (const bad of [{ months: 6 }, { months: 6, cluster: 'nothex!!' }, { months: 6, cluster: 'ABCDEF12' }, { months: 9, cluster: cid }]) assert.equal((await call(server, 'POST', '/api/trends/patterns/draft', bad)).status, 400, JSON.stringify(bad));
     const rec = await call(server, 'POST', '/api/trends/patterns/record', { months: 6 });
-    assert.equal(rec.status, 200); assert.deepEqual([rec.json.data.updated[0].id, rec.json.data.ingest], ['shared-promotion-config-blast-radius', 'ok']);
+    assert.equal(rec.status, 200); assert.deepEqual([rec.json.data.updated[0].id, rec.json.data.ingest], ['shared-promotion-config-blast-radius', 'queued']);
     const ok = await call(server, 'POST', '/api/trends/patterns/draft', { months: 6, cluster: cid });
     assert.equal(ok.status, 200); assert.deepEqual([ok.json.data.id, ok.json.data.path], ['x-pattern', '/staged/x-pattern.md']);
     mode = 'refuse'; const ref = await call(server, 'POST', '/api/trends/patterns/draft', { months: 6, cluster: cid });
@@ -379,7 +385,8 @@ test('adding writes docs/defects/<id>.md from the reviewed text, checks it again
   const before = snapshot(root);
   const good = GOODFILE();
   const r = await svc.addPattern({ text: good });
-  assert.deepEqual([r.ok, r.id, r.ingest, ingests], [true, 'menu-tile-filter-drops-items', 'ok', 1]);
+  assert.deepEqual([r.ok, r.id, r.ingest], [true, 'menu-tile-filter-drops-items', 'queued']);
+  await settle(svc); assert.equal(ingests, 1);
   assert.equal(r.path, path.join(root, 'docs', 'defects', 'menu-tile-filter-drops-items.md'));
   assert.equal(fs.readFileSync(r.path, 'utf8'), good);
   const after = snapshot(root);
@@ -413,11 +420,12 @@ test('adding reports a missing RAG folder, and an ingest failure after the file 
   const root = makeRag({ caps: ['cart-assembly'] });
   const svc = createTrendsService({ now: () => NOW, ragRoot: () => root, ingest: async () => ({ ok: false, reason: 'ingest exited with code 1' }) });
   const r = await svc.addPattern({ text: GOODFILE() });
-  assert.deepEqual([r.ok, r.ingest, r.reason], [true, 'failed', 'ingest exited with code 1']);
+  assert.deepEqual([r.ok, r.ingest], [true, 'queued']);
+  await settle(svc); assert.deepEqual([svc.ingestStatus().state, svc.ingestStatus().reason], ['failed', 'ingest exited with code 1']);
   assert.ok(fs.existsSync(r.path));                                                                                         // the file stays; only ingest failed
 });
 
-test('the add route: guards, size limit, the checks failing, an existing id, and a busy answer', async () => {
+test('the add route: guards, size limit, the checks failing, an existing id, and an immediate answer while ingest runs', async () => {
   const root = makeRag({ caps: ['cart-assembly'] });
   let release; const gate = new Promise((r) => { release = r; }); let wait = false;
   const svc = createTrendsService({ now: () => NOW, ragRoot: () => root, ingest: async () => { if (wait) await gate; return { ok: true }; } });
@@ -430,12 +438,13 @@ test('the add route: guards, size limit, the checks failing, an existing id, and
     const good = GOODFILE();
     const fail = await call(server, 'POST', '/api/trends/patterns/add', { text: good.replace('capabilities: ["cart-assembly"]', 'capabilities: []') });
     assert.equal(fail.status, 422); assert.match(fail.json.error, /capabilities is empty/); assert.ok(fail.json.problems.length >= 1);
-    wait = true; const first = call(server, 'POST', '/api/trends/patterns/add', { text: good });
-    await new Promise((r) => setTimeout(r, 40));
-    assert.equal((await call(server, 'POST', '/api/trends/patterns/add', { text: good })).status, 409);
-    release(); const ok = await first;
-    assert.equal(ok.status, 200); assert.deepEqual([ok.json.data.id, ok.json.data.ingest], ['menu-tile-filter-drops-items', 'ok']);
-    wait = false;
+    wait = true;
+    const first = await call(server, 'POST', '/api/trends/patterns/add', { text: good });                                      // answers at once, although ingest is held
+    assert.equal(first.status, 200); assert.deepEqual([first.json.data.id, first.json.data.ingest], ['menu-tile-filter-drops-items', 'queued']);
+    assert.match(first.json.data.addedAt, /^2026-11-14T/);                                                                    // when it was queued: the page compares this with when ingest finished
+    assert.equal(svc.ingestStatus().state, 'running');
+    release(); await settle(svc);
+    assert.equal(svc.ingestStatus().state, 'done');
     const dup = await call(server, 'POST', '/api/trends/patterns/add', { text: good });
     assert.equal(dup.status, 422); assert.match(dup.json.error, /already exists/);
   } finally { release?.(); server.close(); }
@@ -460,4 +469,66 @@ test('a group the model declined stays declined across reloads, with its reason,
   store.upsert([row('NGK-6')]);                                                                                             // a fourth defect changes the group's tickets but not its id (files decide the id)
   assert.equal(svc.defectAnalysis({ months: 6 }).patterns.clusters[0].id, id);
   reset();
+});
+
+// ---------------------------------------------------------------- ingest in the background
+test('adding answers at once while ingest runs behind it: the file is there, the status says running, then done', async () => {
+  const root = makeRag({ caps: ['cart-assembly'] });
+  let release; const gate = new Promise((r) => { release = r; }); let started = 0;
+  const svc = createTrendsService({ now: () => NOW, ragRoot: () => root, ingest: async () => { started++; await gate; return { ok: true }; } });
+  assert.deepEqual(svc.ingestStatus(), { state: 'idle', startedAt: null, finishedAt: null, reason: '' });
+  const r = await svc.addPattern({ text: GOODFILE() });                                         // returns although ingest has not finished
+  assert.deepEqual([r.ok, r.ingest, r.ingestStatus.state], [true, 'queued', 'running']);
+  assert.ok(fs.existsSync(r.path));                                                             // the pattern is in the RAG already
+  assert.equal(svc.ingestStatus().state, 'running'); assert.equal(started, 1);
+  assert.equal(svc.defectAnalysis({ months: 6 }).patterns.ingest.state, 'running');            // the analysis carries it, so a reopened modal still says queued
+  release(); await settle(svc);
+  const st = svc.ingestStatus();
+  assert.deepEqual([st.state, st.reason], ['done', '']); assert.match(st.startedAt, /^2026-11-14T/); assert.match(st.finishedAt, /^2026-11-14T/);
+});
+
+test('ingest runs one at a time: anything queued while it runs is covered by exactly one more run', async () => {
+  const root = makeRag({ caps: ['cart-assembly'] });
+  let release; let gate = new Promise((r) => { release = r; }); let started = 0; let overlap = 0; let live = 0; let max = 0;
+  const svc = createTrendsService({ now: () => NOW, ragRoot: () => root, ingest: async () => { started++; live++; max = Math.max(max, live); await gate; live--; return { ok: true }; } });
+  const mk = (id) => GOODFILE().replace('id: menu-tile-filter-drops-items', `id: ${id}`);
+  await svc.addPattern({ text: mk('first-one') });
+  await svc.addPattern({ text: mk('second-one') });
+  await svc.addPattern({ text: mk('third-one') });                                              // three adds while the first ingest is still running
+  assert.equal(started, 1);
+  release(); await settle(svc);
+  await new Promise((r) => setTimeout(r, 20)); await settle(svc);
+  assert.equal(started, 2); assert.equal(max, 1);                                               // one more run, never two at once
+  assert.equal(svc.ingestStatus().state, 'done');
+  assert.deepEqual(P.loadPatterns(root).patterns.map((p) => p.id), ['first-one', 'second-one', 'third-one']);
+  void overlap; void gate;
+});
+
+test('a failed ingest is kept with its reason, and a thrown one too, without losing the files; the next ingest can succeed', async () => {
+  const root = makeRag({ caps: ['cart-assembly'] });
+  let mode = 'throw';
+  const svc = createTrendsService({ now: () => NOW, ragRoot: () => root, ingest: async () => { if (mode === 'throw') throw new Error('python exploded'); return { ok: mode === 'ok', reason: mode === 'ok' ? '' : 'exit 1' }; } });
+  const mk = (id) => GOODFILE().replace('id: menu-tile-filter-drops-items', `id: ${id}`);
+  await svc.addPattern({ text: mk('one-one') }); await settle(svc);
+  assert.deepEqual([svc.ingestStatus().state, svc.ingestStatus().reason], ['failed', 'python exploded']);
+  mode = 'ok'; await svc.addPattern({ text: mk('two-two') }); await settle(svc);
+  assert.deepEqual([svc.ingestStatus().state, svc.ingestStatus().reason], ['done', '']);
+  assert.ok(fs.existsSync(path.join(root, 'docs', 'defects', 'one-one.md')) && fs.existsSync(path.join(root, 'docs', 'defects', 'two-two.md')));
+});
+
+test('the ingest status route, and the add and record routes answer with it', async () => {
+  const root = makeRag({ caps: ['cart-assembly'] });
+  let release; const gate = new Promise((r) => { release = r; });
+  const svc = createTrendsService({ now: () => NOW, ragRoot: () => root, ingest: async () => { await gate; return { ok: true }; } });
+  const { default: express } = await import('express');
+  const app = express(); app.use(express.json()); app.use('/api', createTrendsRouter({ service: svc }));
+  const server = http.createServer(app); await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  try {
+    assert.equal((await call(server, 'GET', '/api/trends/patterns/ingest')).json.data.state, 'idle');
+    const add = await call(server, 'POST', '/api/trends/patterns/add', { text: GOODFILE() });
+    assert.deepEqual([add.status, add.json.data.ingest, add.json.data.ingestStatus.state], [200, 'queued', 'running']);
+    assert.equal((await call(server, 'GET', '/api/trends/patterns/ingest')).json.data.state, 'running');
+    release(); await settle(svc);
+    assert.equal((await call(server, 'GET', '/api/trends/patterns/ingest')).json.data.state, 'done');
+  } finally { release?.(); server.close(); }
 });

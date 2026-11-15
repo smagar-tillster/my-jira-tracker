@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { trendsApi, DefectAnalysis, DefectCategory, DefectGuidance, DefectPatterns, PatternAdded, PatternDraft, RecordResult, TrendFilters, TrendMonths } from '../../services/api';
-import { FE_COMPONENT, monthCounts, monthLabel, sparkline, toggleFeFixes, trendText, SERIES_COLORS } from '../../utils/trendsChart';
+import { trendsApi, DefectAnalysis, DefectCategory, DefectGuidance, DefectPatterns, IngestStatus, PatternAdded, PatternDraft, RecordResult, TrendFilters, TrendMonths } from '../../services/api';
+import { FE_COMPONENT, ingestPhase, monthCounts, monthLabel, sparkline, toggleFeFixes, trendText, SERIES_COLORS } from '../../utils/trendsChart';
 
 const ago = (iso: string) => {
   const m = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000));
@@ -86,16 +86,28 @@ const Samples: React.FC<{ examples: { key: string; summary: string; url: string 
   </>
 );
 
-/** What recording repeats did, in words. */
-export const recordSummary = (r: RecordResult): string => {
+/** What recording repeats did, in words; the ingest part follows the background ingest. */
+export const recordSummary = (r: RecordResult, ingest?: IngestStatus): string => {
   const n = r.updated.reduce((a, u) => a + u.added.length, 0);
   const parts: string[] = [];
   parts.push(r.updated.length ? `Updated ${r.updated.length} ${r.updated.length === 1 ? 'pattern' : 'patterns'} with ${n} ${n === 1 ? 'repeat' : 'repeats'} (${r.updated.map(u => `${u.id} now seen ${u.seen}`).join('; ')}).` : 'Nothing needed updating.');
   if (r.skipped.length) parts.push(`Left alone: ${r.skipped.map(s => `${s.id} (${s.reason})`).join('; ')}.`);
-  if (r.ingest === 'ok') parts.push('Ingest ran.');
-  if (r.ingest === 'failed') parts.push(`The files are updated but ingest failed: ${r.reason}`);
+  if (r.ingest === 'queued') {
+    const phase = r.queuedAt && ingest ? ingestPhase(r.queuedAt, ingest) : 'queued';
+    parts.push(phase === 'queued' ? 'Ingest queued: done when done.' : phase === 'added' ? 'Ingest done.' : `The files are updated but ingest failed: ${ingest?.reason}. The next add or record runs it again.`);
+  }
   return parts.join(' ');
 };
+
+/** What adding a pattern to the RAG looks like now: Queued while the background ingest runs, Pattern added once it has finished. */
+export const addedBanner = (a: PatternAdded, ingest: IngestStatus): { label: string; text: string; tone: 'queued' | 'added' | 'failed' } => {
+  const phase = ingestPhase(a.addedAt, ingest);
+  if (phase === 'queued') return { label: 'Queued', tone: 'queued', text: `docs/defects/${a.id}.md is in the RAG. Ingest runs in the background and finishes on its own; you can close this window.` };
+  if (phase === 'failed') return { label: 'Pattern added', tone: 'failed', text: `docs/defects/${a.id}.md is in the RAG, but ingest failed: ${ingest.reason}. The next add or record runs it again.` };
+  return { label: 'Pattern added', tone: 'added', text: `docs/defects/${a.id}.md is added and ingested. It is a new, uncommitted file in the RAG's git working tree: run the RAG's tests and commit it.` };
+};
+const BANNER_TONE = { queued: 'bg-amber-50 text-amber-900 border-amber-200', added: 'bg-green-50 text-green-900 border-green-200', failed: 'bg-red-50 text-red-800 border-red-200' } as const;
+const CHIP_TONE = { queued: 'bg-amber-100 text-amber-900', added: 'bg-green-100 text-green-900', failed: 'bg-red-100 text-red-800' } as const;
 
 /** The state of the pattern actions (record repeats, draft a pattern), kept next to the view so it can be rendered on its own. */
 export interface PatternActions {
@@ -105,9 +117,6 @@ export interface PatternActions {
   adding: string | null; added: Record<string, PatternAdded>; addErrors: Record<string, string>; onAdd: (cluster: string) => void;
 }
 
-/** What adding a pattern to the RAG did, in words. */
-export const addedSummary = (a: PatternAdded): string =>
-  `Added docs/defects/${a.id}.md to the RAG. It is a new, uncommitted file in the RAG's git working tree: run the RAG's tests and commit it. ${a.ingest === 'ok' ? 'Ingest ran.' : `The file is there but ingest failed: ${a.reason}`}`;
 
 const newRepeats = (p: DefectPatterns) => p.matches.reduce((n, m) => n + m.tickets.length, 0);
 
@@ -125,9 +134,17 @@ const PatternsSection: React.FC<{ patterns: DefectPatterns } & PatternActions> =
         <p className="text-sm text-gray-500">Matched against the RAG's review patterns through the files each fix changed (PR ledger).</p>
       </div>
       {/* what was added stays here: once a pattern is added its group is matched and leaves the list below, so a message kept inside the group would vanish */}
-      {Object.values(added).map(a => (
-        <p key={a.id} className="px-3 py-2 text-sm bg-green-50 text-green-900 border border-green-200 rounded">{addedSummary(a)}</p>
-      ))}
+      {Object.values(added).map(a => {
+        const b = addedBanner(a, patterns.ingest);
+        return (
+          <p key={a.id} className={`px-3 py-2 text-sm border rounded flex items-baseline gap-2 flex-wrap ${BANNER_TONE[b.tone]}`}>
+            <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${CHIP_TONE[b.tone]}`}>{b.label}</span>
+            <span>{b.text}</span>
+          </p>
+        );
+      })}
+      {Object.keys(added).length === 0 && patterns.ingest.state === 'running' && <p className="px-3 py-2 text-sm border rounded bg-amber-50 text-amber-900 border-amber-200">RAG ingest: queued, done when done. It keeps running if you close this window.</p>}
+      {Object.keys(added).length === 0 && patterns.ingest.state === 'failed' && <p className="px-3 py-2 text-sm border rounded bg-red-50 text-red-800 border-red-200">The last RAG ingest failed: {patterns.ingest.reason}. The next add or record runs it again.</p>}
       {!patterns.ragFound ? (
         <p className="text-sm text-gray-700">The RAG's defect patterns were not found at {patterns.ragRoot}/docs/defects, so nothing can be matched.</p>
       ) : (
@@ -169,7 +186,7 @@ const PatternsSection: React.FC<{ patterns: DefectPatterns } & PatternActions> =
               ))}
             </ul>
             {recordError && <p className="px-3 py-2 text-sm bg-red-50 text-red-800 border border-red-200 rounded">❌ {recordError}</p>}
-            {recordResult && <p className="px-3 py-2 text-sm bg-green-50 text-green-900 border border-green-200 rounded">{recordSummary(recordResult)}</p>}
+            {recordResult && <p className="px-3 py-2 text-sm bg-green-50 text-green-900 border border-green-200 rounded">{recordSummary(recordResult, patterns.ingest)}</p>}
           </div>
 
           <div className="space-y-2">
@@ -215,7 +232,7 @@ const PatternsSection: React.FC<{ patterns: DefectPatterns } & PatternActions> =
                         className="w-full text-xs font-mono bg-gray-50 border border-gray-200 rounded p-3 leading-relaxed" />
                       <div className="flex items-center gap-2 flex-wrap">
                         <button onClick={() => onAdd(c.id)} disabled={adding !== null || !!added[c.id]} title="Checks the text against the RAG's rules, creates the file in the RAG's docs/defects (never overwriting one), and runs ingest"
-                          className="px-3 py-1.5 rounded-lg text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed">{adding === c.id ? '⏳ Adding…' : added[c.id] ? 'Added' : 'Add to RAG'}</button>
+                          className="px-3 py-1.5 rounded-lg text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed">{adding === c.id ? '⏳ Adding…' : added[c.id] ? (ingestPhase(added[c.id].addedAt, patterns.ingest) === 'queued' ? 'Queued' : 'Pattern added') : 'Add to RAG'}</button>
                         <button onClick={() => copy(current)} className="px-3 py-1 rounded-lg text-sm font-medium bg-white ring-1 ring-gray-300 text-gray-700 hover:bg-gray-100">Copy</button>
                         {edited && <span className="text-xs text-gray-500">Edited. It is checked again when you add it.</span>}
                       </div>
@@ -368,6 +385,20 @@ const DefectAnalysisModal: React.FC<{ months: TrendMonths; filters: TrendFilters
     catch (e) { setGuideError(e instanceof Error ? e.message : 'Could not write the guidance'); }
     finally { setGuiding(false); }
   }, [months, filters]);
+
+  // while the RAG's ingest runs in the background, ask how it is doing; closing the modal stops asking but not the ingest
+  const ingestRunning = data?.patterns?.ingest.state === 'running';
+  useEffect(() => {
+    if (!ingestRunning) return undefined;
+    const t = window.setInterval(async () => {
+      try {
+        const st = await trendsApi.patternIngest();
+        setData(prev => (prev?.patterns ? { ...prev, patterns: { ...prev.patterns, ingest: st } } : prev));
+        if (st.state !== 'running') setData(await trendsApi.defects(months, filters));    // the new patterns are in the list now
+      } catch { /* the backend may be restarting; try again on the next tick */ }
+    }, 3000);
+    return () => window.clearInterval(t);
+  }, [ingestRunning, months, filters]);
 
   const record = useCallback(async () => {
     setRecording(true); setRecordError(null); setRecordResult(null);

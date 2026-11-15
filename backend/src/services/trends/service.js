@@ -33,6 +33,21 @@ export const createTrendsService = ({ sync = runTrendsSync, now = () => new Date
   let recording = false;
   let drafting = false;
   let adding = false;
+  // the RAG's ingest runs in the background: files are written at once, and ingest is queued behind whatever is already running (one at a time,
+  // and anything queued while it runs is covered by one more run). The state lives in this process: closing the page does not stop it.
+  const job = { running: false, pending: false, startedAt: null, finishedAt: null, result: null };
+  const stamp = () => new Date(now()).toISOString();
+  const queueIngest = (root) => {
+    if (job.running) { job.pending = true; return; }
+    const run = () => {
+      job.running = true; job.pending = false; job.startedAt = stamp();
+      Promise.resolve().then(() => ingest({ ragRoot: root })).catch((e) => ({ ok: false, reason: String(e?.message || e).slice(0, 200) }))
+        .then((r) => { job.running = false; job.finishedAt = stamp(); job.result = { ok: !!r?.ok, reason: r?.reason || '' }; if (job.pending) run(); });
+    };
+    run();
+  };
+  /** { state: running | done | failed | idle, startedAt, finishedAt, reason }: what the page shows as "Queued, done when done". */
+  const ingestStatus = () => ({ state: job.running ? 'running' : job.result ? (job.result.ok ? 'done' : 'failed') : 'idle', startedAt: job.startedAt, finishedAt: job.finishedAt, reason: job.result?.reason || '' });
 
   /** Starts a read from Jira unless one is going. Returns true when started. */
   const refresh = () => {
@@ -69,6 +84,7 @@ export const createTrendsService = ({ sync = runTrendsSync, now = () => new Date
   const patternView = (st) => ({
     ragFound: st.found, ragRoot: st.root, patternCount: st.patterns.length,
     known: st.patterns.map((p) => ({ id: p.id, seen: p.seen, tickets: p.tickets.length, status: p.status, repos: p.repos })), defects: st.defects.length, withPr: st.withFiles.length, recorded: st.plan.recorded,
+    ingest: ingestStatus(),
     matches: st.plan.matches.map((m) => ({ patternId: m.patternId, seen: m.seen, tickets: m.tickets.map((t) => ({ key: t.key, title: t.title })) })), clusters: st.clusters.map((c) => ({ ...c, declined: declinedFor(c.id) })),
   });
 
@@ -103,9 +119,8 @@ export const createTrendsService = ({ sync = runTrendsSync, now = () => new Date
       if (!st.found) return { ok: false, reason: `The RAG's defect patterns folder was not found at ${st.root}/docs/defects` };
       if (!st.plan.matches.length) return { ok: true, updated: [], skipped: [], ingest: 'none', reason: '' };
       const res = applyRepeats(st.plan, st.patterns, st.root);
-      let ing = 'none'; let reason = '';
-      if (res.updated.length) { const r = await ingest({ ragRoot: st.root }); ing = r.ok ? 'ok' : 'failed'; reason = r.reason || ''; }
-      return { ok: true, ...res, ingest: ing, reason };
+      if (res.updated.length) queueIngest(st.root);                                  // the files are updated; ingest follows in the background
+      return { ok: true, ...res, ingest: res.updated.length ? 'queued' : 'none', queuedAt: stamp(), ingestStatus: ingestStatus() };
     } finally { recording = false; }
   };
 
@@ -152,12 +167,12 @@ export const createTrendsService = ({ sync = runTrendsSync, now = () => new Date
       if (patterns.some((p) => p.id === id) || fs.existsSync(file)) return { ok: false, reason: `A pattern named ${id} already exists in the RAG; it was not overwritten. Change the id, or record the repeat on the existing one.`, problems: [] };
       try { fs.writeFileSync(file, body.endsWith('\n') ? body : `${body}\n`, { flag: 'wx' }); }
       catch (e) { return { ok: false, reason: `The pattern could not be written (${e.code || 'error'})`, problems: [] }; }
-      const r = await ingest({ ragRoot: root });
-      return { ok: true, id, path: file, ingest: r.ok ? 'ok' : 'failed', reason: r.reason || '' };
+      queueIngest(root);                                                             // the file is in the RAG now; ingest follows in the background
+      return { ok: true, id, path: file, ingest: 'queued', addedAt: stamp(), ingestStatus: ingestStatus() };
     } finally { adding = false; }
   };
 
-  return { refresh, status, sprintTickets, defectAnalysis, defectGuidance, recordRepeats, draftForCluster, addPattern, isRunning: () => running, isGuiding: () => guiding };
+  return { refresh, status, sprintTickets, defectAnalysis, defectGuidance, recordRepeats, draftForCluster, addPattern, ingestStatus, isRunning: () => running, isGuiding: () => guiding };
 };
 
 export const trendsService = createTrendsService();

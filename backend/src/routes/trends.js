@@ -47,6 +47,9 @@ export const createTrendsRouter = ({ service = trendsService } = {}) => {
     res.json({ success: true, data: guidance });
   });
 
+  // GET /api/trends/patterns/ingest  — the RAG ingest started by recording or adding: running ("queued, done when done"), done, failed or idle
+  router.get('/trends/patterns/ingest', (req, res) => res.json({ success: true, data: service.ingestStatus() }));
+
   // POST /api/trends/patterns/record  {months, client[], assignee[], component[], feTeam}  — record the defects in view that repeat an existing RAG pattern
   // (seen + 1, ticket added; nothing else is edited) and run the RAG's ingest once. 409 when one is running.
   router.post('/trends/patterns/record', sameMachineOnly, async (req, res) => {

@@ -127,3 +127,14 @@ export const toggleFeFixes = <F extends { component?: string[] }>(filters: F): F
   const rest = have.filter((c) => c !== FE_COMPONENT);
   return { ...filters, component: on ? (rest.length ? rest : undefined) : [FE_COMPONENT] };
 };
+
+/**
+ * Where a pattern that was queued for the RAG's ingest stands: queued while an ingest is running (or none has finished since), added once an ingest
+ * that finished after it was queued succeeded, failed if that one failed. `since` and the ingest times are ISO strings from the same server clock.
+ */
+export type IngestPhase = 'queued' | 'added' | 'failed';
+export const ingestPhase = (since: string, ingest: { state: string; finishedAt: string | null }): IngestPhase => {
+  if (ingest.state === 'running') return 'queued';
+  if (ingest.finishedAt && ingest.finishedAt >= since) return ingest.state === 'failed' ? 'failed' : 'added';
+  return 'queued';
+};
