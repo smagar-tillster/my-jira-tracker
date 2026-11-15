@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { trendsApi, DefectAnalysis, DefectCategory, DefectGuidance, TrendFilters, TrendMonths } from '../../services/api';
 import { monthCounts, monthLabel, sparkline, trendText, SERIES_COLORS } from '../../utils/trendsChart';
 
@@ -73,19 +74,19 @@ export const DefectAnalysisView: React.FC<DefectViewProps> = ({ data, loading, e
   const range = f ? `${monthLabel(f.months[0]).full} to ${monthLabel(f.months[f.months.length - 1]).full}` : '';
 
   return (
-    <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl my-6" role="dialog" aria-modal="true" aria-labelledby="defect-title">
-      <div className="flex items-center gap-3 px-5 py-3 border-b border-gray-200">
+    <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl flex flex-col max-h-full min-h-0" role="dialog" aria-modal="true" aria-labelledby="defect-title">
+      <div className="flex items-center gap-3 px-5 py-3 border-b border-gray-200 shrink-0">
         <h2 id="defect-title" className="text-base font-semibold text-gray-900">Defect analysis</h2>
         {f && <span className="text-xs text-gray-500">{range} · {data?.scope}</span>}
         <button onClick={onClose} aria-label="Close" autoFocus className="ml-auto px-2 py-1 rounded text-gray-500 hover:bg-gray-100">✕</button>
       </div>
 
-      <div className="px-5 py-4 space-y-4">
+      <div className="px-5 py-4 space-y-4 overflow-y-auto min-h-0">
         {error && <div className="px-3 py-2 text-sm bg-red-50 text-red-800 border border-red-200 rounded">❌ {error}</div>}
         {!data && loading && <p className="text-sm text-gray-500">Analyzing…</p>}
 
         {f && t && (t.defects === 0 ? (
-          <p className="text-sm text-gray-500 py-6 text-center">No defects were done in these months with these filters. Clear a filter on the Trends page, or press Refresh there if you have not read Jira yet.</p>
+          <p className="text-sm text-gray-500 py-6 text-center">No defects were done in these months with these filters. Clear a filter on the report, or press Refresh there if you have not read Jira yet.</p>
         ) : (
           <>
             {/* one line of numbers */}
@@ -131,7 +132,7 @@ export const DefectAnalysisView: React.FC<DefectViewProps> = ({ data, loading, e
             </section>
 
             <p className="text-xs text-gray-400">
-              {f.typesCounted.join(', ')} done in these months{f.typeFilterIgnored ? '; the Type filter is ignored here' : ''}. Categories are fixed and keyword-based on title, labels and component. Numbers change when you press Refresh on Trends.
+              {f.typesCounted.join(', ')} done in these months{f.typeFilterIgnored ? '; the Type filter is ignored here' : ''}. Categories are fixed and keyword-based on title, labels and component. Numbers change when you press Refresh on the report.
             </p>
           </>
         ))}
@@ -172,10 +173,12 @@ const DefectAnalysisModal: React.FC<{ months: TrendMonths; filters: TrendFilters
     finally { setGuiding(false); }
   }, [months, filters]);
 
-  return (
-    <div className="fixed inset-0 z-50 bg-black/40 overflow-auto flex items-start justify-center px-4" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
+  // Rendered at the top of the page (not inside the report) so no parent can clip or cover it, and sized to the window: the header stays, the body scrolls.
+  return createPortal(
+    <div className="fixed inset-0 z-[1000] bg-black/40 flex items-center justify-center p-4" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }} style={{ height: '100dvh' }}>
       <DefectAnalysisView data={data} loading={loading} error={error} guidance={guidance} guiding={guiding} guideError={guideError} onWrite={write} onClose={onClose} />
-    </div>
+    </div>,
+    document.body,
   );
 };
 

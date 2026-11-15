@@ -49,7 +49,7 @@ export interface TrendViewProps {
   onView: (v: 'chart' | 'table') => void; onRefresh: () => void; onDefects: () => void;
 }
 
-/** The Tickets done by month page for given data and choices. No loading here, so it can be rendered on its own. */
+/** The Ticket trend report for given data and choices. No loading here, so it can be rendered on its own. */
 export const SprintTicketsTrendView: React.FC<TrendViewProps> = ({ data, loading, error, group, months, filters, hidden, view, onGroup, onMonths, onFilters, onToggleSeries, onShowAll, onView, onRefresh, onDefects }) => {
   const status = data?.status;
   const groupInfo = GROUPS.find(g => g.id === group) as (typeof GROUPS)[number];
@@ -129,7 +129,7 @@ export const SprintTicketsTrendView: React.FC<TrendViewProps> = ({ data, loading
           <>
             <section className="bg-white rounded-lg shadow-sm border border-gray-200">
               <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 flex-wrap">
-                <h2 className="text-[15px] font-semibold text-gray-800">Tickets done by month{group === 'all' ? '' : `, by ${groupInfo.one}`}</h2>
+                <h2 className="text-[15px] font-semibold text-gray-800">Ticket trend report{group === 'all' ? '' : `, by ${groupInfo.one}`}</h2>
                 <span className="text-xs text-gray-500">Done = passed QA or later (Jira's Done). Counted in the month it was done, each ticket once.</span>
                 <div className="ml-auto inline-flex rounded-lg overflow-clip ring-1 ring-gray-300 bg-white" role="group" aria-label="View">
                   {(['chart', 'table'] as const).map(v => (

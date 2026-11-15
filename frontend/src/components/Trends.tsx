@@ -3,19 +3,19 @@ import SprintTicketsTrend from './trends/SprintTicketsTrend';
 
 interface TrendDef { id: string; title: string; blurb: string; render: () => React.ReactNode }
 
-// The trends on offer. A new one is an entry here and a component; the page around it does not change.
+// The reports on offer. A new one is an entry here and a component; the page around it does not change.
 const TRENDS: TrendDef[] = [
-  { id: 'sprint-tickets', title: 'Tickets done by month', blurb: 'NGK Sprint tickets that passed QA or later, by month, client and type', render: () => <SprintTicketsTrend /> },
+  { id: 'sprint-tickets', title: 'Ticket trend report', blurb: 'NGK Sprint tickets that passed QA or later, by month, client and type', render: () => <SprintTicketsTrend /> },
 ];
 
-/** Trends: pick a trend on the left, see it on the right. */
+/** Reports: pick a report on the left, see it on the right. */
 const Trends: React.FC = () => {
   const [id, setId] = useState(TRENDS[0].id);
   const current = TRENDS.find(t => t.id === id) || TRENDS[0];
   return (
     <div className="h-full flex bg-gray-100">
-      <nav aria-label="Trends" className="w-60 shrink-0 border-r border-gray-200 bg-white p-3 overflow-auto">
-        <h1 className="text-lg font-semibold text-gray-800 px-2 pb-2">📈 Trends</h1>
+      <nav aria-label="Reports" className="w-60 shrink-0 border-r border-gray-200 bg-white p-3 overflow-auto">
+        <h1 className="text-lg font-semibold text-gray-800 px-2 pb-2">📈 Reports</h1>
         <ul className="space-y-1">
           {TRENDS.map(t => (
             <li key={t.id}>
