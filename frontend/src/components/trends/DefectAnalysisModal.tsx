@@ -7,28 +7,41 @@ const ago = (iso: string) => {
   const m = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000));
   return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`;
 };
-const TONE: Record<string, string> = { up: 'text-red-700', down: 'text-green-700', flat: 'text-gray-500', none: 'text-gray-400' };
+const TONE: Record<string, string> = { up: 'text-red-700', down: 'text-green-700', flat: 'text-gray-500', none: 'text-gray-500' };
 
 /** One number in the stats line: a small label, then the value. */
 const Stat: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
   <div className="flex flex-col min-w-0">
-    <span className="text-[11px] uppercase tracking-wide text-gray-400">{label}</span>
-    <span className="text-sm text-gray-900 truncate">{children}</span>
+    <span className="text-xs text-gray-500">{label}</span>
+    <span className="text-base text-gray-900">{children}</span>
   </div>
 );
 
-/** The months as a small line with the last point marked; the counts are in its label and hover text. */
-const Spark: React.FC<{ months: string[]; values: number[] }> = ({ months, values }) => {
-  const s = sparkline(values, 110, 28);
-  const label = monthCounts(months, values).map(m => `${m.label} ${m.count}`).join(', ');
+/**
+ * Defects done per month as a line across the full width of the modal: the value above each point, the month below. The last month is
+ * still in progress, so its segment is dashed (as in the report's chart). The counts are also in the label for screen readers.
+ */
+const MonthTrend: React.FC<{ months: string[]; values: number[] }> = ({ months, values }) => {
+  const W = 680; const H = 104; const PADX = 24; const TOP = 26;
+  const s = sparkline(values, W - 2 * PADX, H - TOP - 28, 6);
+  const pts = s.points ? s.points.split(' ').map(p => { const [x, y] = p.split(',').map(Number); return { x: x + PADX, y: y + TOP }; }) : [];
+  const items = monthCounts(months, values);
+  const label = items.map(m => `${m.label} ${m.count}`).join(', ');
+  const n = pts.length;
+  const stroke = { fill: 'none', stroke: SERIES_COLORS[0], strokeWidth: 2.5, strokeLinejoin: 'round' as const, strokeLinecap: 'round' as const };
   return (
-    <span className="inline-flex items-center gap-2" title={label}>
-      <svg width={110} height={28} role="img" aria-label={`Defects per month: ${label}`}>
-        <polyline points={s.points} fill="none" stroke={SERIES_COLORS[0]} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
-        {s.last && <circle cx={s.last.x} cy={s.last.y} r={4} fill={SERIES_COLORS[0]} stroke="#fff" strokeWidth={2} />}
-      </svg>
-      <span className="text-xs text-gray-500 tabular-nums">{values.join(' · ')}</span>
-    </span>
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={`Defects per month: ${label}`} style={{ display: 'block' }}>
+      <line x1={PADX} x2={W - PADX} y1={H - 28 + 6} y2={H - 28 + 6} stroke="#e1e0d9" strokeWidth={1} />
+      {n > 2 && <polyline points={pts.slice(0, n - 1).map(p => `${p.x},${p.y}`).join(' ')} {...stroke} />}
+      {n > 1 && <polyline points={pts.slice(n - 2).map(p => `${p.x},${p.y}`).join(' ')} {...stroke} strokeDasharray="5 4" />}
+      {pts.map((p, i) => (
+        <g key={items[i].month}>
+          <circle cx={p.x} cy={p.y} r={5} fill={SERIES_COLORS[0]} stroke="#fff" strokeWidth={2} />
+          <text x={p.x} y={p.y - 11} textAnchor="middle" fontSize={14} fontWeight={600} fill="#0b0b0b" style={{ fontVariantNumeric: 'tabular-nums' }}>{items[i].count}</text>
+          <text x={p.x} y={H - 6} textAnchor="middle" fontSize={13} fill="#52514e">{items[i].label}</text>
+        </g>
+      ))}
+    </svg>
   );
 };
 
@@ -36,26 +49,32 @@ const Spark: React.FC<{ months: string[]; values: number[] }> = ({ months, value
 const adviceFor = (c: DefectCategory) =>
   `${c.advice}${c.repeats.length ? ` Repeats: ${c.repeats.map(r => `"${r.phrase}" in ${r.count} defects${r.clients > 1 ? ` (${r.clients} clients)` : ''}`).join('; ')}. Check whether they share one cause.` : ''}`;
 
+/** A labelled line inside a category: a fixed label column, then the value. */
+const Line: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
+  <div className="flex gap-3 text-sm leading-relaxed">
+    <span className="w-20 shrink-0 text-gray-500">{label}</span>
+    <span className="min-w-0 text-gray-900">{children}</span>
+  </div>
+);
+
 const CategoryRow: React.FC<{ c: DefectCategory }> = ({ c }) => {
   const tr = trendText(c.changePct);
   return (
-    <li className="py-2.5">
-      <div className="flex items-baseline gap-2 flex-wrap">
-        <span className="text-sm font-semibold text-gray-900">{c.name}</span>
-        <span className="text-sm text-gray-600 tabular-nums">({c.count} · {c.share}%)</span>
-        <span className={`text-xs tabular-nums ${TONE[tr.tone]}`} title={c.changePct === null ? 'Too few defects in the earlier months for a percentage' : 'Defects per month, recent months against the earlier ones'}>{tr.arrow} {tr.text}</span>
-        {c.medianDaysToFix !== null && <span className="text-xs text-gray-400 tabular-nums" title="Median days from created to done">fix {c.medianDaysToFix} d</span>}
+    <li className="py-4 space-y-1.5">
+      <div className="flex items-baseline gap-x-3 gap-y-0.5 flex-wrap">
+        <span className="text-base font-semibold text-gray-900">{c.name}</span>
+        <span className="text-sm text-gray-700 tabular-nums">({c.count} · {c.share}%)</span>
+        <span className={`text-sm tabular-nums ${TONE[tr.tone]}`} title={c.changePct === null ? 'Too few defects in the earlier months for a percentage' : 'Defects per month, recent months against the earlier ones'}>{tr.arrow} {tr.text}</span>
+        {c.medianDaysToFix !== null && <span className="text-sm text-gray-500 tabular-nums" title="Median days from created to done">fix {c.medianDaysToFix} d</span>}
       </div>
-      <div className="text-xs text-gray-500">{c.meaning}</div>
-      <div className="mt-1 text-xs text-gray-700 flex flex-wrap gap-x-4 gap-y-0.5">
-        <span><span className="text-gray-400">Top tenants </span>{c.tenants.length ? c.tenants.map(t => `${t.name} ${t.count}`).join(' · ') : 'none set'}</span>
-        <span><span className="text-gray-400">Samples </span>
-          {c.examples.map((e, i) => (
-            <React.Fragment key={e.key}>{i > 0 && ' · '}<a href={e.url} target="_blank" rel="noopener noreferrer" title={e.summary} className="text-blue-600 hover:underline">{e.key}</a></React.Fragment>
-          ))}
-        </span>
-      </div>
-      <div className="mt-1 text-xs text-gray-800"><span className="text-gray-400">Advice </span>{adviceFor(c)}</div>
+      <p className="text-sm text-gray-600">{c.meaning}</p>
+      <Line label="Top tenants">{c.tenants.length ? c.tenants.map(t => `${t.name} ${t.count}`).join(' · ') : 'none set'}</Line>
+      <Line label="Samples">
+        {c.examples.map((e, i) => (
+          <React.Fragment key={e.key}>{i > 0 && ' · '}<a href={e.url} target="_blank" rel="noopener noreferrer" title={e.summary} className="text-blue-700 hover:underline">{e.key}</a></React.Fragment>
+        ))}
+      </Line>
+      <Line label="Advice">{adviceFor(c)}</Line>
     </li>
   );
 };
@@ -90,12 +109,16 @@ export const DefectAnalysisView: React.FC<DefectViewProps> = ({ data, loading, e
         ) : (
           <>
             {/* one line of numbers */}
-            <div className="flex flex-wrap items-end gap-x-8 gap-y-2 pb-3 border-b border-gray-100">
+            <div className="flex flex-wrap items-end gap-x-10 gap-y-2">
               <Stat label="Defects"><b className="font-semibold tabular-nums">{t.defects.toLocaleString('en-US')}</b> <span className="text-gray-500">({t.shareOfDone}% of done)</span></Stat>
               <Stat label="Top clients"><span className="tabular-nums">{f.topClients.length ? f.topClients.map(c => `${c.name} ${c.count}`).join(' · ') : 'none set'}</span></Stat>
               <Stat label="Top category">{top ? <><b className="font-semibold">{top.name}</b> <span className="text-gray-500 tabular-nums">{top.count}</span></> : '–'}</Stat>
-              <Stat label="By month"><Spark months={f.months} values={f.perMonth} /></Stat>
             </div>
+
+            <section aria-label="Defects done per month" className="pb-3 border-b border-gray-100">
+              <div className="text-xs text-gray-500 mb-1">Defects done per month</div>
+              <MonthTrend months={f.months} values={f.perMonth} />
+            </section>
 
             <section>
               <ul className="divide-y divide-gray-100">
@@ -105,8 +128,8 @@ export const DefectAnalysisView: React.FC<DefectViewProps> = ({ data, loading, e
 
             <section className="border-t border-gray-100 pt-3">
               <div className="flex items-center gap-3 flex-wrap">
-                <h3 className="text-sm font-semibold text-gray-800">AI analysis</h3>
-                {guidance && <span className="text-xs text-gray-400">{guidance.model} · {ago(guidance.at)}{guidance.cached ? ' · saved for these numbers' : ''}</span>}
+                <h3 className="text-base font-semibold text-gray-900">AI analysis</h3>
+                {guidance && <span className="text-xs text-gray-500">{guidance.model} · {ago(guidance.at)}{guidance.cached ? ' · saved for these numbers' : ''}</span>}
                 <button onClick={() => onWrite(!!guidance)} disabled={guiding}
                   className="ml-auto px-3 py-1.5 rounded-lg text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed">
                   {guiding ? '⏳ Analyzing…' : guidance ? '↻ Run again' : 'AI analysis'}
@@ -126,12 +149,12 @@ export const DefectAnalysisView: React.FC<DefectViewProps> = ({ data, loading, e
                       </li>
                     ))}
                   </ol>
-                  {guidance.caveats.map(c => <p key={c} className="text-xs text-gray-400">{c}</p>)}
+                  {guidance.caveats.map(c => <p key={c} className="text-xs text-gray-500">{c}</p>)}
                 </div>
               )}
             </section>
 
-            <p className="text-xs text-gray-400">
+            <p className="text-xs text-gray-500">
               {f.typesCounted.join(', ')} done in these months{f.typeFilterIgnored ? '; the Type filter is ignored here' : ''}. Categories are fixed and keyword-based on title, labels and component. Numbers change when you press Refresh on the report.
             </p>
           </>
