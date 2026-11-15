@@ -124,3 +124,13 @@ test('Clear Filters is a small red button with an icon, so it stands out as the 
   assert.equal(m[2], '🧹 Clear Filters');                                    // an icon and the same words
   assert.ok(!/text-blue-600/.test(m[1]));                                   // not the old blue link
 });
+
+test('the All, Sprint and Me pills are a little more compact than the other buttons, to leave room on the first line', async () => {
+  const fs = await import('node:fs');
+  const src = fs.readFileSync(new URL('../../../frontend/src/components/JiraTasksTracker.tsx', import.meta.url), 'utf8');
+  const m = /className=\{`(px-[\d.]+ py-[\d.]+ text-\[\d+px\]) transition-colors \$\{\s*sourceFilter === s/.exec(src);
+  assert.ok(m, 'the source pills were not found');
+  assert.equal(m[1], 'px-2 py-1.5 text-[13px]');
+  const px = Number(/px-([\d.]+)/.exec(m[1])[1]);
+  assert.ok(px < 3, 'tighter than the other buttons (px-3)');
+});

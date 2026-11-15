@@ -436,13 +436,13 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
             {/* Layers: line 1 is 48 and line 2 is 47, above every table header (the Region header is 40, the List header 20) so no menu opens behind one,
                 line 1 above line 2 so the Group By menu opens over the filter row, and both below the Jira filter (50) so its menu opens over this line */}
             <div ref={lineRef} className="flex gap-1.5 items-center flex-wrap min-w-0 col-start-1 relative z-[48]">
-              {/* Source filter pills */}
+              {/* Source filter pills: a little more compact than the other buttons, to leave room on this line when the Board button shows its date */}
               <div className="flex rounded-lg border border-gray-300 overflow-hidden text-sm font-medium">
                 {(['all', 'sprint', 'me'] as SourceFilter[]).map(s => (
                   <button
                     key={s}
                     onClick={() => setSourceFilter(s)}
-                    className={`px-3 py-1.5 transition-colors ${
+                    className={`px-2 py-1.5 text-[13px] transition-colors ${
                       sourceFilter === s ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'
                     }`}
                   >
