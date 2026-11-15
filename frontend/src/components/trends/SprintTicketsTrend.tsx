@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { trendsApi, SprintTrend, TrendFilters, TrendGroup, TrendMonths } from '../../services/api';
 import { buildSeries, seriesCounts, monthLabel, OTHER_COLOR, SERIES_COLORS, MAX_NAMED } from '../../utils/trendsChart';
 import LineChart, { LineSeries, INK } from './LineChart';
+import MultiSelect from './MultiSelect';
 
 const RANGES: { id: TrendMonths; label: string }[] = [{ id: 3, label: '3 months' }, { id: 6, label: '6 months' }];
 const GROUPS: { id: TrendGroup; label: string; one: string; many: string; hint: string }[] = [
@@ -59,7 +60,7 @@ export const SprintTicketsTrendView: React.FC<TrendViewProps> = ({ data, loading
   const shown = all.filter(d => !hidden.has(d.series.id));
   const sums = all.map(d => d.counts.reduce((a, b) => a + b, 0));
   const empty = !!data && data.tickets === 0;
-  const filtered = !!filters.feTeam || !!filters.type || !!filters.client || !!filters.assignee;
+  const filtered = !!filters.feTeam || !!filters.type?.length || !!filters.client?.length || !!filters.assignee?.length;
 
   const totals = data?.totals ?? [];
   const busiest = totals.length ? totals.indexOf(Math.max(...totals)) : -1;
@@ -104,14 +105,7 @@ export const SprintTicketsTrendView: React.FC<TrendViewProps> = ({ data, loading
             title="Tickets assigned to a member of the FE team (the people flagged on the Tasks page)"
             className={`px-3 py-1.5 rounded-lg text-sm font-medium ring-1 ${filters.feTeam ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-gray-700 ring-gray-300 hover:bg-gray-100'}`}>FE team</button>
           {([['client', 'Client', data.options.clients], ['assignee', 'Assignee', data.options.assignees], ['type', 'Type', data.options.types]] as const).map(([k, label, opts]) => (
-            <label key={k} className="inline-flex items-center gap-1.5">
-              <span className="sr-only">{label}</span>
-              <select value={filters[k] || ''} onChange={e => onFilters({ ...filters, [k]: e.target.value || undefined })}
-                className={`rounded-lg ring-1 px-2 py-1.5 text-sm bg-white max-w-[200px] ${filters[k] ? 'ring-indigo-600 text-indigo-700 font-medium' : 'ring-gray-300 text-gray-700'}`}>
-                <option value="">{label}: all</option>
-                {opts.map(o => <option key={o} value={o}>{o}</option>)}
-              </select>
-            </label>
+            <MultiSelect key={k} label={label} options={opts} value={filters[k] ?? []} onChange={v => onFilters({ ...filters, [k]: v.length ? v : undefined })} />
           ))}
           {filtered && <button onClick={() => onFilters({})} className="text-xs text-blue-600 hover:underline">Clear filters</button>}
         </div>

@@ -58,7 +58,8 @@ const rank = (rows, group) => {
  * Tickets per month: all together, or split by type, client or assignee.
  * `summary` is for the tiles, over the tickets counted in the months shown: stories, defects, and the client with the most tickets (tickets with no client are not a client).
  *   months    how many months back from the current one (3 or 6)
- *   filters   { type, client, assignee, feTeam }: a ticket must match every one given; feTeam keeps tickets assigned to a member of `feMembers`
+ *   filters   { type, client, assignee, feTeam }: type, client and assignee are each a list of values (or one value); a ticket must match one value
+ *             of every list given (OR inside a filter, AND between them). feTeam keeps tickets assigned to a member of `feMembers`
  * Months after the current one are not shown (sprints that have not started); their tickets are counted in `future`.
  * `series` are the ones with tickets in the months shown, ranked by those counts (so the top seven in view get the colors and the tail folds into
  * Other; ranking over all history would paint almost every assignee gray). A change of filter, basis or range can therefore change colors;
@@ -71,9 +72,11 @@ export const aggregate = ({ rows, basis = 'sprint', group = 'all', months = 6, f
   const options = { types: rank(rows, 'type').map((t) => t.name).sort(), clients: rank(rows, 'client').map((t) => t.name).sort(), assignees: rank(rows, 'assignee').map((t) => t.name).sort() };
 
   const f = filters || {};
-  const matches = (r) => (!f.type || r.type === f.type)
-    && (!f.client || valuesFor(r, 'client').includes(f.client))
-    && (!f.assignee || (r.assignee || NO_ASSIGNEE) === f.assignee)
+  const list_ = (v) => (Array.isArray(v) ? v : v ? [v] : []).filter((x) => typeof x === 'string' && x);
+  const [types, clients, assignees] = [list_(f.type), list_(f.client), list_(f.assignee)];
+  const matches = (r) => (!types.length || types.includes(r.type))
+    && (!clients.length || valuesFor(r, 'client').some((c) => clients.includes(c)))
+    && (!assignees.length || assignees.includes(r.assignee || NO_ASSIGNEE))
     && (!f.feTeam || (!!r.assignee && feMembers.has(r.assignee)));
   const kept = rows.filter(matches);
 

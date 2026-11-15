@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { trendQuery } from '../utils/trendsChart';
 import { JiraIssue, Accomplishment, CreateAccomplishmentPayload, JiraSprint } from '../types';
 
 // Default to the backend on whatever host served this page, so the app works from any IP/hostname.
@@ -464,7 +465,8 @@ export interface TrendsStatus {
   lastDurationMs: number | null; tickets: number; firstLoad: boolean;
 }
 export interface TrendSeries { name: string; total: number; rank: number }
-export interface TrendFilters { type?: string; client?: string; assignee?: string; feTeam?: boolean }
+/** Each of type, client and assignee is a list: a ticket must match one value of every list given. An empty list is no filter. */
+export interface TrendFilters { type?: string[]; client?: string[]; assignee?: string[]; feTeam?: boolean }
 export interface SprintTrend {
   basis: TrendBasis; group: TrendGroup; months: string[]; series: TrendSeries[]; counts: Record<string, number[]>;
   /** For the tiles, over the tickets counted in the months shown. */
@@ -480,7 +482,7 @@ export interface SprintTrend {
 export const trendsApi = {
   status: async (): Promise<TrendsStatus> => (await apiClient.get('/trends/status')).data.data,
   sprintTickets: async (basis: TrendBasis, months: TrendMonths, group: TrendGroup, filters: TrendFilters): Promise<SprintTrend> =>
-    (await apiClient.get('/trends/sprint-tickets', { params: { basis, months, group, type: filters.type, client: filters.client, assignee: filters.assignee, feTeam: filters.feTeam ? 1 : undefined } })).data.data,
+    (await apiClient.get('/trends/sprint-tickets', { params: trendQuery(basis, months, group, filters) })).data.data,
   /** Reads the done tickets of the last 6 months from Jira now: the only way the copy is updated. A read already running is not an error. An empty JSON body on purpose: the backend refuses non-JSON POSTs. */
   refresh: async (): Promise<TrendsStatus> => {
     try { return (await apiClient.post('/trends/refresh', {})).data.data; }

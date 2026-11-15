@@ -87,3 +87,29 @@ test('a line is straight segments through its points (no smoothing), and the das
   assert.equal(new Set(C.MARKERS.slice(0, 4)).size, 4);               // and in marker shape
   assert.ok(C.LINE_DASH.length >= C.MAX_NAMED + 0 && C.MARKERS.length >= C.MAX_NAMED);   // one per colored series, Other included
 });
+
+test('filter search matches anywhere in a name, ignoring case, and an empty search shows everything', () => {
+  const opts = ['BK-US', 'BK-ES', 'PLK-US', 'KFC-MX'];
+  assert.deepEqual(C.matchOptions(opts, 'bk'), ['BK-US', 'BK-ES']);
+  assert.deepEqual(C.matchOptions(opts, '-us'), ['BK-US', 'PLK-US']);
+  assert.deepEqual(C.matchOptions(opts, '  '), opts);
+  assert.deepEqual(C.matchOptions(opts, ''), opts);
+  assert.deepEqual(C.matchOptions(opts, 'zzz'), []);
+  assert.notEqual(C.matchOptions(opts, ''), opts);                    // a copy, so a caller cannot change the options
+});
+
+test('the filter button says all, the one value, or how many are selected', () => {
+  assert.equal(C.selectionLabel('Client', []), 'Client: all');
+  assert.equal(C.selectionLabel('Client', ['BK-US']), 'Client: BK-US');
+  assert.equal(C.selectionLabel('Assignee', ['Ann', 'Bob', 'Cy']), 'Assignee: 3 selected');
+});
+
+test('the request repeats a filter name for each value, leaves out empty filters, and keeps names with commas or ampersands intact', () => {
+  const q = C.trendQuery('resolved', 6, 'client', { client: ['BK-US', 'PLK-US'], assignee: ['Smith, Ann', 'A&B'], type: [], feTeam: true });
+  assert.deepEqual(q.getAll('client'), ['BK-US', 'PLK-US']);
+  assert.deepEqual(q.getAll('assignee'), ['Smith, Ann', 'A&B']);        // read back unchanged from the encoded string
+  assert.deepEqual(new URLSearchParams(q.toString()).getAll('assignee'), ['Smith, Ann', 'A&B']);
+  assert.equal(q.has('type'), false);
+  assert.equal(q.get('feTeam'), '1'); assert.equal(q.get('months'), '6'); assert.equal(q.get('group'), 'client'); assert.equal(q.get('basis'), 'resolved');
+  assert.equal(C.trendQuery('resolved', 3, 'all', {}).has('feTeam'), false);
+});

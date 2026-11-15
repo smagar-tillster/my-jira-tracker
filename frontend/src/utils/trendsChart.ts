@@ -67,3 +67,22 @@ export const plotLayout = (width: number, count: number, left: number, right: nu
 /** An SVG path through the points (straight segments, no smoothing: a smoothed line invents values between months). */
 export const linePath = (xs: readonly number[], ys: readonly number[]): string => xs.map((x, i) => `${i ? 'L' : 'M'}${round(x)},${round(ys[i])}`).join('');
 const round = (n: number) => Math.round(n * 100) / 100;
+
+// ---------------------------------------------------------------- filters
+/** Case-insensitive "contains" over the options; an empty search keeps all of them. */
+export const matchOptions = (options: readonly string[], search: string): string[] => {
+  const q = search.trim().toLowerCase();
+  return q ? options.filter((o) => o.toLowerCase().includes(q)) : [...options];
+};
+
+/** What a multi-select button says: "Client: all", "Client: BK-US", or "Client: 3 selected". */
+export const selectionLabel = (label: string, value: readonly string[]): string =>
+  `${label}: ${value.length === 0 ? 'all' : value.length === 1 ? value[0] : `${value.length} selected`}`;
+
+/** The query for the trend: a filter with several values repeats its name (client=A&client=B), which is how the backend reads a list. */
+export const trendQuery = (basis: string, months: number, group: string, filters: { type?: readonly string[]; client?: readonly string[]; assignee?: readonly string[]; feTeam?: boolean }): URLSearchParams => {
+  const p = new URLSearchParams({ basis, months: String(months), group });
+  for (const k of ['type', 'client', 'assignee'] as const) for (const v of filters[k] ?? []) p.append(k, v);
+  if (filters.feTeam) p.set('feTeam', '1');
+  return p;
+};

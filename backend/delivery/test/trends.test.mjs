@@ -117,6 +117,16 @@ test('filters narrow the tickets; FE team keeps the members only; menus list eve
   assert.equal(byType({ feTeam: true }).options.clients.length, 3);       // menus do not shrink with the filters
 });
 
+test('a filter can hold several values: a ticket matches any of them, and the filters still all have to match', () => {
+  const by = (filters) => A.aggregate({ rows: rows(), basis: 'sprint', months: 6, filters, now: NOW }).totals;
+  assert.deepEqual(by({ client: ['PLK', 'No client'] }), [0, 0, 0, 1, 2, 0]);               // A-2 (BK and PLK) and A-3 (PLK) plus A-4 (none)
+  assert.deepEqual(by({ assignee: ['Ann', 'Bob'] }), [0, 0, 0, 2, 1, 1]);
+  assert.deepEqual(by({ assignee: ['Ann', 'Bob'], type: ['Defect', 'Task'] }), [0, 0, 0, 0, 1, 1]);   // A-3 (Ann, Defect) and A-5 (Bob, Task)
+  assert.deepEqual(by({ client: 'BK' }), by({ client: ['BK'] }));                              // one value or a list of one
+  assert.deepEqual(by({ client: [], type: [''] }), by({}));                                    // empty lists mean no filter
+  assert.deepEqual(by({ client: ['Nobody', 'Nobody else'] }), [0, 0, 0, 0, 0, 0]);
+});
+
 test('series are ranked by their tickets in view, and only those with tickets in view are listed', () => {
   const rk = (o) => A.aggregate({ rows: rows(), group: 'type', now: NOW, ...o }).series.map((t) => `${t.name}:${t.rank}:${t.total}`).join(' ');
   assert.equal(rk({}), 'Defect:1:2 Story:2:2 Task:3:1');                       // A-6 (future), A-7 (no date) and A-8 (old) are not in view
@@ -221,6 +231,8 @@ test('the routes: counts with group and filters, bad requests, and Refresh with 
     assert.deepEqual(fe.json.data.series.map((s) => s.name), ['Ann']);
     const filtered = await call(server, 'GET', `/api/trends/sprint-tickets?basis=sprint&client=${encodeURIComponent('No client')}&type=Defect`);
     assert.deepEqual(filtered.json.data.totals, [0, 0, 0, 0, 1, 0]);
+    const several = await call(server, 'GET', `/api/trends/sprint-tickets?basis=sprint&client=BK&client=PLK&assignee=Ann&assignee=Bob`);   // repeated values
+    assert.deepEqual(several.json.data.totals, [0, 0, 0, 2, 1, 1]);
     for (const bad of ['?basis=nope', '?months=12', '?months=all', '?months=abc', '?group=nope']) assert.equal((await call(server, 'GET', `/api/trends/sprint-tickets${bad}`)).status, 400, bad);
 
     assert.equal((await fetch(`http://127.0.0.1:${server.address().port}/api/trends/refresh`, { method: 'POST' })).status, 415);   // JSON only
