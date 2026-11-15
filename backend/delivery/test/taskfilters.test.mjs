@@ -196,3 +196,25 @@ test('while refreshing, the shimmer covers the whole toolbar: its layer is above
   assert.match(shimmer, /filtersOpen = true/);
   for (const row of ['top', 'line1', 'line2']) assert.ok(shimmer.includes(`data-shimmer="${row}"`), row);   // the same three rows as the toolbar
 });
+
+test('line 1 is All, Sprint, Me, then the status buttons, then List, Board, Region, then Group By, with a separator between the groups', async () => {
+  const fs = await import('node:fs');
+  const src = fs.readFileSync(new URL('../../../frontend/src/components/JiraTasksTracker.tsx', import.meta.url), 'utf8');
+  const start = src.indexOf('data-toolbar="line1"');
+  const line1 = src.slice(start, src.indexOf('data-toolbar="line2"'));
+  const at = (s) => line1.indexOf(s);
+  assert.ok(at('Source filter pills') > -1 && at('Source filter pills') < at('<StatusFilterGroup'));
+  assert.ok(at('<StatusFilterGroup') < at('<ViewModeButton'));
+  assert.ok(at('<ViewModeButton') < at('Group By{'));
+  assert.equal((line1.match(/<div className="h-6 w-px bg-gray-300" \/>/g) || []).length, 3);                       // one between each pair of groups
+  const seps = [...line1.matchAll(/<div className="h-6 w-px bg-gray-300" \/>/g)].map((m) => m.index);
+  assert.ok(at('Source filter pills') < seps[0] && seps[0] < at('<StatusFilterGroup') && at('<StatusFilterGroup') < seps[1] && seps[1] < at('<ViewModeButton') && at('<ViewModeButton') < seps[2] && seps[2] < at('Group By{'));
+});
+
+test('the self-fit watches whether line 1 wraps (its last item below its first), not one particular group, so it still works with Group By last', async () => {
+  const fs = await import('node:fs');
+  const hook = fs.readFileSync(new URL('../../../frontend/src/components/tasks/useStatusDensity.ts', import.meta.url), 'utf8');
+  assert.match(hook, /const last = line\?\.lastElementChild/);
+  assert.match(hook, /last\.offsetTop >= first\.offsetTop \+ first\.offsetHeight/);
+  assert.ok(!/statusRef/.test(hook));
+});

@@ -263,7 +263,7 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
   const toggleQuick = (key: QuickKey) => quickSetters[key](v => !v);
   const filtersActive = anyFilterActive({ filters, searchTerm, quick });
   const filterCount = activeFilterCount({ filters, searchTerm, quick });
-  const { lineRef, statusRef, density: statusDensity } = useStatusDensity(!fullScreenMode && filtersOpen);
+  const { lineRef, density: statusDensity } = useStatusDensity(!fullScreenMode && filtersOpen);
   const toggleFilters = () => {
     const next = !filtersOpen;
     setFiltersOpen(next);
@@ -477,7 +477,7 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
             {/* The two lines of filters and buttons: hidden, not removed, when the accordion is closed, so nothing they hold is lost */}
             <div id="tasks-filter-lines" className={`flex flex-col gap-3 ${filtersOpen ? '' : 'hidden'}`}>
 
-            {/* Row 2 (line 1) – Source pill + view mode + Group By + status buttons */}
+            {/* Row 2 (line 1) – Source pills, status buttons, view mode, Group By */}
             {/* Layers: line 1 is 48 and line 2 is 47, above every table header (the Region header is 40, the List header 20) so no menu opens behind one,
                 line 1 above line 2 so the Group By menu opens over the filter row, and both below the Jira filter (50) so its menu opens over this line */}
             <div ref={lineRef} data-toolbar="line1" className="flex gap-1.5 items-center flex-wrap min-w-0 relative z-[48]">
@@ -497,6 +497,12 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
               </div>
 
               <div className="h-6 w-px bg-gray-300" />
+
+              {/* Status buttons: right after All, Sprint and Me */}
+              <StatusFilterGroup density={statusDensity} counts={statusCounts} active={effectiveSCFilter} onToggle={toggleStatusCat} />
+
+              <div className="h-6 w-px bg-gray-300" />
+
 
               {/* View mode: Board and Region open a small popover with their options when clicked again, like Additional Filters */}
               {(['list','board','region'] as const).map(mode => (
@@ -532,11 +538,6 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
                   </div>
                 )}
               </div>
-
-              <div className="h-6 w-px bg-gray-300" />
-
-              {/* Status buttons close the first line */}
-              <StatusFilterGroup ref={statusRef} density={statusDensity} counts={statusCounts} active={effectiveSCFilter} onToggle={toggleStatusCat} />
             </div>
 
             {/* Row 3 (line 2) – the dropdown filters, Additional Filters last, then Clear Filters and the count at the right end */}

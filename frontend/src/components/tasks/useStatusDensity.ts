@@ -4,21 +4,21 @@ import { StatusDensity, nextDensity } from '../../utils/taskFilters';
 const useIsoLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
 /**
- * Keeps the status buttons on the first line. After every render it checks whether the group has dropped below the first item of the line and, if so,
- * moves to the next smaller size; when the width of the line changes it starts again from full size. Attach `lineRef` to the line and `statusRef`
- * to the status group. `active` is false while the toolbar is hidden (full screen).
+ * Keeps the first line of the toolbar on one row. After every render it checks whether the line wrapped (its last item starts below the bottom of its
+ * first item) and, if so, makes the status buttons the next size smaller; when the width of the line changes it starts again from full size.
+ * Attach `lineRef` to the line. `active` is false while the toolbar is hidden (full screen, or the filters folded away).
  */
 export const useStatusDensity = (active: boolean) => {
   const lineRef = useRef<HTMLDivElement>(null);
-  const statusRef = useRef<HTMLDivElement>(null);
   const [density, setDensity] = useState<StatusDensity>(0);
   const lastWidth = useRef(0);
 
   useIsoLayoutEffect(() => {
-    const line = lineRef.current; const group = statusRef.current;
+    const line = lineRef.current;
     const first = line?.firstElementChild as HTMLElement | null | undefined;
-    if (!active || !line || !group || !first) return;
-    const wrapped = group.offsetTop >= first.offsetTop + first.offsetHeight;      // it starts below the bottom of the first item: it is on a second line
+    const last = line?.lastElementChild as HTMLElement | null | undefined;
+    if (!active || !line || !first || !last) return;
+    const wrapped = last.offsetTop >= first.offsetTop + first.offsetHeight;       // the last item starts below the bottom of the first: the line is on two rows
     const next = nextDensity(density, wrapped);
     if (next !== density) setDensity(next);
   });
@@ -38,5 +38,5 @@ export const useStatusDensity = (active: boolean) => {
     return () => ro.disconnect();
   }, [active]);
 
-  return { lineRef, statusRef, density };
+  return { lineRef, density };
 };

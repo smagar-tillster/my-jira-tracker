@@ -18,20 +18,20 @@ const ShimmerLoading: React.FC<{ filtersOpen?: boolean }> = ({ filtersOpen = tru
 
           {filtersOpen && (
             <>
-              {/* Line 1: All / Sprint / Me, List / Board / Region, Group By, In Progress / Done / To Do */}
+              {/* Line 1: All / Sprint / Me, In Progress / Done / To Do, List / Board / Region, Group By */}
               <div className="flex flex-wrap gap-1.5 items-center" data-shimmer="line1">
                 <div className="h-8 w-20 bg-gray-200 rounded-lg animate-pulse"></div>
                 <div className="h-8 w-24 bg-gray-200 rounded-lg animate-pulse"></div>
                 <div className="h-8 w-16 bg-gray-200 rounded-lg animate-pulse"></div>
                 <div className="h-6 w-px bg-gray-300"></div>
-                <div className="h-9 w-20 bg-gray-200 rounded-lg animate-pulse"></div>
-                <div className="h-9 w-24 bg-gray-200 rounded-lg animate-pulse"></div>
-                <div className="h-9 w-24 bg-gray-200 rounded-lg animate-pulse"></div>
-                <div className="h-6 w-px bg-gray-300"></div>
-                <div className="h-9 w-28 bg-gray-200 rounded-lg animate-pulse"></div>
-                <div className="h-6 w-px bg-gray-300"></div>
                 <div className="h-9 w-36 bg-gray-200 rounded-lg animate-pulse"></div>
                 <div className="h-9 w-20 bg-gray-200 rounded-lg animate-pulse"></div>
+                <div className="h-9 w-28 bg-gray-200 rounded-lg animate-pulse"></div>
+                <div className="h-6 w-px bg-gray-300"></div>
+                <div className="h-9 w-20 bg-gray-200 rounded-lg animate-pulse"></div>
+                <div className="h-9 w-24 bg-gray-200 rounded-lg animate-pulse"></div>
+                <div className="h-9 w-24 bg-gray-200 rounded-lg animate-pulse"></div>
+                <div className="h-6 w-px bg-gray-300"></div>
                 <div className="h-9 w-28 bg-gray-200 rounded-lg animate-pulse"></div>
               </div>
 
