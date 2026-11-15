@@ -47,6 +47,32 @@ export const createTrendsRouter = ({ service = trendsService } = {}) => {
     res.json({ success: true, data: guidance });
   });
 
+  // POST /api/trends/patterns/record  {months, client[], assignee[], component[], feTeam}  — record the defects in view that repeat an existing RAG pattern
+  // (seen + 1, ticket added; nothing else is edited) and run the RAG's ingest once. 409 when one is running.
+  router.post('/trends/patterns/record', sameMachineOnly, async (req, res) => {
+    const b = req.body || {};
+    const months = Number(b.months || 6);
+    if (!MONTH_CHOICES.includes(months)) return res.status(400).json({ success: false, error: `months is one of ${MONTH_CHOICES.join(', ')}` });
+    const r = await service.recordRepeats({ months, filters: readFilters(b) });
+    if (r.busy) return res.status(409).json({ success: false, error: 'Repeats are already being recorded' });
+    if (!r.ok) return res.status(502).json({ success: false, error: r.reason });
+    const { ok, ...data } = r;
+    res.json({ success: true, data });
+  });
+
+  // POST /api/trends/patterns/draft  {months, filters..., cluster: "<id from the analysis>"}  — one model call: a draft pattern saved for review, never written to the RAG.
+  router.post('/trends/patterns/draft', sameMachineOnly, async (req, res) => {
+    const b = req.body || {};
+    const months = Number(b.months || 6);
+    if (!MONTH_CHOICES.includes(months) || typeof b.cluster !== 'string' || !/^[0-9a-f]{8}$/.test(b.cluster)) return res.status(400).json({ success: false, error: 'Send {"months": 3|6, "cluster": "<id>"}' });
+    const r = await service.draftForCluster({ months, filters: readFilters(b), cluster: b.cluster });
+    if (r.busy) return res.status(409).json({ success: false, error: 'A pattern is already being drafted' });
+    if (r.notAPattern) return res.json({ success: true, data: { notAPattern: true, reason: r.reason } });
+    if (!r.ok) return res.status(502).json({ success: false, error: r.reason });
+    const { ok, ...data } = r;
+    res.json({ success: true, data });
+  });
+
   // POST /api/trends/refresh  — read from Jira now (the only way the copy is updated). 202 when it started, 409 when a read is already going.
   router.post('/trends/refresh', sameMachineOnly, (req, res) => {
     if (!service.refresh()) return res.status(409).json({ success: false, error: 'A sync is already running', data: service.status() });

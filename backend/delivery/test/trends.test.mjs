@@ -208,7 +208,7 @@ const call = async (server, method, url, body) => {
 test('nothing reads Jira on its own: the service has no timer, and a read is one at a time', async () => {
   reset();
   let runs = 0; let release;
-  const svc = createTrendsService({ sync: () => { runs++; return new Promise((r) => { release = r; }); }, now: () => NOW });
+  const svc = createTrendsService({ ragRoot: () => path.join(tmp, 'no-rag'), sync: () => { runs++; return new Promise((r) => { release = r; }); }, now: () => NOW });
   assert.equal(svc.start, undefined); assert.equal(svc.tick, undefined);
   assert.equal(runs, 0);
   assert.equal(svc.refresh(), true); assert.equal(svc.refresh(), false); assert.equal(runs, 1);
@@ -222,7 +222,7 @@ test('the routes: counts with group and filters, bad requests, and Refresh with 
   store.upsert(rows().map((r) => ({ ...r, statusCategory: '', updated: null })));
   store.finishSync({ status: 'ok', durationMs: 5, at: '2026-11-13T10:00:00.000Z', full: true, count: 8 });
   let openGate; const gate = new Promise((r) => { openGate = r; });
-  const svc = createTrendsService({ sync: async () => { await gate; return { ok: true }; }, now: () => NOW, feMembers: () => new Set(['Ann']) });
+  const svc = createTrendsService({ ragRoot: () => path.join(tmp, 'no-rag'), sync: async () => { await gate; return { ok: true }; }, now: () => NOW, feMembers: () => new Set(['Ann']) });
   const { default: express } = await import('express');
   const app = express(); app.use(express.json()); app.use('/api', createTrendsRouter({ service: svc }));
   const server = http.createServer(app); await new Promise((r) => server.listen(0, '127.0.0.1', r));

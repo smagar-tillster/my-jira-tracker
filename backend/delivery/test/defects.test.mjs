@@ -139,7 +139,7 @@ test('the default model is sonnet, and the analysis is only ever asked for by a 
   assert.equal(G.MODEL, 'sonnet');
   reset();
   let calls = 0;
-  const svc = createTrendsService({ now: () => NOW, claude: async () => { calls++; return { ok: true, text: GOOD }; } });
+  const svc = createTrendsService({ ragRoot: () => path.join(tmp, 'no-rag'), now: () => NOW, claude: async () => { calls++; return { ok: true, text: GOOD }; } });
   store.upsert([Dfx('2026-10-10T12:00:00', 'Receipt total wrong', { clients: ['AA'] })].map((r) => ({ ...r, statusCategory: '', updated: null, firstSprintStart: null })));
   svc.defectAnalysis({ months: 6 }); svc.defectAnalysis({ months: 3 }); svc.sprintTickets({}); svc.status();
   assert.equal(calls, 0);
@@ -215,7 +215,7 @@ test('the routes: the analysis never calls the model, the guidance does (once pe
   store.upsert([Dfx('2026-10-10T12:00:00', 'Receipt total wrong', { clients: ['AA'], assignee: 'Ann' }), T('Story', '2026-10-12T12:00:00', { clients: ['AA'], assignee: 'Ann' })].map((r) => ({ ...r, statusCategory: '', updated: null, firstSprintStart: null })));
   let calls = 0; let release; const gate = new Promise((r) => { release = r; });
   const claude = async () => { calls++; await gate; return { ok: true, text: GOOD }; };
-  const svc = createTrendsService({ now: () => NOW, claude, feMembers: () => new Set(['Ann']) });
+  const svc = createTrendsService({ ragRoot: () => path.join(tmp, 'no-rag'), now: () => NOW, claude, feMembers: () => new Set(['Ann']) });
   const { default: express } = await import('express');
   const app = express(); app.use(express.json()); app.use('/api', createTrendsRouter({ service: svc }));
   const server = http.createServer(app); await new Promise((r) => server.listen(0, '127.0.0.1', r));
