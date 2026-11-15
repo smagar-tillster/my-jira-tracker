@@ -68,18 +68,18 @@ export const viewSuffix = (mode: 'list' | 'board' | 'region', boardDate: BoardDa
 export const viewHasOptions = (mode: 'list' | 'board' | 'region'): boolean => mode !== 'list';
 
 // ---------------------------------------------------------------- fitting the status buttons on the first line
-/** 0 = full size with the label; 1 = smaller type and padding, same text; 2 = smaller still, icon and count only (the label is in the tooltip). */
+/** 0 = full size; 1 = smaller type and padding; 2 = smaller still. The words stay at every size: only the size changes. */
 export type StatusDensity = 0 | 1 | 2;
 
 /** The next smaller step when the buttons did not fit on the line, else the same step. */
 export const nextDensity = (current: StatusDensity, wrapped: boolean): StatusDensity => (wrapped && current < 2 ? ((current + 1) as StatusDensity) : current);
 
-/** The text of a status button at a density. A category without an icon always keeps its label. */
-export const statusText = (category: string, count: number, density: StatusDensity): string => {
-  const icon = STATUS_ICONS[category];
-  if (density === 2 && icon) return `${icon} ${count}`;
-  return `${icon ? `${icon} ` : ''}${category}: ${count}`;
-};
+/** "🔄 In Progress 198": the icon, the words and the count, at every size. A category without an icon has no icon. */
+export const statusText = (category: string, count: number): string => `${STATUS_ICONS[category] ? `${STATUS_ICONS[category]} ` : ''}${category} ${count}`;
 
-export const statusButtonClass = (on: boolean, density: StatusDensity): string =>
-  `${density === 0 ? BTN : 'px-2 py-1 rounded-lg text-xs font-medium transition-colors'} whitespace-nowrap ${stateClass(on)}`;
+const SIZES: Record<StatusDensity, string> = {
+  0: BTN,
+  1: 'px-2 py-1 rounded-lg text-xs font-medium transition-colors',
+  2: 'px-1.5 py-0.5 rounded-md text-[11px] font-medium transition-colors',
+};
+export const statusButtonClass = (on: boolean, density: StatusDensity): string => `${SIZES[density]} whitespace-nowrap ${stateClass(on)}`;

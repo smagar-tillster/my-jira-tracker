@@ -62,18 +62,18 @@ test('the Board is built on one of three dates, offered in a fixed order, and it
   assert.deepEqual(['list', 'board', 'region'].map(T.viewHasOptions), [false, true, true]);
 });
 
-test('the status buttons shrink one step at a time only when they did not fit on the line, never past icon-and-count, and a category without an icon keeps its label', () => {
+test('the status buttons shrink one step at a time, only when they did not fit on the line, never past the smallest, and always keep their words', () => {
   assert.deepEqual([0, 1, 2].map((d) => T.nextDensity(d, false)), [0, 1, 2]);                 // they fit: stay as they are
   assert.deepEqual([0, 1, 2].map((d) => T.nextDensity(d, true)), [1, 2, 2]);                  // they wrapped: one step smaller, and no further than 2
-  assert.equal(T.statusText('In Progress', 198, 0), '🔄 In Progress: 198');
-  assert.equal(T.statusText('In Progress', 198, 1), '🔄 In Progress: 198');                   // smaller type, same words
-  assert.equal(T.statusText('In Progress', 198, 2), '🔄 198');                                // icon and count only
-  assert.equal(T.statusText('Done', 189, 2), '✅ 189'); assert.equal(T.statusText('To Do', 115, 2), '📝 115');
-  assert.equal(T.statusText('Blocked', 3, 2), 'Blocked: 3'); assert.equal(T.statusText('Blocked', 3, 0), 'Blocked: 3');   // no icon, so the label stays
+  assert.equal(T.statusText('In Progress', 198), '🔄 In Progress 198');                       // icon, words and count, no colon
+  assert.equal(T.statusText('Done', 189), '✅ Done 189'); assert.equal(T.statusText('To Do', 115), '📝 To Do 115');
+  assert.equal(T.statusText('Blocked', 3), 'Blocked 3');                                       // no icon for a category without one
+  assert.equal(T.statusText.length, 2);                                                        // the text does not depend on the size: the words are never dropped
   assert.ok(T.statusButtonClass(true, 0).startsWith(T.BTN) && T.statusButtonClass(true, 0).includes('bg-blue-600'));
   assert.ok(T.statusButtonClass(false, 1).includes('text-xs') && T.statusButtonClass(false, 1).includes('bg-gray-200'));
-  assert.ok(!T.statusButtonClass(false, 1).includes('px-3') && T.statusButtonClass(false, 2).includes('px-2'));
-  assert.equal(T.statusButtonClass(true, 1), T.statusButtonClass(true, 2));                    // 1 and 2 differ in the words, not the size
+  assert.ok(T.statusButtonClass(false, 2).includes('text-[11px]') && !T.statusButtonClass(false, 2).includes('text-xs'));
+  const px = (d) => /px-(\d(?:\.5)?)/.exec(T.statusButtonClass(true, d))[1];
+  assert.ok(Number(px(0)) > Number(px(1)) && Number(px(1)) > Number(px(2)));                    // each step is smaller
 });
 
 test('the toolbar lines sit above every table header, so a menu never opens behind one, and below the Jira filter', async () => {
