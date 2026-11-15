@@ -15,7 +15,7 @@ import ViewModeButton from './tasks/ViewModeButton';
 import FiltersToggle from './tasks/FiltersToggle';
 import { useStatusDensity } from './tasks/useStatusDensity';
 import { BoardDatePicker, RegionOptions } from './tasks/ViewOptions';
-import { BTN, EMPTY_QUICK, FILTERS_OPEN_KEY, QuickKey, QuickState, activeFilterCount, anyFilterActive, parseFiltersOpen, stateClass, viewHasOptions, viewSuffix } from '../utils/taskFilters';
+import { BTN, EMPTY_QUICK, FILTERS_OPEN_KEY, QuickKey, QuickState, activeFilterCount, anyFilterActive, countByStatusCategory, parseFiltersOpen, scopeBySource, stateClass, viewHasOptions, viewSuffix } from '../utils/taskFilters';
 import RegionView from './views/RegionView';
 
 // Simple hook that returns a value that only updates after `delay` ms of no changes
@@ -341,11 +341,11 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
   };
 
   // ── Memoized lookups (avoid recompute on every keystroke) ─────────────────
-  const statusCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    mergedIssues.forEach(i => { counts[i.statusCategory] = (counts[i.statusCategory] || 0) + 1; });
-    return counts;
-  }, [mergedIssues]);
+  // The status buttons count the tickets in the chosen scope (All, Sprint or Me), so they match the list when the scope changes
+  const statusCounts = useMemo(
+    () => countByStatusCategory(scopeBySource(mergedIssues, sourceFilter, effectiveSprintIssues, myIssues)),
+    [mergedIssues, sourceFilter, effectiveSprintIssues, myIssues],
+  );
 
   const uniqueClients = useMemo(() => {
     const s = new Set<string>();
@@ -366,11 +366,7 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
   // ── Derived data ──────────────────────────────────────────────────────────
   const { filteredIssues, sortedIssues, groupedIssues } = useMemo(() => {
     // 1. Source filter
-    let r = sourceFilter === 'sprint'
-      ? mergedIssues.filter(i => effectiveSprintIssues.some(s => s.key === i.key))
-      : sourceFilter === 'me'
-      ? mergedIssues.filter(i => myIssues.some(m => m.key === i.key))
-      : mergedIssues;
+    let r = scopeBySource(mergedIssues, sourceFilter, effectiveSprintIssues, myIssues);
 
     // 2. Quick-filter toggles
     if (showImportantOnly) r = r.filter(i => i.important);

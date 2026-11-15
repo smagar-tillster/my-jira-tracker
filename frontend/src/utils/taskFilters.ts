@@ -99,3 +99,23 @@ const SIZES: Record<StatusDensity, string> = {
   2: 'px-1.5 py-0.5 rounded-md text-[11px] font-medium transition-colors',
 };
 export const statusButtonClass = (on: boolean, density: StatusDensity): string => `${SIZES[density]} whitespace-nowrap ${stateClass(on)}`;
+
+// ---------------------------------------------------------------- the All / Sprint / Me scope, and the counts on the status buttons
+export type SourceScope = 'all' | 'sprint' | 'me';
+
+/** The tickets in the chosen scope: all of them, the ones in the sprint, or the ones that are mine (a ticket can be in both). Order is kept. */
+export const scopeBySource = <T extends { key: string }>(issues: readonly T[], source: SourceScope, sprint: readonly { key: string }[], mine: readonly { key: string }[]): T[] => {
+  if (source === 'all') return [...issues];
+  const keys = new Set((source === 'sprint' ? sprint : mine).map((i) => i.key));
+  return issues.filter((i) => keys.has(i.key));
+};
+
+/**
+ * Tickets per status category. In Progress, Done and To Do are always present (0 when there are none in the scope), so their buttons do not
+ * come and go as All, Sprint and Me are switched; any other category Jira sends is added when there is one.
+ */
+export const countByStatusCategory = (issues: readonly { statusCategory: string }[]): Record<string, number> => {
+  const counts: Record<string, number> = Object.fromEntries(STATUS_ORDER.map((c) => [c, 0]));
+  for (const i of issues) counts[i.statusCategory] = (counts[i.statusCategory] || 0) + 1;
+  return counts;
+};

@@ -218,3 +218,26 @@ test('the self-fit watches whether line 1 wraps (its last item below its first),
   assert.match(hook, /last\.offsetTop >= first\.offsetTop \+ first\.offsetHeight/);
   assert.ok(!/statusRef/.test(hook));
 });
+
+test('the status counts follow All, Sprint and Me: the scope keeps the tickets of that source, and the three standard statuses are always there', async () => {
+  const fs = await import('node:fs');
+  const issues = [{ key: 'A-1', statusCategory: 'To Do' }, { key: 'A-2', statusCategory: 'In Progress' }, { key: 'A-3', statusCategory: 'In Progress' }, { key: 'A-4', statusCategory: 'Done' }, { key: 'A-5', statusCategory: 'To Do' }];
+  const sprint = [{ key: 'A-1' }, { key: 'A-2' }, { key: 'A-4' }];       // in the sprint
+  const mine = [{ key: 'A-2' }, { key: 'A-5' }];                          // assigned to me (A-2 is in both)
+  assert.deepEqual(T.scopeBySource(issues, 'all', sprint, mine).map((i) => i.key), ['A-1', 'A-2', 'A-3', 'A-4', 'A-5']);
+  assert.deepEqual(T.scopeBySource(issues, 'sprint', sprint, mine).map((i) => i.key), ['A-1', 'A-2', 'A-4']);
+  assert.deepEqual(T.scopeBySource(issues, 'me', sprint, mine).map((i) => i.key), ['A-2', 'A-5']);
+  assert.deepEqual(T.scopeBySource([], 'me', sprint, mine), []);
+  assert.deepEqual(T.scopeBySource(issues, 'me', sprint, []), []);
+  const counts = (src) => T.countByStatusCategory(T.scopeBySource(issues, src, sprint, mine));
+  assert.deepEqual(counts('all'), { 'In Progress': 2, 'Done': 1, 'To Do': 2 });
+  assert.deepEqual(counts('sprint'), { 'In Progress': 1, 'Done': 1, 'To Do': 1 });
+  assert.deepEqual(counts('me'), { 'In Progress': 1, 'Done': 0, 'To Do': 1 });             // Done is 0, not missing: its button does not come and go
+  assert.deepEqual(T.countByStatusCategory([]), { 'In Progress': 0, 'Done': 0, 'To Do': 0 });
+  assert.deepEqual(T.countByStatusCategory([{ statusCategory: 'Blocked' }, { statusCategory: 'Blocked' }]), { 'In Progress': 0, 'Done': 0, 'To Do': 0, 'Blocked': 2 });
+  // and the page uses them, for the buttons and for the list
+  const tracker = fs.readFileSync(new URL('../../../frontend/src/components/JiraTasksTracker.tsx', import.meta.url), 'utf8');
+  assert.match(tracker, /countByStatusCategory\(scopeBySource\(mergedIssues, sourceFilter, effectiveSprintIssues, myIssues\)\)/);
+  assert.match(tracker, /let r = scopeBySource\(mergedIssues, sourceFilter, effectiveSprintIssues, myIssues\);/);
+  assert.ok(!/mergedIssues\.forEach\(i => \{ counts\[i\.statusCategory\]/.test(tracker));        // the old all-tickets count is gone
+});
