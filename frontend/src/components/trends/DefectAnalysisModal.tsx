@@ -111,8 +111,12 @@ export const addedSummary = (a: PatternAdded): string =>
 
 const newRepeats = (p: DefectPatterns) => p.matches.reduce((n, m) => n + m.tickets.length, 0);
 
+/** How many patterns are listed by name before "and N more". */
+export const KNOWN_SHOWN = 12;
+
 const PatternsSection: React.FC<{ patterns: DefectPatterns } & PatternActions> = ({ patterns, recording, recordResult, recordError, onRecord, drafting, drafts, draftErrors, onDraft, edits, onEdit, adding, added, addErrors, onAdd }) => {
   const total = newRepeats(patterns);
+  const justAddedIds = new Set(Object.values(added).map(a => a.id));
   const copy = (text: string) => { try { navigator.clipboard?.writeText(text); } catch { /* the text is on screen to copy by hand */ } };
   return (
     <section aria-label="Defect patterns" className="pt-1 space-y-3">
@@ -129,6 +133,24 @@ const PatternsSection: React.FC<{ patterns: DefectPatterns } & PatternActions> =
       ) : (
         <>
           <p className="text-sm text-gray-700">{patterns.withPr} of {patterns.defects} defects have their fix PR in the ledger. {patterns.patternCount} {patterns.patternCount === 1 ? 'pattern is' : 'patterns are'} known{patterns.recorded ? `; ${patterns.recorded} ${patterns.recorded === 1 ? 'repeat is' : 'repeats are'} already recorded` : ''}.</p>
+
+          <div className="space-y-1">
+            <h4 className="text-sm font-semibold text-gray-900">Patterns in the RAG</h4>
+            {patterns.known.length === 0 && <p className="text-sm text-gray-600">None yet.</p>}
+            <ul className="space-y-0.5">
+              {patterns.known.slice(0, KNOWN_SHOWN).map(k => {
+                const justAdded = justAddedIds.has(k.id);
+                return (
+                  <li key={k.id} className="text-sm text-gray-900 flex items-baseline gap-2 flex-wrap">
+                    <span className="font-semibold">{k.id}</span>
+                    <span className="text-gray-600 tabular-nums">seen {k.seen} · {k.tickets} {k.tickets === 1 ? 'ticket' : 'tickets'}{k.status !== 'active' ? ` · ${k.status}` : ''}</span>
+                    {justAdded && <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-green-100 text-green-900">added now</span>}
+                  </li>
+                );
+              })}
+            </ul>
+            {patterns.known.length > KNOWN_SHOWN && <p className="text-sm text-gray-600">… and {patterns.known.length - KNOWN_SHOWN} more.</p>}
+          </div>
 
           <div className="space-y-1.5">
             <div className="flex items-center gap-3 flex-wrap">

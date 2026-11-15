@@ -503,6 +503,8 @@ export interface PatternCluster { id: string; repo: string; files: string[]; cat
 /** The RAG's defect patterns against the defects in view (matched through the files each fix changed, from the PR ledger). */
 export interface DefectPatterns {
   ragFound: boolean; ragRoot: string; patternCount: number; defects: number; withPr: number; recorded: number;
+  /** Every pattern in the RAG, so the page can list them: how often each was seen and how many tickets it names. */
+  known: { id: string; seen: number; tickets: number; status: string; repos: string[] }[];
   matches: { patternId: string; seen: number; tickets: { key: string; title: string }[] }[]; clusters: PatternCluster[];
 }
 export interface RecordResult { updated: { id: string; added: string[]; seen: number }[]; skipped: { id: string; reason: string }[]; ingest: 'none' | 'ok' | 'failed'; reason: string }

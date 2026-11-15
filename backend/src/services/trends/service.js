@@ -64,7 +64,8 @@ export const createTrendsService = ({ sync = runTrendsSync, now = () => new Date
     return { root, found, patterns, defects, withFiles, plan, clusters: findClusters(withFiles, plan.matched) };
   };
   const patternView = (st) => ({
-    ragFound: st.found, ragRoot: st.root, patternCount: st.patterns.length, defects: st.defects.length, withPr: st.withFiles.length, recorded: st.plan.recorded,
+    ragFound: st.found, ragRoot: st.root, patternCount: st.patterns.length,
+    known: st.patterns.map((p) => ({ id: p.id, seen: p.seen, tickets: p.tickets.length, status: p.status, repos: p.repos })), defects: st.defects.length, withPr: st.withFiles.length, recorded: st.plan.recorded,
     matches: st.plan.matches.map((m) => ({ patternId: m.patternId, seen: m.seen, tickets: m.tickets.map((t) => ({ key: t.key, title: t.title })) })), clusters: st.clusters,
   });
 

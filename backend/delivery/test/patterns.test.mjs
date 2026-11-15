@@ -297,6 +297,7 @@ test('the analysis shows which defects repeat a pattern and which groups might b
   const before = snapshot(root);
   const a = svc.defectAnalysis({ months: 6 }).patterns;
   assert.deepEqual([a.ragFound, a.patternCount, a.defects, a.withPr, a.recorded], [true, 1, 6, 5, 0]);
+  assert.deepEqual(a.known, [{ id: 'shared-promotion-config-blast-radius', seen: 1, tickets: 1, status: 'active', repos: ['kiosk-ui', 'kiosk-configuration'] }]);   // every pattern in the RAG, so the page can list them
   assert.deepEqual(a.matches.map((m) => [m.patternId, m.tickets.map((t) => t.key)]), [['shared-promotion-config-blast-radius', ['NGK-1', 'NGK-2']]]);
   assert.deepEqual(a.clusters.map((c) => [c.count, c.files]), [[3, ['src/menu.js']]]);
   assert.deepEqual([ingests, modelCalls], [0, 0]); assert.deepEqual(snapshot(root), before);           // looking changes and costs nothing
@@ -306,6 +307,7 @@ test('the analysis shows which defects repeat a pattern and which groups might b
   assert.match(snapshot(root)['shared-promotion-config-blast-radius.md'], /seen: 3\n[\s\S]*tickets: \["NGK-98319", "NGK-1", "NGK-2"\]/);
   const after = svc.defectAnalysis({ months: 6 }).patterns;
   assert.deepEqual([after.matches, after.recorded], [[], 2]);                                           // now recorded: nothing left to plan
+  assert.deepEqual(after.known.map((k) => [k.id, k.seen, k.tickets]), [['shared-promotion-config-blast-radius', 3, 3]]);   // and the list shows the new seen count
   const again = await svc.recordRepeats({ months: 6 });
   assert.deepEqual([again.updated, again.ingest, ingests], [[], 'none', 1]);                           // no change, no ingest
 
