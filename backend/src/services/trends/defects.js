@@ -14,22 +14,22 @@ export const MIN_REPEAT = 3;                // a phrase must be in this many def
 
 // The first match wins, so the order matters. Each carries the advice used in the guidance when the model is not used.
 export const CATEGORIES = [
-  { name: 'Payment and payterminal', pattern: 'payment|payterminal|pay terminal|\\bcard\\b|tender|\\bebt\\b|refund|pinpad|declin|tipping|\\btip\\b', advice: 'Add failure-path tests per payment processor (decline, cancel, timeout) and a stage certification checklist before each release.' },
-  { name: 'POS and fiscal integration', pattern: '\\bpos\\b|simphony|micros|brink|fiscal|menu request|sku ?map|order (was )?n.?t sent|not sent to', advice: 'Run contract tests against a mock POS per POS type and validate menu and skumap payloads in CI before UAT.' },
-  { name: 'Receipts and printing', pattern: 'receipt|print|paper|\\bxsl\\b', advice: 'Add per-tenant receipt snapshot tests (fonts, locale, totals) and a receipt check in the UAT checklist.' },
-  { name: 'Loyalty, coupons and offers', pattern: 'loyalty|coupon|offer|reward|promo|\\bpls\\b', advice: 'Keep a sandbox scenario pack for loyalty flows (sign-in, redeem, partial redeem, void) and run it in every loyalty UAT.' },
-  { name: 'Accessibility', pattern: '\\bada\\b|screen reader|jaws|accessib|voice ?over', advice: 'Add an accessibility pass to the release checklist and lint for labels and focus order.' },
-  { name: 'Hardware and device', pattern: 'scanner|device|hardware|sunmi|reader|peripheral|admin panel', advice: 'Keep a hardware matrix in the lab and add device-service integration tests.' },
-  { name: 'Performance and reliability', pattern: 'slow|memory|performance|crash|freeze|hang|timeout|intermittent|offline|not responding', advice: 'Set timing and memory budgets with soak tests, and alert on regressions.' },
-  { name: 'Navigation and flow', pattern: 'back flow|back button|flow|navigat|cancel|restart|stuck|blank screen|loop|redirect', advice: 'Add flow tests for back, edit and cancel paths (cart state) to the regression scripts.' },
-  { name: 'Menu, pricing and content data', pattern: 'menu|price|pricing|\\bsku\\b|combo|modifier|categor|image|product|\\bitem|translation|language|allergen|calorie|upsell', advice: 'Automate menu and content validation (missing images, translations, prices, mappings) before UAT and keep a data checklist per tenant.' },
-  { name: 'UI layout and display', pattern: '\\bui\\b|display|overlap|clipped|font|scroll|button|modal|screen|label|truncat|align|animation|banner|logo|theme|colou?r|capitali|text', advice: 'Add visual regression tests per tenant theme and a device-size matrix; review components before merge.' },
-  { name: 'Config and deployment', pattern: 'config|deploy|environment|setting|\\bflag\\b|enable|disable|whitelist', advice: 'Validate config against a schema, review config diffs, and promote through UAT with automated checks.' },
+  { name: 'Payment and payterminal', meaning: 'Card and payment-terminal problems: declines, refunds, tips, terminal flows.', pattern: 'payment|payterminal|pay terminal|\\bcard\\b|tender|\\bebt\\b|refund|pinpad|declin|tipping|\\btip\\b', advice: 'Add failure-path tests per payment processor (decline, cancel, timeout) and a stage certification checklist before each release.' },
+  { name: 'POS and fiscal integration', meaning: 'Orders or menus not reaching the POS, plus fiscal and mapping errors.', pattern: '\\bpos\\b|simphony|micros|brink|fiscal|menu request|sku ?map|order (was )?n.?t sent|not sent to', advice: 'Run contract tests against a mock POS per POS type and validate menu and skumap payloads in CI before UAT.' },
+  { name: 'Receipts and printing', meaning: 'Receipts that are wrong, missing or badly formatted, on paper or on screen.', pattern: 'receipt|print|paper|\\bxsl\\b', advice: 'Add per-tenant receipt snapshot tests (fonts, locale, totals) and a receipt check in the UAT checklist.' },
+  { name: 'Loyalty, coupons and offers', meaning: 'Sign-in, redeem and promotion problems in loyalty, coupons and offers.', pattern: 'loyalty|coupon|offer|reward|promo|\\bpls\\b', advice: 'Keep a sandbox scenario pack for loyalty flows (sign-in, redeem, partial redeem, void) and run it in every loyalty UAT.' },
+  { name: 'Accessibility', meaning: 'Screen-reader, ADA and accessibility-mode behavior that does not work.', pattern: '\\bada\\b|screen reader|jaws|accessib|voice ?over', advice: 'Add an accessibility pass to the release checklist and lint for labels and focus order.' },
+  { name: 'Hardware and device', meaning: 'Scanners, readers, the admin panel and other device behavior.', pattern: 'scanner|device|hardware|sunmi|reader|peripheral|admin panel', advice: 'Keep a hardware matrix in the lab and add device-service integration tests.' },
+  { name: 'Performance and reliability', meaning: 'Slow, freezing, crashing or intermittent behavior.', pattern: 'slow|memory|performance|crash|freeze|hang|timeout|intermittent|offline|not responding', advice: 'Set timing and memory budgets with soak tests, and alert on regressions.' },
+  { name: 'Navigation and flow', meaning: 'Back, cancel, edit and redirect paths that lose state or get stuck.', pattern: 'back flow|back button|flow|navigat|cancel|restart|stuck|blank screen|loop|redirect', advice: 'Add flow tests for back, edit and cancel paths (cart state) to the regression scripts.' },
+  { name: 'Menu, pricing and content data', meaning: 'Wrong or missing menu items, prices, images, modifiers or translations.', pattern: 'menu|price|pricing|\\bsku\\b|combo|modifier|categor|image|product|\\bitem|translation|language|allergen|calorie|upsell', advice: 'Automate menu and content validation (missing images, translations, prices, mappings) before UAT and keep a data checklist per tenant.' },
+  { name: 'UI layout and display', meaning: 'Text, buttons, layout, themes or animations that look or behave wrong.', pattern: '\\bui\\b|display|overlap|clipped|font|scroll|button|modal|screen|label|truncat|align|animation|banner|logo|theme|colou?r|capitali|text', advice: 'Add visual regression tests per tenant theme and a device-size matrix; review components before merge.' },
+  { name: 'Config and deployment', meaning: 'Settings, feature flags and environment differences between tenants.', pattern: 'config|deploy|environment|setting|\\bflag\\b|enable|disable|whitelist', advice: 'Validate config against a schema, review config diffs, and promote through UAT with automated checks.' },
 ].map((c) => ({ ...c, re: new RegExp(c.pattern, 'i') }));
-export const OTHER = { name: 'Other or unclear', advice: 'Ask reporters for a category when logging so these can be routed, and review a sample for new patterns.' };
+export const OTHER = { name: 'Other or unclear', meaning: 'Titles that match none of the other categories; worth a look for new patterns.', advice: 'Ask reporters for a category when logging so these can be routed, and review a sample for new patterns.' };
 
 export const categorize = (row) => (CATEGORIES.find((c) => c.re.test(`${row.summary || ''} ${(row.labels || []).join(' ')} ${row.component || ''}`)) || OTHER).name;
-const adviceFor = (name) => (CATEGORIES.find((c) => c.name === name) || OTHER).advice;
+const infoFor = (name) => CATEGORIES.find((c) => c.name === name) || OTHER;
 
 const DAY = 86400000;
 /** Whole days from created to resolved, or null when either is missing or the order is impossible. */
@@ -75,7 +75,7 @@ export const findRepeats = (defects, clientNames = [], limit = 6) => {
   }
   return kept.map(({ phrase, keys }) => {
     const rows = [...keys].map((k) => byKey.get(k));
-    return { phrase, count: keys.size, clients: new Set(rows.flatMap((r) => (r.clients?.length ? r.clients : []))).size, keys: [...keys].slice(0, 3) };
+    return { phrase, count: keys.size, clients: new Set(rows.flatMap((r) => (r.clients?.length ? r.clients : []))).size, keys: [...keys].slice(0, 3), all: [...keys] };
   });
 };
 
@@ -109,13 +109,32 @@ export const analyzeDefects = ({ rows, months = 6, filters = {}, feMembers = new
     fixedInWeekShare: pct(fixDays(defects).filter((d) => d <= 7).length, fixDays(defects).length),
   };
 
-  const byCat = new Map();
-  for (const d of defects) { const c = categorize(d); (byCat.get(c) || byCat.set(c, []).get(c)).push(d); }
+  const byCat = new Map(); const catOf = new Map();
+  for (const d of defects) { const c = categorize(d); catOf.set(d.key, c); (byCat.get(c) || byCat.set(c, []).get(c)).push(d); }
+
+  const allClientNames = [...new Set(rows.flatMap((r) => r.clients || []))];
+  const repeatsAll = findRepeats(defects, allClientNames);
+  // a repeat belongs to the category most of its defects are in, so the advice for that category can name it
+  const repeatsByCat = new Map();
+  for (const r of repeatsAll) {
+    const votes = new Map(); for (const k of r.all) votes.set(catOf.get(k), (votes.get(catOf.get(k)) || 0) + 1);
+    const [home] = [...votes.entries()].sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])))[0];
+    (repeatsByCat.get(home) || repeatsByCat.set(home, []).get(home)).push({ phrase: r.phrase, count: r.count, clients: r.clients });
+  }
+  const repeats = repeatsAll.map(({ all, ...r }) => r);
+
+  const count = (rs, f) => { const m = new Map(); for (const r of rs) for (const k of f(r)) m.set(k, (m.get(k) || 0) + 1); return [...m.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])); };
+  const clientsOf = (r) => (r.clients?.length ? r.clients : []);
   const categories = [...byCat.entries()].map(([name, rs]) => {
     const recent = rs.filter(isRecent).length; const earlier = rs.length - recent;
-    const examples = [...rs].sort((a, b) => String(b.resolved).localeCompare(String(a.resolved))).slice(0, 3).map((r) => ({ key: r.key, summary: r.summary }));
-    return { name, count: rs.length, share: pct(rs.length, total), changePct: perMonthChange(recent, earlier), medianDaysToFix: median(fixDays(rs)), advice: adviceFor(name), examples };
-  }).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+    const examples = [...rs].sort((a, b) => String(b.resolved).localeCompare(String(a.resolved)) || b.key.localeCompare(a.key)).slice(0, 3).map((r) => ({ key: r.key, summary: r.summary }));
+    const info = infoFor(name);
+    return {
+      name, meaning: info.meaning, count: rs.length, share: pct(rs.length, total), changePct: perMonthChange(recent, earlier), medianDaysToFix: median(fixDays(rs)),
+      tenants: count(rs, clientsOf).slice(0, 3).map(([n, c]) => ({ name: n, count: c })),
+      examples, advice: info.advice, repeats: (repeatsByCat.get(name) || []).slice(0, 2),
+    };
+  }).sort((a, b) => (a.name === OTHER.name) - (b.name === OTHER.name) || b.count - a.count || a.name.localeCompare(b.name));   // "Other or unclear" always last
 
   // client rates: a ticket with several clients counts under each; the rate is defects per 100 done tickets
   const perClient = new Map();
@@ -128,26 +147,9 @@ export const analyzeDefects = ({ rows, months = 6, filters = {}, feMembers = new
     .map(([name, e]) => ({ name, defects: e.defects, done: e.done, per100: round1((e.defects / e.done) * 100), times: average ? round1(((e.defects / e.done) * 100) / average) : null }))
     .sort((a, b) => b.per100 - a.per100 || a.name.localeCompare(b.name)).slice(0, 6);
 
-  const allClientNames = [...new Set(rows.flatMap((r) => r.clients || []))];
-  const repeats = findRepeats(defects, allClientNames);
   const perMonth = list.map((_, i) => defects.filter((r) => monthOfRow(r) === i).length);
 
-  return { months: list, perMonth, tiles, categories, clients, averagePer100: average, repeats, minClientDone: MIN_CLIENT_DONE, typesCounted: DEFECT_TYPES, typeFilterIgnored: !!(ignored && ignored.length) };
-};
+  const topClients = count(defects, clientsOf).slice(0, 3).map(([name, n]) => ({ name, count: n }));
 
-/** The focus list without a model: categories by size and growth, a hot-spot client, and the biggest repeat. Always available. */
-export const ruleFocus = (facts) => {
-  const out = [];
-  // size, pushed up by growth (at most doubled) and down by shrinkage (at most halved): a big category that is already improving ranks below one that is growing
-  const score = (c) => c.count * (1 + Math.max(-0.5, Math.min(1, (c.changePct ?? 0) / 100)));
-  for (const c of [...facts.categories].filter((x) => x.name !== OTHER.name).sort((a, b) => score(b) - score(a)).slice(0, 3)) {
-    const trend = c.changePct === null ? '' : c.changePct > 0 ? `, up ${c.changePct}% a month` : c.changePct < 0 ? `, down ${-c.changePct}% a month` : ', flat';
-    out.push({ title: c.name, why: `${c.count} defects (${c.share}% of all${trend}).`, actions: [c.advice], measure: `Defects in this category per month (now ${Math.round((c.count / Math.max(1, facts.months.length)) * 10) / 10}).` });
-  }
-  // a hot spot is a client well above the average; of those, the one with the most defects (a high rate on a handful of tickets is not the best lead)
-  const hot = [...facts.clients].filter((c) => c.times !== null && c.times >= 1.5).sort((a, b) => b.defects - a.defects || b.per100 - a.per100)[0];
-  if (hot) out.push({ title: `Client ${hot.name}`, why: `${hot.per100} defects per 100 done tickets, ${hot.times} times the average of ${facts.averagePer100}.`, actions: ['Review what this client\'s configuration or flows do differently, together with the team that delivers it.'], measure: 'Its defects per 100 done tickets.' });
-  const rep = facts.repeats[0];
-  if (rep) out.push({ title: `Repeat: "${rep.phrase}"`, why: `${rep.count} defects use these words${rep.clients ? `, across ${rep.clients} client${rep.clients === 1 ? '' : 's'}` : ''} (for example ${rep.keys.join(', ')}).`, actions: ['Check whether these share one cause; if they do, one fix and one regression test would remove the repeats.'], measure: 'New defects with this wording.' });
-  return out;
+  return { months: list, perMonth, tiles, topClients, categories, clients, averagePer100: average, repeats, minClientDone: MIN_CLIENT_DONE, typesCounted: DEFECT_TYPES, typeFilterIgnored: !!(ignored && ignored.length) };
 };

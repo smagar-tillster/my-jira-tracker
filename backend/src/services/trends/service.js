@@ -3,7 +3,8 @@ import * as store from './store.js';
 import { runTrendsSync } from './sync.js';
 import { aggregate, BASES, GROUPS } from './aggregate.js';
 import { getAllFETeamMembers } from '../feteamService.js';
-import { analyzeDefects, ruleFocus } from './defects.js';
+import { analyzeDefects } from './defects.js';
+import { jiraUrl } from '../../../delivery/lib/jira.mjs';
 import { generateGuidance, cachedGuidance } from './guidance.js';
 
 export const MONTH_CHOICES = [3, 6];
@@ -45,7 +46,10 @@ export const createTrendsService = ({ sync = runTrendsSync, now = () => new Date
   const defectAnalysis = ({ months = 6, filters = {} } = {}) => {
     const facts = defectFacts({ months, filters });
     const scope = scopeText(filters);
-    return { facts, scope, ruleFocus: ruleFocus(facts), guidance: cachedGuidance(facts, scope) };
+    const guidance = cachedGuidance(facts, scope);
+    // links are added to what the page gets, after the numbers are fixed: they are not part of what the model sees or what its answer is saved under
+    const linked = { ...facts, categories: facts.categories.map((c) => ({ ...c, examples: c.examples.map((e) => ({ ...e, url: jiraUrl(e.key) })) })) };
+    return { facts: linked, scope, guidance };
   };
 
   /** Asks the model for the guidance (one at a time). `busy` when another is already running. */

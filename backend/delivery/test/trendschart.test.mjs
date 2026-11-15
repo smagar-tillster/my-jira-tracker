@@ -128,3 +128,13 @@ test('trend text: up, down, flat, and not available when the earlier half was to
   assert.deepEqual(C.trendText(null), { arrow: '', text: 'n/a', tone: 'none' });
   assert.deepEqual(C.monthCounts(['2026-10', '2026-11'], [3]).map((m) => [m.label, m.count]), [['Oct', 3], ['Nov', 0]]);
 });
+
+test('the little trend line puts the highest month at the top, zero at the bottom, and the last point where the dot goes', () => {
+  const s = C.sparkline([0, 5, 10], 100, 30, 3);
+  assert.equal(s.points, '3,27 50,15 97,3');                                // x spread over the width less the pad; y from the bottom pad to the top pad
+  assert.deepEqual(s.last, { x: 97, y: 3 }); assert.equal(s.top, 10);
+  assert.deepEqual(C.sparkline([4, 4, 4], 100, 30, 3).points.split(' ').map((p) => p.split(',')[1]), ['3', '3', '3']);   // all equal: a flat line at the top, since the scale is 0 to the max
+  assert.equal(C.sparkline([], 100, 30).points, ''); assert.equal(C.sparkline([], 100, 30).last, null);
+  assert.deepEqual(C.sparkline([7], 100, 30).last, { x: 50, y: 3 });         // one month: centered
+  assert.equal(C.sparkline([0, 0], 100, 30, 3).top, 1);                       // all zeros: no division by zero
+});

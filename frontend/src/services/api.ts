@@ -479,17 +479,20 @@ export interface SprintTrend {
   status: TrendsStatus;
 }
 
-export interface DefectCategory { name: string; count: number; share: number; changePct: number | null; medianDaysToFix: number | null; advice: string; examples: { key: string; summary: string }[] }
+export interface DefectCategory {
+  name: string; meaning: string; count: number; share: number; changePct: number | null; medianDaysToFix: number | null; advice: string;
+  tenants: { name: string; count: number }[]; examples: { key: string; summary: string; url: string }[]; repeats: { phrase: string; count: number; clients: number }[];
+}
 export interface DefectClient { name: string; defects: number; done: number; per100: number; times: number | null }
 export interface DefectRepeat { phrase: string; count: number; clients: number; keys: string[] }
 export interface FocusItem { title: string; why: string; actions: string[]; measure: string }
 export interface DefectGuidance { headline: string; focus: FocusItem[]; caveats: string[]; cached: boolean; model: string; at: string }
 export interface DefectFacts {
-  months: string[]; perMonth: number[]; averagePer100: number; minClientDone: number; typesCounted: string[]; typeFilterIgnored: boolean;
+  months: string[]; perMonth: number[]; topClients: { name: string; count: number }[]; averagePer100: number; minClientDone: number; typesCounted: string[]; typeFilterIgnored: boolean;
   tiles: { defects: number; ticketsDone: number; shareOfDone: number; medianDaysToFix: number | null; medianDaysRecent: number | null; medianDaysEarlier: number | null; uat: number; uatShare: number; fixedInWeekShare: number };
   categories: DefectCategory[]; clients: DefectClient[]; repeats: DefectRepeat[];
 }
-export interface DefectAnalysis { facts: DefectFacts; scope: string; ruleFocus: FocusItem[]; guidance: DefectGuidance | null; status: TrendsStatus }
+export interface DefectAnalysis { facts: DefectFacts; scope: string; guidance: DefectGuidance | null; status: TrendsStatus }
 
 const apiMessage = (e: any, fallback: string) => String(e?.response?.data?.error || (e instanceof Error ? e.message : fallback));
 

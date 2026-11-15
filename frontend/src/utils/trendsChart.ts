@@ -104,3 +104,16 @@ export const trendText = (changePct: number | null): { arrow: string; text: stri
     : changePct > 0 ? { arrow: '▲', text: `${changePct}%`, tone: 'up' }
     : changePct < 0 ? { arrow: '▼', text: `${-changePct}%`, tone: 'down' }
     : { arrow: '▬', text: '0%', tone: 'flat' };
+
+/**
+ * A small trend line: the points inside a width x height box with a pad all round, the lowest value at the bottom (zero is the floor, so a
+ * flat run of the same number is a flat line in the middle-ish, not a line at the bottom), and where the last point is for its dot.
+ */
+export const sparkline = (values: readonly number[], width: number, height: number, pad = 3) => {
+  const n = values.length;
+  const top = Math.max(1, ...values);
+  const x = (i: number) => (n <= 1 ? width / 2 : pad + (i * (width - 2 * pad)) / (n - 1));
+  const y = (v: number) => height - pad - (v / top) * (height - 2 * pad);
+  const pts = values.map((v, i) => ({ x: Math.round(x(i) * 10) / 10, y: Math.round(y(v) * 10) / 10 }));
+  return { points: pts.map((p) => `${p.x},${p.y}`).join(' '), last: pts[n - 1] ?? null, top };
+};

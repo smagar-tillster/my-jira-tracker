@@ -111,26 +111,31 @@ test('repeats are two-word phrases in 3 or more defects, without client codes, a
   assert.deepEqual(D.findRepeats(ds.slice(0, 2), []), []);                                           // 2 tickets are not a repeat
 });
 
-test('the rule-based focus ranks by size and growth, adds a hot-spot client and the biggest repeat, and is never empty when there are defects', () => {
-  const facts = { months: Array(6).fill('m'), tiles: { defects: 30 }, averagePer100: 10,
-    categories: [{ name: 'A', count: 10, share: 33, changePct: 0, advice: 'do a' }, { name: 'B', count: 8, share: 27, changePct: 100, advice: 'do b' }, { name: 'Other or unclear', count: 12, share: 40, changePct: 0, advice: 'x' }],
-    clients: [{ name: 'Z', defects: 9, done: 30, per100: 30, times: 3 }], repeats: [{ phrase: 'receipt total', count: 5, clients: 2, keys: ['X-1', 'X-2'] }] };
-  const f = D.ruleFocus(facts);
-  assert.deepEqual(f.map((x) => x.title), ['B', 'A', 'Client Z', 'Repeat: "receipt total"']);          // B grows (8 x 2 = 16) so it outranks A (10); "Other" is never a focus
-  assert.ok(f.every((x) => x.why && x.actions.length && x.measure));
-  assert.deepEqual(D.ruleFocus({ ...facts, clients: [{ name: 'Y', per100: 11, times: 1.1 }], repeats: [] }).map((x) => x.title), ['B', 'A']);   // a client barely above average is no hot spot
-});
-
-test('a big category that is already shrinking ranks below a smaller one that is growing, and the hot spot is the client with the most defects', () => {
-  const facts = { months: Array(6).fill('m'), tiles: { defects: 100 }, averagePer100: 30,
-    categories: [{ name: 'Big but falling', count: 65, share: 40, changePct: -41, advice: 'x' }, { name: 'Smaller, growing', count: 49, share: 30, changePct: 23, advice: 'y' }, { name: 'Medium, flat', count: 40, share: 25, changePct: 0, advice: 'z' }],
-    clients: [{ name: 'Tiny', defects: 13, done: 24, per100: 54, times: 1.8 }, { name: 'Large', defects: 87, done: 169, per100: 51, times: 1.7 }], repeats: [] };
-  assert.deepEqual(D.ruleFocus(facts).map((x) => x.title), ['Smaller, growing', 'Medium, flat', 'Big but falling', 'Client Large']);   // scores 60.3, 40, 38.4: falling 41% counts as 0.59 of its size
+test('each category has a one-line meaning, its top 3 tenants, 3 sample tickets, the repeats that belong to it, and "Other or unclear" is always last', () => {
+  const rows = [];
+  const mk = (summary, client, i) => Dfx(`2026-10-${String(10 + (i % 15)).padStart(2, '0')}T12:00:00`, summary, { clients: [client] });
+  ['AA', 'AA', 'AA', 'BB', 'BB', 'CC', 'DD'].forEach((c, i) => rows.push(mk('Receipt total mismatch on kiosk', c, i)));    // 7 receipt defects: AA 3, BB 2, CC 1, DD 1
+  for (let i = 0; i < 9; i++) rows.push(mk('Something odd', 'EE', i));                                                              // 9 that match nothing: more than receipts
+  const f = D.analyzeDefects({ rows, months: 6, now: NOW });
+  assert.deepEqual(f.categories.map((c) => c.name), ['Receipts and printing', 'Other or unclear']);                                // Other is last although it is bigger
+  const r = f.categories[0];
+  assert.match(r.meaning, /Receipts that are wrong/);
+  assert.deepEqual(r.tenants, [{ name: 'AA', count: 3 }, { name: 'BB', count: 2 }, { name: 'CC', count: 1 }]);                     // top 3, ties by name
+  assert.equal(r.examples.length, 3);
+  assert.ok(r.examples.every((e) => /^X-\d+$/.test(e.key)));
+  assert.deepEqual(r.repeats.map((x) => [x.phrase, x.count]), [['receipt total', 7]]);                                              // the repeat sits with the category its defects are in
+  assert.deepEqual(f.categories[1].repeats, []);
+  assert.ok(f.categories[1].meaning.length > 20);
+  assert.deepEqual(f.topClients, [{ name: 'EE', count: 9 }, { name: 'AA', count: 3 }, { name: 'BB', count: 2 }]);                 // overall top 3 by defect count
+  assert.ok(D.CATEGORIES.every((c) => c.meaning && c.advice));                                                                      // every category is defined the same way
+  assert.equal(new Set(D.CATEGORIES.map((c) => c.name)).size, D.CATEGORIES.length);
 });
 
 // ---------------------------------------------------------------- guidance
 const factsFor = (summaries) => D.analyzeDefects({ rows: summaries.map((s) => Dfx('2026-10-10T12:00:00', s, { clients: ['AA'] })), now: NOW });
-const GOOD = JSON.stringify({ headline: 'Payments lead.', focus: [{ title: 'Payment and payterminal', why: '98 defects, 22%.', actions: ['Add decline tests', 'Add timeout tests'], measure: 'Payment defects per month', extra: 'dropped' }], caveats: ['Titles only.'] });
+const GOOD = JSON.stringify({ headline: 'Payments lead.', focus: [{ title: 'Payment and payterminal', why: '98 defects, 22%.', actions: ['Add decline tests', 'Add timeout tests'], measure: 'Payment defects per month', extra: 'dropped' }], caveats: ['Titles only.', 'Second caveat is dropped.'] });
+
+test('the default model is the small fast one', () => { assert.equal(G.MODEL, 'haiku'); });
 
 test('what is sent to the model has no secrets or card numbers, no people, and the scope as counts only', () => {
   const facts = factsFor(['Login fails password=hunter2secret for kiosk', 'Card 4242 4242 4242 4242 charged twice', 'Odd']);   // the card is a processor test number used as a fixture
@@ -148,9 +153,10 @@ test('a model answer is checked: unknown keys dropped, texts clipped, at most 4 
   assert.deepEqual(Object.keys(p), ['headline', 'focus', 'caveats']);
   assert.deepEqual(Object.keys(p.focus[0]), ['title', 'why', 'actions', 'measure']);
   const many = { focus: Array.from({ length: 7 }, (_, i) => ({ title: `T${i}`, why: 'w', actions: ['a'], measure: 'm' })) };
-  assert.equal(G.parseGuidance(many).focus.length, G.MAX_FOCUS);
-  assert.equal(G.parseGuidance({ focus: [{ title: 'x'.repeat(500), why: 'w', actions: ['a'.repeat(900), 'b', 'c', 'd'], measure: 'm' }] }).focus[0].title.length <= 80, true);
-  assert.equal(G.parseGuidance({ focus: [{ title: 'x', why: 'w', actions: ['a'.repeat(900), 'b', 'c', 'd'], measure: 'm' }] }).focus[0].actions.length, 3);
+  assert.equal(G.parseGuidance(many).focus.length, 3); assert.equal(G.MAX_FOCUS, 3);
+  assert.equal(G.parseGuidance({ focus: [{ title: 'x'.repeat(500), why: 'w', actions: ['a'], measure: 'm' }] }).focus[0].title.length <= 60, true);
+  assert.equal(G.parseGuidance({ focus: [{ title: 'x', why: 'w', actions: ['a'.repeat(900), 'b', 'c', 'd'], measure: 'm' }] }).focus[0].actions.length, 2);
+  assert.equal(G.parseGuidance(JSON.parse(GOOD)).caveats.length, 1);                                  // short on purpose: one caveat
   assert.equal(G.parseGuidance({ focus: [{ title: '', why: 'w', actions: ['a'] }, { title: 't', why: 'w', actions: [] }] }), null);
   assert.equal(G.parseGuidance(null), null); assert.equal(G.parseGuidance({ focus: 'nope' }), null);
 });
@@ -158,7 +164,7 @@ test('a model answer is checked: unknown keys dropped, texts clipped, at most 4 
 test('the guidance is asked once per set of numbers: the second ask is served from the saved answer, force asks again, a different scope is a different answer', async () => {
   reset();
   let calls = 0;
-  const claude = async ({ model, input }) => { calls++; assert.ok(input.includes('"categories"')); assert.equal(model, G.MODEL); return { ok: true, text: `Here you go:\n\`\`\`json\n${GOOD}\n\`\`\`` }; };
+  const claude = async ({ model, input }) => { calls++; assert.ok(input.includes('"categories"')); assert.ok(['haiku', 'sonnet'].includes(model)); return { ok: true, text: `Here you go:\n\`\`\`json\n${GOOD}\n\`\`\`` }; };
   const facts = factsFor(['Receipt total wrong', 'Card declined']);
   const a = await G.generateGuidance({ facts, scope: 'all done tickets', claude, now: () => new Date('2026-11-13T20:00:00Z') });
   assert.deepEqual([a.ok, a.cached, calls], [true, false, 1]);
@@ -169,6 +175,7 @@ test('the guidance is asked once per set of numbers: the second ask is served fr
   assert.equal((await G.generateGuidance({ facts, scope: 'all done tickets', claude, force: true })).cached, false); assert.equal(calls, 2);
   assert.equal((await G.generateGuidance({ facts, scope: 'FE team only', claude })).cached, false); assert.equal(calls, 3);
   assert.equal(G.cachedGuidance(facts, 'nothing asked for this')?.focus, undefined);
+  assert.equal((await G.generateGuidance({ facts, scope: 'all done tickets', claude, model: 'sonnet' })).cached, false); assert.equal(calls, 4);   // another model is another answer
   reset();
 });
 
@@ -205,7 +212,8 @@ test('the routes: the analysis never calls the model, the guidance does (once pe
     const a = await call(server, 'GET', '/api/trends/defects?months=6');
     assert.equal(a.status, 200);
     assert.equal(a.json.data.facts.tiles.defects, 1); assert.equal(a.json.data.guidance, null); assert.equal(calls, 0);
-    assert.ok(a.json.data.ruleFocus.length >= 1); assert.equal(a.json.data.scope, 'all done tickets');
+    assert.equal(a.json.data.scope, 'all done tickets'); assert.equal(a.json.data.ruleFocus, undefined);
+    assert.match(a.json.data.facts.categories[0].examples[0].url, /\/browse\/X-\d+$/);               // each sample ticket comes with its Jira link
     assert.equal((await call(server, 'GET', '/api/trends/defects?months=6&client=Nobody')).json.data.facts.tiles.defects, 0);
     assert.equal((await call(server, 'GET', '/api/trends/defects?months=12')).status, 400);
     assert.equal((await call(server, 'POST', '/api/trends/defects/guidance', { months: 12 })).status, 400);
