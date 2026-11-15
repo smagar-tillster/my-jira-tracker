@@ -522,15 +522,8 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
               </span>
             </div>
 
-            {/* Row 3 (line 2) – Additional Filters and the dropdown filters */}
+            {/* Row 3 (line 2) – the dropdown filters, then Additional Filters last */}
             <div className="flex flex-wrap gap-1.5 items-center relative z-40 min-w-0 col-start-1">
-              {/* Quick filters live in the Additional Filters popover */}
-              <AdditionalFilters state={quick} open={openDropdown === 'additional'}
-                onToggleOpen={() => setOpenDropdown(openDropdown === 'additional' ? null : 'additional')}
-                onClose={() => setOpenDropdown(null)} onToggle={toggleQuick} />
-
-              <div className="h-6 w-px bg-gray-300" />
-
               {/* Type filter */}
               <DropdownFilter label="Type" dropKey="type" search={typeSearch} setSearch={setTypeSearch}
                 options={dropdownOptions.type}
@@ -572,6 +565,14 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
                 options={dropdownOptions.component}
                 openDropdown={openDropdown} onOpen={handleDropdownOpen}
                 isSelected={isFilterSelected} onToggle={togglePendingFilter} countFn={v => countOcc('components', v)} />
+
+              <div className="h-6 w-px bg-gray-300" />
+
+              {/* Quick filters live in the Additional Filters popover */}
+              <AdditionalFilters state={quick} open={openDropdown === 'additional'}
+                onToggleOpen={() => setOpenDropdown(openDropdown === 'additional' ? null : 'additional')}
+                onClose={() => setOpenDropdown(null)} onToggle={toggleQuick} />
+
 
             </div>
           </div>
