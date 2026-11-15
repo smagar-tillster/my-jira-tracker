@@ -10,6 +10,7 @@ import ListView from './views/ListView';
 import DueDateBoard from './views/DueDateBoard';
 import AdditionalFilters from './tasks/AdditionalFilters';
 import StatusFilterGroup from './tasks/StatusFilterGroup';
+import FilterIcon from './tasks/FilterIcon';
 import { BTN, EMPTY_QUICK, QuickKey, QuickState, anyFilterActive, stateClass } from '../utils/taskFilters';
 import RegionView from './views/RegionView';
 
@@ -427,7 +428,7 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
               />
             </div>
 
-            {/* Row 2 – Source pill + view mode + Additional Filters + status */}
+            {/* Row 2 – Source pill + view mode + Group By */}
             <div className="flex gap-1.5 items-center flex-wrap min-w-0 col-start-1">
               {/* Source filter pills */}
               <div className="flex rounded-lg border border-gray-300 overflow-hidden text-sm font-medium">
@@ -474,11 +475,25 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
 
               <div className="h-6 w-px bg-gray-300" />
 
-              {/* Quick filters live in the Additional Filters popover; the status buttons sit beside it, compact */}
-              <AdditionalFilters state={quick} open={openDropdown === 'additional'}
-                onToggleOpen={() => setOpenDropdown(openDropdown === 'additional' ? null : 'additional')}
-                onClose={() => setOpenDropdown(null)} onToggle={toggleQuick} />
-              <StatusFilterGroup counts={statusCounts} active={effectiveSCFilter} onToggle={toggleStatusCat} />
+              {/* Group By sits with the view buttons: it changes how the list is shown */}
+              <div className="relative z-40 filter-dropdown">
+                <button onClick={() => setOpenDropdown(openDropdown === 'groupby' ? null : 'groupby')}
+                  className={`${BTN} text-left ${stateClass(!!groupConfig.column)}`}>
+                  Group By{groupConfig.column ? ` (${DEFAULT_COLUMNS.find(c => c.key === groupConfig.column)?.label})` : '...'}
+                </button>
+                {openDropdown === 'groupby' && (
+                  <div className="absolute z-50 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg p-2 min-w-[200px] max-h-[300px] overflow-y-auto">
+                    <input type="text" placeholder="Search..." value={groupBySearch} onChange={e => setGroupBySearch(e.target.value)}
+                      className="w-full px-2 py-1 mb-2 border border-gray-300 rounded text-sm" onClick={e => e.stopPropagation()} />
+                    <div className="px-2 py-1 rounded cursor-pointer hover:bg-gray-100 text-sm"
+                      onClick={() => { handleGroup(null); setGroupBySearch(''); setOpenDropdown(null); }}>None</div>
+                    {GROUPABLE_COLUMNS.filter(c => c.label.toLowerCase().includes(groupBySearch.toLowerCase())).map(col => (
+                      <div key={col.key} className="px-2 py-1 rounded cursor-pointer hover:bg-gray-100 text-sm"
+                        onClick={() => { handleGroup(col.key); setGroupBySearch(''); setOpenDropdown(null); }}>{col.label}</div>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               {/* Active filter chips */}
               {Object.keys(filters).length > 0 && (
@@ -512,27 +527,15 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
               </span>
             </div>
 
-            {/* Row 3 – dropdown filters */}
+            {/* Row 3 – Additional Filters, status buttons and the dropdown filters */}
             <div className="flex flex-wrap gap-1.5 items-center relative z-40 min-w-0 col-start-1">
-              {/* Group By */}
-              <div className="relative z-40 filter-dropdown">
-                <button onClick={() => setOpenDropdown(openDropdown === 'groupby' ? null : 'groupby')}
-                  className={`${BTN} text-left ${stateClass(!!groupConfig.column)}`}>
-                  Group By{groupConfig.column ? ` (${DEFAULT_COLUMNS.find(c => c.key === groupConfig.column)?.label})` : '...'}
-                </button>
-                {openDropdown === 'groupby' && (
-                  <div className="absolute z-50 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg p-2 min-w-[200px] max-h-[300px] overflow-y-auto">
-                    <input type="text" placeholder="Search..." value={groupBySearch} onChange={e => setGroupBySearch(e.target.value)}
-                      className="w-full px-2 py-1 mb-2 border border-gray-300 rounded text-sm" onClick={e => e.stopPropagation()} />
-                    <div className="px-2 py-1 rounded cursor-pointer hover:bg-gray-100 text-sm"
-                      onClick={() => { handleGroup(null); setGroupBySearch(''); setOpenDropdown(null); }}>None</div>
-                    {GROUPABLE_COLUMNS.filter(c => c.label.toLowerCase().includes(groupBySearch.toLowerCase())).map(col => (
-                      <div key={col.key} className="px-2 py-1 rounded cursor-pointer hover:bg-gray-100 text-sm"
-                        onClick={() => { handleGroup(col.key); setGroupBySearch(''); setOpenDropdown(null); }}>{col.label}</div>
-                    ))}
-                  </div>
-                )}
-              </div>
+              {/* Quick filters live in the Additional Filters popover; the status buttons sit beside it, compact */}
+              <AdditionalFilters state={quick} open={openDropdown === 'additional'}
+                onToggleOpen={() => setOpenDropdown(openDropdown === 'additional' ? null : 'additional')}
+                onClose={() => setOpenDropdown(null)} onToggle={toggleQuick} />
+              <StatusFilterGroup counts={statusCounts} active={effectiveSCFilter} onToggle={toggleStatusCat} />
+
+              <div className="h-6 w-px bg-gray-300" />
 
               {/* Type filter */}
               <DropdownFilter label="Type" dropKey="type" search={typeSearch} setSearch={setTypeSearch}
@@ -641,8 +644,8 @@ const DropdownFilter: React.FC<DropdownFilterProps> = ({
   return (
     <div className="relative z-40 filter-dropdown">
       <button onClick={() => onOpen(dropKey)}
-        className={`${BTN} text-left ${stateClass(activeCount > 0)}`}>
-        {label}{activeCount > 0 ? ` (${activeCount})` : '...'}
+        className={`${BTN} inline-flex items-center gap-1.5 text-left ${stateClass(activeCount > 0)}`}>
+        <FilterIcon />{label}{activeCount > 0 ? ` (${activeCount})` : '...'}
       </button>
       {openDropdown === dropKey && (
         <div className="absolute z-50 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg p-2 min-w-[200px] max-h-[300px] overflow-y-auto">

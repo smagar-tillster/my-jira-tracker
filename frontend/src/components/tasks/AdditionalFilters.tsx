@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import FilterIcon from './FilterIcon';
 import { QUICK_FILTERS, QUICK_ROWS, QuickKey, QuickState, BTN, additionalLabel, quickCount, stateClass } from '../../utils/taskFilters';
 
 /**
@@ -18,8 +19,8 @@ const AdditionalFilters: React.FC<{ state: QuickState; open: boolean; onToggleOp
 
   return (
     <div className="relative filter-dropdown">
-      <button onClick={onToggleOpen} aria-haspopup="true" aria-expanded={open} className={`${BTN} whitespace-nowrap ${stateClass(count > 0)}`}>
-        {additionalLabel(count)}
+      <button onClick={onToggleOpen} aria-haspopup="true" aria-expanded={open} className={`${BTN} inline-flex items-center gap-1.5 whitespace-nowrap ${stateClass(count > 0)}`}>
+        <FilterIcon />{additionalLabel(count)}
       </button>
       {open && (
         <div role="group" aria-label="Additional filters" className="absolute z-50 mt-1 left-0 bg-white border border-gray-300 rounded-xl shadow-lg p-3 space-y-2 w-max">
