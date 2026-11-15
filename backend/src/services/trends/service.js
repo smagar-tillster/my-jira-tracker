@@ -3,7 +3,9 @@ import * as store from './store.js';
 import { runTrendsSync } from './sync.js';
 import { aggregate, BASES, GROUPS } from './aggregate.js';
 import { getAllFETeamMembers } from '../feteamService.js';
-import { analyzeDefects } from './defects.js';
+import { analyzeDefects, defectsInView, categorize } from './defects.js';
+import { loadPrLedger } from '../../../delivery/lib/prledger.mjs';
+import { queueDefects, syncKb, kbStatus, kbConfig, syncDue } from './kb.js';
 import { jiraUrl } from '../../../delivery/lib/jira.mjs';
 import { generateGuidance, cachedGuidance } from './guidance.js';
 
@@ -19,9 +21,11 @@ export const scopeText = (f = {}) => {
   return bits.length ? bits.join('; ') : 'all done tickets';
 };
 
-export const createTrendsService = ({ sync = runTrendsSync, now = () => new Date(), feMembers = () => new Set(getAllFETeamMembers()), claude } = {}) => {
+export const createTrendsService = ({ sync = runTrendsSync, now = () => new Date(), feMembers = () => new Set(getAllFETeamMembers()), claude, ledger = loadPrLedger, kbSync = syncKb, kbTickMs = 3600000 } = {}) => {
   let running = false;
   let guiding = false;
+  let kbRunning = false;
+  let kbTimer = null;
 
   /** Starts a read from Jira unless one is going. Returns true when started. */
   const refresh = () => {
@@ -60,11 +64,35 @@ export const createTrendsService = ({ sync = runTrendsSync, now = () => new Date
     guiding = true;
     try {
       const facts = defectFacts({ months, filters });
+      // the defects looked at are queued for the defects knowledge base (those with a PR in the ledger); written later, once a day
+      try {
+        const { defects } = defectsInView({ rows: store.allRows(), months, filters, feMembers: filters.feTeam ? feMembers() : new Set(), now: now() });
+        queueDefects({ defects, ledger: ledger(), categorize, now });
+      } catch (e) { console.error('Queueing defects for the knowledge base failed:', e?.message || e); }
       return await generateGuidance({ facts, scope: scopeText(filters), force, now, ...(claude ? { claude } : {}) });
     } finally { guiding = false; }
   };
 
-  return { refresh, status, sprintTickets, defectAnalysis, defectGuidance, isRunning: () => running, isGuiding: () => guiding };
+  /** Writes the new patterns to the defects feed and runs ingest. One at a time. `busy` when a sync is already going. */
+  const kbSyncNow = async () => {
+    if (kbRunning) return { busy: true };
+    kbRunning = true;
+    try { return await kbSync({ now }); } finally { kbRunning = false; }
+  };
+  const kbTick = () => {
+    const cfg = kbConfig(); const st = kbStatus();
+    if (kbRunning || !syncDue({ now: now(), lastRunAt: st.lastRunAt, hour: cfg.hour, disabled: cfg.disabled })) return;
+    if (!st.pending && !st.ingestPending) return;                       // nothing waiting: not a run
+    kbSyncNow().catch((e) => console.error('Defects knowledge base sync failed:', e?.message || e));
+  };
+
+  return {
+    refresh, status, sprintTickets, defectAnalysis, defectGuidance, kbSyncNow, kbTick, kbStatus: () => ({ ...kbStatus(), hour: kbConfig().hour, disabled: kbConfig().disabled }),
+    isRunning: () => running, isGuiding: () => guiding,
+    // the defects knowledge base sync is the one thing that runs on a timer (checked hourly, runs at most once a day); nothing else does
+    startKb: () => { if (kbTimer) return; kbTimer = setInterval(kbTick, kbTickMs); kbTimer.unref?.(); },
+    stopKb: () => { clearInterval(kbTimer); kbTimer = null; },
+  };
 };
 
 export const trendsService = createTrendsService();

@@ -110,6 +110,22 @@ export function initDb() {
       priority           TEXT
     );
 
+    -- Trends: defects waiting to be written to the defects knowledge base (once a day, see services/trends/kb.js). One row per ticket.
+    CREATE TABLE IF NOT EXISTS trend_kb_queue (
+      issue_key TEXT PRIMARY KEY,
+      status    TEXT NOT NULL,           -- pending | written | matched | exists
+      payload   TEXT NOT NULL,           -- the candidate as JSON (from the PR ledger and the ticket)
+      queued_at TEXT NOT NULL,
+      done_at   TEXT,
+      note      TEXT                     -- the ticket it matched, or why nothing was written
+    );
+    CREATE TABLE IF NOT EXISTS trend_kb_state (
+      id             INTEGER PRIMARY KEY CHECK (id = 1),
+      last_run_at    TEXT,
+      last_result    TEXT,               -- JSON summary of the last run
+      ingest_pending INTEGER NOT NULL DEFAULT 0
+    );
+
     -- Trends: model answers kept by a hash of the numbers they were written from, so the same numbers never cost a second call.
     CREATE TABLE IF NOT EXISTS trend_ai (
       hash       TEXT PRIMARY KEY,

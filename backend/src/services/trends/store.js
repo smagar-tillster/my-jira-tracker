@@ -49,3 +49,26 @@ export const getAi = (hash) => {
 };
 export const putAi = ({ hash, kind, model, value, at }) =>
   getDb().prepare('INSERT OR REPLACE INTO trend_ai (hash, kind, model, json, created_at) VALUES (?, ?, ?, ?, ?)').run(hash, kind, model, JSON.stringify(value), at);
+
+// ---------------------------------------------------------------- the defects knowledge base queue
+/** Adds candidates that are not queued yet (a ticket is queued once, whatever its status). Returns how many were new. */
+export const kbQueue = (candidates, at) => {
+  const ins = getDb().prepare("INSERT OR IGNORE INTO trend_kb_queue (issue_key, status, payload, queued_at) VALUES (?, 'pending', ?, ?)");
+  let added = 0;
+  getDb().transaction((list) => { for (const c of list) added += ins.run(c.key, JSON.stringify(c), at).changes; })(candidates);
+  return added;
+};
+export const kbPending = () => getDb().prepare("SELECT issue_key AS key, payload FROM trend_kb_queue WHERE status = 'pending' ORDER BY queued_at, issue_key").all().map((r) => JSON.parse(r.payload));
+export const kbMark = (key, status, at, note = null) => getDb().prepare('UPDATE trend_kb_queue SET status = ?, done_at = ?, note = ? WHERE issue_key = ?').run(status, at, note, key);
+export const kbCounts = () => {
+  const out = { pending: 0, written: 0, matched: 0, exists: 0 };
+  for (const r of getDb().prepare('SELECT status, COUNT(*) AS n FROM trend_kb_queue GROUP BY status').all()) out[r.status] = r.n;
+  return out;
+};
+const ensureKb = () => getDb().prepare('INSERT OR IGNORE INTO trend_kb_state (id) VALUES (1)').run();
+export const kbState = () => {
+  ensureKb();
+  const r = getDb().prepare('SELECT last_run_at AS lastRunAt, last_result AS lastResult, ingest_pending AS ingestPending FROM trend_kb_state WHERE id = 1').get();
+  return { lastRunAt: r.lastRunAt, lastResult: r.lastResult ? JSON.parse(r.lastResult) : null, ingestPending: !!r.ingestPending };
+};
+export const kbSaveRun = ({ at, result, ingestPending }) => { ensureKb(); getDb().prepare('UPDATE trend_kb_state SET last_run_at = ?, last_result = ?, ingest_pending = ? WHERE id = 1').run(at, JSON.stringify(result), ingestPending ? 1 : 0); };

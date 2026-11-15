@@ -84,13 +84,18 @@ export const findRepeats = (defects, clientNames = [], limit = 6) => {
  * Facts about the defects done in the months shown. `rows` is the whole local copy. Returns plain data (no dates as objects), so it can be sent
  * as JSON, hashed for the model cache, and rendered.
  */
-export const analyzeDefects = ({ rows, months = 6, filters = {}, feMembers = new Set(), now = new Date() }) => {
+/** The done tickets in the months shown (after the page's filters, except Type) and the defects among them. */
+export const defectsInView = ({ rows, months = 6, filters = {}, feMembers = new Set(), now = new Date() }) => {
   const current = monthOf(now.toISOString());
   const list = monthRange(addMonths(current, -(Number(months) - 1)), current);
   const index = new Map(list.map((m, i) => [m, i]));
   const { type: ignored, ...usable } = filters || {};
   const kept = filterRows(rows, usable, feMembers).filter((r) => index.has(monthOf(r.resolved)));
-  const defects = kept.filter((r) => DEFECT_TYPES.includes(r.type));
+  return { list, index, kept, defects: kept.filter((r) => DEFECT_TYPES.includes(r.type)), ignored };
+};
+
+export const analyzeDefects = ({ rows, months = 6, filters = {}, feMembers = new Set(), now = new Date() }) => {
+  const { list, index, kept, defects, ignored } = defectsInView({ rows, months, filters, feMembers, now });
   const monthOfRow = (r) => index.get(monthOf(r.resolved));
 
   const recentFrom = Math.floor(list.length / 2);             // the earlier half is the first floor(n/2) months, the recent half the rest

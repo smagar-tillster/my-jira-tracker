@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { trendsApi, DefectAnalysis, DefectCategory, DefectComponent, DefectGuidance, TrendFilters, TrendMonths } from '../../services/api';
+import { trendsApi, DefectAnalysis, DefectCategory, DefectComponent, DefectGuidance, KbStatus, TrendFilters, TrendMonths } from '../../services/api';
 import { monthCounts, monthLabel, sparkline, trendText, SERIES_COLORS } from '../../utils/trendsChart';
 
 const ago = (iso: string) => {
@@ -103,14 +103,29 @@ const ComponentRow: React.FC<{ c: DefectComponent }> = ({ c }) => {
   );
 };
 
+/** What the defects knowledge base queue says, in words. */
+export const kbSummary = (kb: KbStatus): string => {
+  const bits: string[] = [];
+  bits.push(kb.pending ? `${kb.pending} ${kb.pending === 1 ? 'defect is' : 'defects are'} waiting to go to the defects knowledge base` : 'Nothing is waiting for the defects knowledge base');
+  if (kb.disabled) bits.push('the daily sync is switched off in the config');
+  else if (kb.pending) bits.push(`it syncs once a day after ${kb.hour}:00`);
+  const r = kb.lastResult;
+  if (r) {
+    const parts = [`${r.written} added`, `${r.matched} matched an existing pattern`, `${r.exists} already there`];
+    bits.push(`last sync ${ago(r.at)}: ${parts.join(', ')}${r.ingest === 'failed' ? `. Ingest failed (${r.reason}); it is retried next time` : r.ingest === 'ok' ? '; ingest ran' : ''}${r.ingest === 'none' && r.reason ? `. ${r.reason}` : ''}`);
+  }
+  return `${bits[0]}${bits.length > 1 ? `; ${bits.slice(1).join('; ')}` : ''}.`;
+};
+
 export interface DefectViewProps {
   data: DefectAnalysis | null; loading: boolean; error: string | null;
   guidance: DefectGuidance | null; guiding: boolean; guideError: string | null;
+  kb: KbStatus | null; syncing: boolean; kbError: string | null; onSync: () => void;
   onWrite: (force: boolean) => void; onClose: () => void;
 }
 
 /** The defect analysis for given data. No loading here, so it can be rendered on its own. */
-export const DefectAnalysisView: React.FC<DefectViewProps> = ({ data, loading, error, guidance, guiding, guideError, onWrite, onClose }) => {
+export const DefectAnalysisView: React.FC<DefectViewProps> = ({ data, loading, error, guidance, guiding, guideError, kb, syncing, kbError, onSync, onWrite, onClose }) => {
   const f = data?.facts;
   const t = f?.tiles;
   const top = f?.categories.find(c => !c.name.startsWith('Other')) ?? f?.categories[0];
@@ -188,6 +203,15 @@ export const DefectAnalysisView: React.FC<DefectViewProps> = ({ data, loading, e
               )}
             </section>
 
+            {kb && (
+              <section aria-label="Defects knowledge base" className="border-t border-gray-100 pt-3 flex items-start gap-3 flex-wrap">
+                <p className="text-sm text-gray-700 flex-1 min-w-[240px]"><span className="font-semibold text-gray-900">Defects knowledge base. </span>{kbSummary(kb)}</p>
+                <button onClick={onSync} disabled={syncing || (!kb.pending && !kb.ingestPending)} title="Adds the new defect patterns to the RAG defects feed and runs ingest, as the daily sync does"
+                  className="px-3 py-1.5 rounded-lg text-sm font-medium bg-white ring-1 ring-gray-300 text-gray-700 hover:bg-gray-100 disabled:opacity-60 disabled:cursor-not-allowed">{syncing ? '⏳ Syncing…' : 'Sync now'}</button>
+                {kbError && <p className="basis-full px-3 py-2 text-sm bg-red-50 text-red-800 border border-red-200 rounded">❌ {kbError}</p>}
+              </section>
+            )}
+
             <p className="text-xs text-gray-500">
               {f.typesCounted.join(', ')} done in these months{f.typeFilterIgnored ? '; the Type filter is ignored here' : ''}. Numbers change when you press Refresh on the report.
             </p>
@@ -206,6 +230,9 @@ const DefectAnalysisModal: React.FC<{ months: TrendMonths; filters: TrendFilters
   const [guideError, setGuideError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [guiding, setGuiding] = useState(false);
+  const [kb, setKb] = useState<KbStatus | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [kbError, setKbError] = useState<string | null>(null);
   const latest = useRef(0);
 
   useEffect(() => {
@@ -223,17 +250,27 @@ const DefectAnalysisModal: React.FC<{ months: TrendMonths; filters: TrendFilters
     return () => document.removeEventListener('keydown', key);
   }, [onClose]);
 
+  const loadKb = useCallback(() => { trendsApi.kbStatus().then(setKb).catch(() => { /* the status line is optional */ }); }, []);
+  useEffect(() => { loadKb(); }, [loadKb]);
+
   const write = useCallback(async (force: boolean) => {
     setGuiding(true); setGuideError(null);
     try { setGuidance(await trendsApi.defectGuidance(months, filters, force)); }
     catch (e) { setGuideError(e instanceof Error ? e.message : 'Could not write the guidance'); }
-    finally { setGuiding(false); }
-  }, [months, filters]);
+    finally { setGuiding(false); loadKb(); }       // running the analysis queues the defects it looked at
+  }, [months, filters, loadKb]);
+
+  const sync = useCallback(async () => {
+    setSyncing(true); setKbError(null);
+    try { setKb(await trendsApi.kbSync()); }
+    catch (e) { setKbError(e instanceof Error ? e.message : 'Could not sync'); loadKb(); }
+    finally { setSyncing(false); }
+  }, [loadKb]);
 
   // Rendered at the top of the page (not inside the report) so no parent can clip or cover it, and sized to the window: the header stays, the body scrolls.
   return createPortal(
     <div className="fixed inset-0 z-[1000] bg-black/40 flex items-center justify-center p-4" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }} style={{ height: '100dvh' }}>
-      <DefectAnalysisView data={data} loading={loading} error={error} guidance={guidance} guiding={guiding} guideError={guideError} onWrite={write} onClose={onClose} />
+      <DefectAnalysisView data={data} loading={loading} error={error} guidance={guidance} guiding={guiding} guideError={guideError} kb={kb} syncing={syncing} kbError={kbError} onSync={sync} onWrite={write} onClose={onClose} />
     </div>,
     document.body,
   );
