@@ -44,6 +44,15 @@ function App() {
   const [openIds, setOpenIds] = useState<string[]>(() => loadOpenApps().open);
   const [activeId, setActiveId] = useState<string | null>(() => loadOpenApps().active);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  // Full screen on the Tasks page hides its toolbar; the way out is an X centered in this header bar (and Escape), so it never floats over the list
+  const [tasksFullScreen, setTasksFullScreen] = useState(false);
+  const inTasksFullScreen = activeId === 'tasks' && tasksFullScreen;
+  useEffect(() => {
+    if (!inTasksFullScreen) return undefined;
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') setTasksFullScreen(false); };
+    document.addEventListener('keydown', key);
+    return () => document.removeEventListener('keydown', key);
+  }, [inTasksFullScreen]);
   const [reviewDrafts, setReviewDrafts] = useState(0);
   const [quickNew, setQuickNew] = useState(0); // new sprint tickets found by Quick Analysis since the page was last opened
 
@@ -241,6 +250,8 @@ function App() {
             myLoading={myLoading}
             onRefreshSprint={fetchIssues}
             onRefreshMe={fetchMyIssues}
+            fullScreen={tasksFullScreen}
+            onFullScreenChange={setTasksFullScreen}
           />
         );
       case 'quickAnalysis':
@@ -266,6 +277,10 @@ function App() {
     <div className="h-screen flex flex-col bg-gray-100 relative">
       {/* Header: open-app tabs on the left, notifications + apps drawer on the right */}
       <header className="relative z-40 bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-md">
+        {inTasksFullScreen && (
+          <button onClick={() => setTasksFullScreen(false)} title="Exit full screen (Esc)" aria-label="Exit full screen"
+            className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10 w-9 h-9 rounded-full bg-white text-blue-700 text-base font-bold shadow-md hover:bg-blue-50 flex items-center justify-center">✕</button>
+        )}
         <div className="px-6 py-2 flex items-center gap-4">
           <h1 className="text-xl font-bold whitespace-nowrap">📊 My Tracker</h1>
           <TabStrip openIds={openIds} activeId={activeId} onSelect={setActiveId} onClose={closeApp} />

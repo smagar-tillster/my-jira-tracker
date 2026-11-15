@@ -1,0 +1,243 @@
+// The Tasks toolbar's rules (frontend/src/utils/taskFilters.ts): the quick filters and how the Additional Filters popover lays them out, the count,
+// when Clear Filters shows, and the button colors.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+
+const T = await import('../../../frontend/src/utils/taskFilters.ts');
+
+test('there are eight quick filters, each with the icon and label it has always had, laid out two to a line in the agreed order', () => {
+  assert.deepEqual(T.QUICK_ROWS, [['important', 'myDay'], ['urgent', 'attention'], ['noDueDate', 'noSubtasks'], ['feTeam', 'unassigned']]);
+  assert.deepEqual(T.QUICK_ROWS.flat().map((k) => `${T.QUICK_FILTERS[k].icon} ${T.QUICK_FILTERS[k].label}`),
+    ['⭐ Imp', '☀️ My Day', '🚨 Urgent', '⚠️ Attention', '📅 No Due Date', '📋 No Sub tasks', '👥 FE Team', '🙋 Unassigned']);
+  assert.deepEqual(Object.keys(T.EMPTY_QUICK).sort(), [...T.QUICK_ROWS.flat()].sort());          // every filter is in a line, none twice
+  assert.equal(new Set(T.QUICK_ROWS.flat()).size, 8);
+  assert.ok(Object.values(T.EMPTY_QUICK).every((v) => v === false));
+  assert.match(T.QUICK_FILTERS.unassigned.title, /nobody is assigned/);
+});
+
+test('the count is how many quick filters are on, and the button label shows it only when there is one', () => {
+  assert.equal(T.quickCount(T.EMPTY_QUICK), 0);
+  assert.equal(T.quickCount({ ...T.EMPTY_QUICK, urgent: true }), 1);
+  assert.equal(T.quickCount({ ...T.EMPTY_QUICK, urgent: true, feTeam: true, important: true }), 3);
+  assert.equal(T.quickCount(Object.fromEntries(Object.keys(T.EMPTY_QUICK).map((k) => [k, true]))), 8);
+  assert.equal(T.additionalLabel(0), 'Additional Filters');
+  assert.equal(T.additionalLabel(1), 'Additional Filters (1)');
+  assert.equal(T.additionalLabel(8), 'Additional Filters (8)');
+});
+
+test('Clear Filters shows when anything is filtered: a dropdown or status choice, search text, or any quick filter; a blank search does not count', () => {
+  const none = { filters: {}, searchTerm: '', quick: T.EMPTY_QUICK };
+  assert.equal(T.anyFilterActive(none), false);
+  assert.equal(T.anyFilterActive({ ...none, searchTerm: 'abc' }), true);
+  assert.equal(T.anyFilterActive({ ...none, searchTerm: '   ' }), false);
+  assert.equal(T.anyFilterActive({ ...none, filters: { issueType: ['Defect'] } }), true);
+  assert.equal(T.anyFilterActive({ ...none, filters: { statusCategory: ['Done'] } }), true);       // a status choice is in filters only when it differs from the default
+  for (const k of Object.keys(T.EMPTY_QUICK)) assert.equal(T.anyFilterActive({ ...none, quick: { ...T.EMPTY_QUICK, [k]: true } }), true, k);
+});
+
+test('buttons are blue when on and gray when off, the same blue as the selected All button', () => {
+  assert.match(T.stateClass(true), /^bg-blue-600 text-white/);
+  assert.match(T.stateClass(false), /^bg-gray-200 text-gray-700/);
+  assert.notEqual(T.stateClass(true), T.stateClass(false));
+  assert.ok(!/bg-(red|orange|yellow|purple|indigo)/.test(T.stateClass(true) + T.stateClass(false)));   // no separate warning colors any more
+  assert.ok(T.BTN.includes('rounded-lg') && T.BTN.includes('text-sm'));
+});
+
+test('the status buttons come in a fixed order, In Progress, Done, To Do, with an icon each; any other category follows in name order without one', () => {
+  assert.deepEqual(T.STATUS_ORDER, ['In Progress', 'Done', 'To Do']);
+  assert.deepEqual(T.orderedStatuses({ 'To Do': 115, 'Done': 189, 'In Progress': 198 }), [['In Progress', 198], ['Done', 189], ['To Do', 115]]);   // whatever order the data came in
+  assert.deepEqual(T.orderedStatuses({ 'Done': 1 }), [['Done', 1]]);                                                           // a missing one is simply absent
+  assert.deepEqual(T.orderedStatuses({ 'Zeta': 1, 'To Do': 2, 'Alpha': 3, 'In Progress': 4 }).map(([c]) => c), ['In Progress', 'To Do', 'Alpha', 'Zeta']);
+  assert.deepEqual(T.orderedStatuses({}), []);
+  assert.deepEqual(Object.keys(T.STATUS_ICONS).sort(), [...T.STATUS_ORDER].sort());
+  assert.ok(Object.values(T.STATUS_ICONS).every((i) => i.length > 0));
+});
+
+test('the Board is built on one of three dates, offered in a fixed order, and its button says which; Board and Region have options, List does not', () => {
+  assert.deepEqual(T.BOARD_DATES.map((d) => [d.key, d.label]), [['dueDate', 'Due Date'], ['releaseDate', 'Release Date'], ['plannedUatDate', 'UAT Date']]);
+  assert.equal(T.boardDateLabel('releaseDate'), 'Release Date');
+  assert.equal(T.viewSuffix('board', 'plannedUatDate'), 'UAT Date');
+  assert.equal(T.viewSuffix('list', 'dueDate'), undefined);
+  assert.equal(T.viewSuffix('region', 'dueDate'), undefined);
+  assert.deepEqual(['list', 'board', 'region'].map(T.viewHasOptions), [false, true, true]);
+});
+
+test('Done shows an icon and the count, In Progress and To Do keep their words, and the buttons shrink one step at a time only when they did not fit', () => {
+  assert.deepEqual([0, 1, 2].map((d) => T.nextDensity(d, false)), [0, 1, 2]);                 // they fit: stay as they are
+  assert.deepEqual([0, 1, 2].map((d) => T.nextDensity(d, true)), [1, 2, 2]);                  // they wrapped: one step smaller, and no further than 2
+  assert.equal(T.STATUS_ICONS['In Progress'], '⏳');                                          // the pending icon
+  assert.equal(T.statusText('In Progress', 198), '⏳ In Progress 198');                         // the pending icon and the words
+  assert.equal(T.statusText('Done', 189), '✅ 189');                                           // the only one without words
+  assert.equal(T.statusText('To Do', 115), '📝 To Do 115');                                    // words kept
+  assert.equal(T.statusText('Blocked', 3), 'Blocked 3');                                        // another category keeps its words, and has no icon
+  assert.deepEqual([...T.STATUS_ICON_ONLY], ['Done']);
+  assert.ok(T.statusButtonClass(true, 0).startsWith(T.BTN) && T.statusButtonClass(true, 0).includes('bg-blue-600'));
+  assert.ok(T.statusButtonClass(false, 1).includes('text-xs') && T.statusButtonClass(false, 1).includes('bg-gray-200'));
+  assert.ok(T.statusButtonClass(false, 2).includes('text-[11px]') && !T.statusButtonClass(false, 2).includes('text-xs'));
+  const px = (d) => /px-(\d(?:\.5)?)/.exec(T.statusButtonClass(true, d))[1];
+  assert.ok(Number(px(0)) > Number(px(1)) && Number(px(1)) > Number(px(2)));                    // each step is smaller
+});
+
+test('the toolbar lines sit above every table header, so a menu never opens behind one, and below the Jira filter', async () => {
+  const fs = await import('node:fs');
+  const src = (f) => fs.readFileSync(new URL(`../../../frontend/src/components/${f}`, import.meta.url), 'utf8');
+  const z = (text, re) => { const m = re.exec(text); assert.ok(m, `not found: ${re}`); return Number(m[1] || m[2]); };
+  const num = '(?:z-\\[(\\d+)\\]|z-(\\d+))';
+  const tracker = src('JiraTasksTracker.tsx');
+  const line1 = z(tracker, new RegExp(`data-toolbar="line1" className="[^"]*relative ${num}`));
+  const line2 = z(tracker, new RegExp(`data-toolbar="line2" className="[^"]*relative ${num} min-w-0"`));
+  const jira = z(tracker, new RegExp(`className="relative ${num} jira-filter-dropdown`));
+  const regionHeader = z(src('views/RegionView.tsx'), new RegExp(`<ListHeader[^>]*className="${num}"`));
+  const listHeader = z(src('views/ListView.tsx'), /className = 'z-(\d+)'/);
+  assert.ok(line2 > regionHeader && line2 > listHeader, `line 2 (${line2}) must be above the headers (${regionHeader}, ${listHeader})`);
+  assert.ok(line1 > line2, `line 1 (${line1}) must be above line 2 (${line2}) so the Group By menu opens in front of the filter row`);
+  assert.ok(jira > line1, `the Jira filter (${jira}) must stay above line 1 (${line1})`);
+});
+
+test('the toolbar no longer draws the selected-filter pills with an x: the blue buttons and Clear Filters show what is selected', async () => {
+  const fs = await import('node:fs');
+  const tracker = fs.readFileSync(new URL('../../../frontend/src/components/JiraTasksTracker.tsx', import.meta.url), 'utf8');
+  assert.ok(!/removeFilter\(col\)/.test(tracker));                       // the pill's remove button
+  assert.ok(!/Active filter chips/.test(tracker));
+  assert.ok(tracker.includes('clearEverything') && tracker.includes('Clear Filters'));   // Clear Filters is still there
+});
+
+test('the top row is Search (filling the room left), the Jira filter, Refresh, Full Screen, then the filters accordion; Clear Filters and the count end line 2', async () => {
+  const fs = await import('node:fs');
+  const src = fs.readFileSync(new URL('../../../frontend/src/components/JiraTasksTracker.tsx', import.meta.url), 'utf8');
+  const top = src.slice(src.indexOf('data-toolbar="top"'), src.indexOf('id="tasks-filter-lines"'));
+  const at = (t, s) => t.indexOf(s);
+  assert.ok(at(top, 'placeholder="Search by key') > -1 && at(top, 'placeholder="Search by key') < at(top, '<JiraFilterDropdown'));
+  assert.ok(at(top, '<JiraFilterDropdown') < at(top, 'aria-label="Refresh"') && at(top, 'aria-label="Refresh"') < at(top, 'aria-label="Full Screen"'));
+  assert.ok(at(top, 'aria-label="Full Screen"') < at(top, '<FiltersToggle'));                  // the accordion is beside Full Screen
+  assert.match(top, /<div className="flex-1 min-w-0">\s*<input/);                              // the search takes the room that is left
+  assert.ok(!/max-w-/.test(top.slice(0, top.indexOf('<JiraFilterDropdown'))));                  // with no maximum width, so the row spans the full width
+  assert.match(top, /w-\[232px\] shrink-0/);                                                    // the Jira filter keeps its width
+  assert.ok(!src.includes('gridTemplateColumns') && !src.includes('col-start-'));              // no reserved column on the right: lines 1 and 2 use the full width
+  assert.ok(!/aria-label="Refresh"/.test(src.slice(src.indexOf('data-toolbar="line1"'))));    // Refresh and Full Screen are only on the top row
+  // Clear Filters and the count are one piece: Clear Filters left of the count, only when something is filtered
+  const piece = src.slice(src.indexOf('const clearAndCount'), src.indexOf('return (\n    <div className="h-full flex flex-col'));
+  assert.ok(at(piece, 'Clear Filters</button>') > -1 && at(piece, 'Clear Filters</button>') < at(piece, '/ {mergedIssues.length} issues'));
+  assert.ok(/\{filtersActive && \(\s*<button onClick=\{clearEverything\}/.test(piece));
+  // it ends line 2 (after Additional Filters), and sits on the top row only while the lines are hidden
+  const line2 = src.slice(src.indexOf('data-toolbar="line2"'));
+  assert.ok(at(line2, '<AdditionalFilters') < at(line2, '{clearAndCount}'));
+  assert.match(line2, /<div className="ml-auto">\{clearAndCount\}<\/div>/);
+  assert.match(top, /\{!filtersOpen && clearAndCount\}/);
+});
+
+test('the filters accordion remembers its state safely, counts what is in use, and says so when the filters are hidden', () => {
+  const none = { filters: {}, searchTerm: '', quick: T.EMPTY_QUICK };
+  assert.equal(T.activeFilterCount(none), 0);
+  assert.equal(T.activeFilterCount({ ...none, searchTerm: 'abc' }), 1);
+  assert.equal(T.activeFilterCount({ ...none, searchTerm: '  ' }), 0);
+  assert.equal(T.activeFilterCount({ filters: { issueType: ['Defect'], client: ['AA'], statusCategory: ['Done'] }, searchTerm: 'x', quick: { ...T.EMPTY_QUICK, urgent: true, feTeam: true } }), 3 + 1 + 2);
+  assert.equal(T.anyFilterActive(none), false); assert.equal(T.anyFilterActive({ ...none, quick: { ...T.EMPTY_QUICK, myDay: true } }), true);   // still the same rule
+  assert.equal(T.FILTERS_OPEN_KEY, 'tasks.filtersOpen');
+  assert.equal(T.parseFiltersOpen(null), true); assert.equal(T.parseFiltersOpen(undefined), true); assert.equal(T.parseFiltersOpen('1'), true);
+  assert.equal(T.parseFiltersOpen('0'), false); assert.equal(T.parseFiltersOpen('false'), false);
+  assert.equal(T.parseFiltersOpen('garbage'), true);                                              // a corrupt value means shown
+  assert.equal(T.filtersToggleLabel(true, 0), 'Filters');
+  assert.equal(T.filtersToggleLabel(true, 5), 'Filters');                                        // shown: the buttons themselves show what is selected
+  assert.equal(T.filtersToggleLabel(false, 0), 'Filters');
+  assert.equal(T.filtersToggleLabel(false, 3), 'Filters (3)');                                   // hidden with some in use: a count
+});
+
+test('full screen is controlled by App: an X centered in the header bar and Escape leave it, the old floating button is gone, and the page still works on its own', async () => {
+  const fs = await import('node:fs');
+  const app = fs.readFileSync(new URL('../../../frontend/src/App.tsx', import.meta.url), 'utf8');
+  const tracker = fs.readFileSync(new URL('../../../frontend/src/components/JiraTasksTracker.tsx', import.meta.url), 'utf8');
+  const header = app.slice(app.indexOf('<header'), app.indexOf('</header>'));
+  assert.match(header, /\{inTasksFullScreen && \(\s*<button onClick=\{\(\) => setTasksFullScreen\(false\)\}/);   // the X is in the header
+  assert.match(header, /absolute left-1\/2 top-1\/2 -translate-x-1\/2 -translate-y-1\/2/);                                    // centered, top bar
+  assert.match(header, /aria-label="Exit full screen"/);
+  assert.ok(header.indexOf('inTasksFullScreen') < header.indexOf('<h1'));                                                    // drawn as part of the bar
+  assert.match(app, /const inTasksFullScreen = activeId === 'tasks' && tasksFullScreen;/);                                    // only while the Tasks tab is the open one
+  assert.match(app, /e\.key === 'Escape'\) setTasksFullScreen\(false\)/);                                                    // Escape leaves it too
+  assert.match(app, /fullScreen=\{tasksFullScreen\}\s*onFullScreenChange=\{setTasksFullScreen\}/);                          // handed to the Tasks page
+  assert.ok(!/Exit Full Screen/.test(tracker));                                                                               // the floating button is gone
+  assert.match(tracker, /const fullScreenMode = fullScreen \?\? localFullScreen;/);                                            // the page works without the props too
+  assert.match(tracker, /useStatusDensity\(!fullScreenMode && filtersOpen\)/);                                                 // measuring is skipped while the toolbar is hidden
+});
+
+test('Clear Filters is a small red button with an icon, so it stands out as the reset action', async () => {
+  const fs = await import('node:fs');
+  const src = fs.readFileSync(new URL('../../../frontend/src/components/JiraTasksTracker.tsx', import.meta.url), 'utf8');
+  const m = /<button onClick=\{clearEverything\}[^>]*className="([^"]*)">([^<]*)<\/button>/.exec(src);
+  assert.ok(m, 'the Clear Filters button was not found');
+  assert.match(m[1], /bg-red-500 text-white hover:bg-red-600/);            // red background, white text
+  assert.match(m[1], /rounded-lg/);                                         // a button, not a text link
+  assert.equal(m[2], '🧹 Clear Filters');                                    // an icon and the same words
+  assert.ok(!/text-blue-600/.test(m[1]));                                   // not the old blue link
+});
+
+test('the All, Sprint and Me pills are a little more compact than the other buttons, to leave room on the first line', async () => {
+  const fs = await import('node:fs');
+  const src = fs.readFileSync(new URL('../../../frontend/src/components/JiraTasksTracker.tsx', import.meta.url), 'utf8');
+  const m = /className=\{`(px-[\d.]+ py-[\d.]+ text-\[\d+px\]) transition-colors \$\{\s*sourceFilter === s/.exec(src);
+  assert.ok(m, 'the source pills were not found');
+  assert.equal(m[1], 'px-2 py-1.5 text-[13px]');
+  const px = Number(/px-([\d.]+)/.exec(m[1])[1]);
+  assert.ok(px < 3, 'tighter than the other buttons (px-3)');
+});
+
+test('while refreshing, the shimmer covers the whole toolbar: its layer is above every toolbar layer, and the skeleton has a block for each control', async () => {
+  const fs = await import('node:fs');
+  const tracker = fs.readFileSync(new URL('../../../frontend/src/components/JiraTasksTracker.tsx', import.meta.url), 'utf8');
+  const shimmer = fs.readFileSync(new URL('../../../frontend/src/components/ShimmerLoading.tsx', import.meta.url), 'utf8');
+  const z = (text, re) => { const m = re.exec(text); assert.ok(m, `not found: ${re}`); return Number(m[1] || m[2]); };
+  const num = '(?:z-\\[(\\d+)\\]|z-(\\d+))';
+  const overlay = z(tracker, new RegExp(`\\{isRefreshing && \\(\\s*<div className="absolute inset-0 ${num}`));
+  const line1 = z(tracker, new RegExp(`data-toolbar="line1" className="[^"]*relative ${num}`));
+  const line2 = z(tracker, new RegExp(`data-toolbar="line2" className="[^"]*relative ${num} min-w-0"`));
+  const jira = z(tracker, new RegExp(`className="relative ${num} jira-filter-dropdown`));
+  assert.ok(overlay > line1 && overlay > line2 && overlay > jira, `overlay ${overlay} must be above line 1 (${line1}), line 2 (${line2}) and the Jira filter (${jira})`);
+  assert.match(tracker, /<ShimmerLoading filtersOpen=\{filtersOpen\} \/>/);                  // the skeleton follows the accordion
+  assert.match(shimmer, /filtersOpen = true/);
+  for (const row of ['top', 'line1', 'line2']) assert.ok(shimmer.includes(`data-shimmer="${row}"`), row);   // the same three rows as the toolbar
+});
+
+test('line 1 is All, Sprint, Me, then the status buttons, then List, Board, Region, then Group By, with a separator between the groups', async () => {
+  const fs = await import('node:fs');
+  const src = fs.readFileSync(new URL('../../../frontend/src/components/JiraTasksTracker.tsx', import.meta.url), 'utf8');
+  const start = src.indexOf('data-toolbar="line1"');
+  const line1 = src.slice(start, src.indexOf('data-toolbar="line2"'));
+  const at = (s) => line1.indexOf(s);
+  assert.ok(at('Source filter pills') > -1 && at('Source filter pills') < at('<StatusFilterGroup'));
+  assert.ok(at('<StatusFilterGroup') < at('<ViewModeButton'));
+  assert.ok(at('<ViewModeButton') < at('Group By{'));
+  assert.equal((line1.match(/<div className="h-6 w-px bg-gray-300" \/>/g) || []).length, 3);                       // one between each pair of groups
+  const seps = [...line1.matchAll(/<div className="h-6 w-px bg-gray-300" \/>/g)].map((m) => m.index);
+  assert.ok(at('Source filter pills') < seps[0] && seps[0] < at('<StatusFilterGroup') && at('<StatusFilterGroup') < seps[1] && seps[1] < at('<ViewModeButton') && at('<ViewModeButton') < seps[2] && seps[2] < at('Group By{'));
+});
+
+test('the self-fit watches whether line 1 wraps (its last item below its first), not one particular group, so it still works with Group By last', async () => {
+  const fs = await import('node:fs');
+  const hook = fs.readFileSync(new URL('../../../frontend/src/components/tasks/useStatusDensity.ts', import.meta.url), 'utf8');
+  assert.match(hook, /const last = line\?\.lastElementChild/);
+  assert.match(hook, /last\.offsetTop >= first\.offsetTop \+ first\.offsetHeight/);
+  assert.ok(!/statusRef/.test(hook));
+});
+
+test('the status counts follow All, Sprint and Me: the scope keeps the tickets of that source, and the three standard statuses are always there', async () => {
+  const fs = await import('node:fs');
+  const issues = [{ key: 'A-1', statusCategory: 'To Do' }, { key: 'A-2', statusCategory: 'In Progress' }, { key: 'A-3', statusCategory: 'In Progress' }, { key: 'A-4', statusCategory: 'Done' }, { key: 'A-5', statusCategory: 'To Do' }];
+  const sprint = [{ key: 'A-1' }, { key: 'A-2' }, { key: 'A-4' }];       // in the sprint
+  const mine = [{ key: 'A-2' }, { key: 'A-5' }];                          // assigned to me (A-2 is in both)
+  assert.deepEqual(T.scopeBySource(issues, 'all', sprint, mine).map((i) => i.key), ['A-1', 'A-2', 'A-3', 'A-4', 'A-5']);
+  assert.deepEqual(T.scopeBySource(issues, 'sprint', sprint, mine).map((i) => i.key), ['A-1', 'A-2', 'A-4']);
+  assert.deepEqual(T.scopeBySource(issues, 'me', sprint, mine).map((i) => i.key), ['A-2', 'A-5']);
+  assert.deepEqual(T.scopeBySource([], 'me', sprint, mine), []);
+  assert.deepEqual(T.scopeBySource(issues, 'me', sprint, []), []);
+  const counts = (src) => T.countByStatusCategory(T.scopeBySource(issues, src, sprint, mine));
+  assert.deepEqual(counts('all'), { 'In Progress': 2, 'Done': 1, 'To Do': 2 });
+  assert.deepEqual(counts('sprint'), { 'In Progress': 1, 'Done': 1, 'To Do': 1 });
+  assert.deepEqual(counts('me'), { 'In Progress': 1, 'Done': 0, 'To Do': 1 });             // Done is 0, not missing: its button does not come and go
+  assert.deepEqual(T.countByStatusCategory([]), { 'In Progress': 0, 'Done': 0, 'To Do': 0 });
+  assert.deepEqual(T.countByStatusCategory([{ statusCategory: 'Blocked' }, { statusCategory: 'Blocked' }]), { 'In Progress': 0, 'Done': 0, 'To Do': 0, 'Blocked': 2 });
+  // and the page uses them, for the buttons and for the list
+  const tracker = fs.readFileSync(new URL('../../../frontend/src/components/JiraTasksTracker.tsx', import.meta.url), 'utf8');
+  assert.match(tracker, /countByStatusCategory\(scopeBySource\(mergedIssues, sourceFilter, effectiveSprintIssues, myIssues\)\)/);
+  assert.match(tracker, /let r = scopeBySource\(mergedIssues, sourceFilter, effectiveSprintIssues, myIssues\);/);
+  assert.ok(!/mergedIssues\.forEach\(i => \{ counts\[i\.statusCategory\]/.test(tracker));        // the old all-tickets count is gone
+});
