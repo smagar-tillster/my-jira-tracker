@@ -494,19 +494,22 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
               <StatusFilterGroup ref={statusRef} density={statusDensity} counts={statusCounts} active={effectiveSCFilter} onToggle={toggleStatusCat} />
             </div>
 
-            {/* Under the Jira Filter: Clear Filters (when something is filtered), Refresh and Full Screen on one line, the issue count below */}
-            <div className="col-start-2 row-start-2 row-span-2 flex flex-col gap-3 items-end">
+            {/* Under the Jira Filter: Refresh and Full Screen on one line, Clear Filters below them (when something is filtered), the issue count below that.
+                The Clear Filters slot keeps its height when empty so the count does not jump when the link appears. */}
+            <div className="col-start-2 row-start-2 row-span-2 flex flex-col gap-1.5 items-end">
               <div className="flex gap-1.5 items-center">
-                {filtersActive && (
-                  <button onClick={clearEverything} title="Clear the search, the dropdown filters, the status choice and every quick filter"
-                    className="px-1 py-1.5 text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline whitespace-nowrap">Clear Filters</button>
-                )}
                 <button onClick={() => { usingCustomSprintQuery ? handleGetData() : onRefreshSprint(); onRefreshMe(); }}
                   title="Refresh" aria-label="Refresh"
                   className="px-2.5 py-1.5 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600">🔄</button>
                 <button onClick={() => setFullScreenMode(true)}
                   title="Full Screen" aria-label="Full Screen"
                   className="px-2.5 py-1.5 bg-gray-700 text-white rounded-lg text-sm hover:bg-gray-800">⛶</button>
+              </div>
+              <div className="h-6 flex items-center" data-slot="clear-filters">
+                {filtersActive && (
+                  <button onClick={clearEverything} title="Clear the search, the dropdown filters, the status choice and every quick filter"
+                    className="px-1 text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline whitespace-nowrap">Clear Filters</button>
+                )}
               </div>
               <span className="text-sm text-gray-600 whitespace-nowrap">
                 {sortedIssues.length} / {mergedIssues.length} issues

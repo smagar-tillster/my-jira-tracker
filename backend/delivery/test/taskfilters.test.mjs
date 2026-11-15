@@ -99,3 +99,15 @@ test('the toolbar no longer draws the selected-filter pills with an x: the blue 
   assert.ok(!/Active filter chips/.test(tracker));
   assert.ok(tracker.includes('clearEverything') && tracker.includes('Clear Filters'));   // Clear Filters is still there
 });
+
+test('in the right column Clear Filters sits below Refresh and Full Screen and above the issue count, in a slot that keeps its height', async () => {
+  const fs = await import('node:fs');
+  const src = fs.readFileSync(new URL('../../../frontend/src/components/JiraTasksTracker.tsx', import.meta.url), 'utf8');
+  const col = src.slice(src.indexOf('Under the Jira Filter'));
+  const at = (s) => col.indexOf(s);
+  assert.ok(at('aria-label="Refresh"') > -1 && at('aria-label="Refresh"') < at('aria-label="Full Screen"'));
+  assert.ok(at('aria-label="Full Screen"') < at('Clear Filters</button>'));                 // Clear Filters is below the buttons...
+  assert.ok(at('Clear Filters</button>') < at('/ {mergedIssues.length} issues'));            // ...and above the count
+  assert.ok(/data-slot="clear-filters"/.test(col) && /className="h-6 flex items-center" data-slot="clear-filters"/.test(col));   // the slot has a fixed height
+  assert.ok(/\{filtersActive && \(\s*<button onClick=\{clearEverything\}/.test(col));        // the link is only inside the slot, and only when something is filtered
+});
