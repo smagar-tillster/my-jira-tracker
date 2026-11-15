@@ -102,23 +102,62 @@ test('the toolbar no longer draws the selected-filter pills with an x: the blue 
   assert.ok(tracker.includes('clearEverything') && tracker.includes('Clear Filters'));   // Clear Filters is still there
 });
 
-test('the top row is Search (filling the room left), the Jira filter, Refresh, then Full Screen; Clear Filters and the count end line 2, with Clear Filters left of the count', async () => {
+test('the top row is Search (filling the room left), the Jira filter, Refresh, Full Screen, then the filters accordion; Clear Filters and the count end line 2', async () => {
   const fs = await import('node:fs');
   const src = fs.readFileSync(new URL('../../../frontend/src/components/JiraTasksTracker.tsx', import.meta.url), 'utf8');
-  const top = src.slice(src.indexOf('data-toolbar="top"'), src.indexOf('data-toolbar="line1"'));
+  const top = src.slice(src.indexOf('data-toolbar="top"'), src.indexOf('id="tasks-filter-lines"'));
   const at = (t, s) => t.indexOf(s);
   assert.ok(at(top, 'placeholder="Search by key') > -1 && at(top, 'placeholder="Search by key') < at(top, '<JiraFilterDropdown'));
   assert.ok(at(top, '<JiraFilterDropdown') < at(top, 'aria-label="Refresh"') && at(top, 'aria-label="Refresh"') < at(top, 'aria-label="Full Screen"'));
-  assert.match(top, /<div className="flex-1 min-w-0">\s*<input/);                         // the search takes the room that is left
-  assert.ok(!/max-w-/.test(top.slice(0, top.indexOf('<JiraFilterDropdown'))));                // with no maximum width, so the row spans the full width
-  assert.match(top, /w-\[232px\] shrink-0/);                                              // the Jira filter keeps its width
-  assert.ok(!src.includes('gridTemplateColumns') && !src.includes('col-start-'));           // no reserved column on the right: lines 1 and 2 use the full width
-  assert.ok(!/aria-label="Refresh"/.test(src.slice(src.indexOf('data-toolbar="line1"'))));  // Refresh and Full Screen are only on the top row
+  assert.ok(at(top, 'aria-label="Full Screen"') < at(top, '<FiltersToggle'));                  // the accordion is beside Full Screen
+  assert.match(top, /<div className="flex-1 min-w-0">\s*<input/);                              // the search takes the room that is left
+  assert.ok(!/max-w-/.test(top.slice(0, top.indexOf('<JiraFilterDropdown'))));                  // with no maximum width, so the row spans the full width
+  assert.match(top, /w-\[232px\] shrink-0/);                                                    // the Jira filter keeps its width
+  assert.ok(!src.includes('gridTemplateColumns') && !src.includes('col-start-'));              // no reserved column on the right: lines 1 and 2 use the full width
+  assert.ok(!/aria-label="Refresh"/.test(src.slice(src.indexOf('data-toolbar="line1"'))));    // Refresh and Full Screen are only on the top row
+  // Clear Filters and the count are one piece: Clear Filters left of the count, only when something is filtered
+  const piece = src.slice(src.indexOf('const clearAndCount'), src.indexOf('return (\n    <div className="h-full flex flex-col'));
+  assert.ok(at(piece, 'Clear Filters</button>') > -1 && at(piece, 'Clear Filters</button>') < at(piece, '/ {mergedIssues.length} issues'));
+  assert.ok(/\{filtersActive && \(\s*<button onClick=\{clearEverything\}/.test(piece));
+  // it ends line 2 (after Additional Filters), and sits on the top row only while the lines are hidden
   const line2 = src.slice(src.indexOf('data-toolbar="line2"'));
-  assert.ok(at(line2, '<AdditionalFilters') < at(line2, 'Clear Filters</button>'));          // Clear Filters and the count come after Additional Filters
-  assert.ok(at(line2, 'Clear Filters</button>') < at(line2, '/ {mergedIssues.length} issues'));   // Clear Filters is left of the count, so the count does not move
-  assert.match(line2, /ml-auto flex items-center gap-3/);                                   // both at the right end
-  assert.ok(/\{filtersActive && \(\s*<button onClick=\{clearEverything\}/.test(line2));    // only when something is filtered
+  assert.ok(at(line2, '<AdditionalFilters') < at(line2, '{clearAndCount}'));
+  assert.match(line2, /<div className="ml-auto">\{clearAndCount\}<\/div>/);
+  assert.match(top, /\{!filtersOpen && clearAndCount\}/);
+});
+
+test('the filters accordion remembers its state safely, counts what is in use, and says so when the filters are hidden', () => {
+  const none = { filters: {}, searchTerm: '', quick: T.EMPTY_QUICK };
+  assert.equal(T.activeFilterCount(none), 0);
+  assert.equal(T.activeFilterCount({ ...none, searchTerm: 'abc' }), 1);
+  assert.equal(T.activeFilterCount({ ...none, searchTerm: '  ' }), 0);
+  assert.equal(T.activeFilterCount({ filters: { issueType: ['Defect'], client: ['AA'], statusCategory: ['Done'] }, searchTerm: 'x', quick: { ...T.EMPTY_QUICK, urgent: true, feTeam: true } }), 3 + 1 + 2);
+  assert.equal(T.anyFilterActive(none), false); assert.equal(T.anyFilterActive({ ...none, quick: { ...T.EMPTY_QUICK, myDay: true } }), true);   // still the same rule
+  assert.equal(T.FILTERS_OPEN_KEY, 'tasks.filtersOpen');
+  assert.equal(T.parseFiltersOpen(null), true); assert.equal(T.parseFiltersOpen(undefined), true); assert.equal(T.parseFiltersOpen('1'), true);
+  assert.equal(T.parseFiltersOpen('0'), false); assert.equal(T.parseFiltersOpen('false'), false);
+  assert.equal(T.parseFiltersOpen('garbage'), true);                                              // a corrupt value means shown
+  assert.equal(T.filtersToggleLabel(true, 0), 'Filters');
+  assert.equal(T.filtersToggleLabel(true, 5), 'Filters');                                        // shown: the buttons themselves show what is selected
+  assert.equal(T.filtersToggleLabel(false, 0), 'Filters');
+  assert.equal(T.filtersToggleLabel(false, 3), 'Filters (3)');                                   // hidden with some in use: a count
+});
+
+test('full screen is controlled by App: an X centered in the header bar and Escape leave it, the old floating button is gone, and the page still works on its own', async () => {
+  const fs = await import('node:fs');
+  const app = fs.readFileSync(new URL('../../../frontend/src/App.tsx', import.meta.url), 'utf8');
+  const tracker = fs.readFileSync(new URL('../../../frontend/src/components/JiraTasksTracker.tsx', import.meta.url), 'utf8');
+  const header = app.slice(app.indexOf('<header'), app.indexOf('</header>'));
+  assert.match(header, /\{inTasksFullScreen && \(\s*<button onClick=\{\(\) => setTasksFullScreen\(false\)\}/);   // the X is in the header
+  assert.match(header, /absolute left-1\/2 top-1\/2 -translate-x-1\/2 -translate-y-1\/2/);                                    // centered, top bar
+  assert.match(header, /aria-label="Exit full screen"/);
+  assert.ok(header.indexOf('inTasksFullScreen') < header.indexOf('<h1'));                                                    // drawn as part of the bar
+  assert.match(app, /const inTasksFullScreen = activeId === 'tasks' && tasksFullScreen;/);                                    // only while the Tasks tab is the open one
+  assert.match(app, /e\.key === 'Escape'\) setTasksFullScreen\(false\)/);                                                    // Escape leaves it too
+  assert.match(app, /fullScreen=\{tasksFullScreen\}\s*onFullScreenChange=\{setTasksFullScreen\}/);                          // handed to the Tasks page
+  assert.ok(!/Exit Full Screen/.test(tracker));                                                                               // the floating button is gone
+  assert.match(tracker, /const fullScreenMode = fullScreen \?\? localFullScreen;/);                                            // the page works without the props too
+  assert.match(tracker, /useStatusDensity\(!fullScreenMode && filtersOpen\)/);                                                 // measuring is skipped while the toolbar is hidden
 });
 
 test('Clear Filters is a small red button with an icon, so it stands out as the reset action', async () => {

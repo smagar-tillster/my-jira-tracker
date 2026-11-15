@@ -23,6 +23,9 @@ export const useStatusDensity = (active: boolean) => {
     if (next !== density) setDensity(next);
   });
 
+  // when the toolbar is shown again (full screen left, the filters expanded) start again from full size: the window may have changed meanwhile
+  useEffect(() => { if (active) setDensity(0); }, [active]);
+
   useEffect(() => {
     const line = lineRef.current;
     if (!active || !line || typeof ResizeObserver === 'undefined') return undefined;

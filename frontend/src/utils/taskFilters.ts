@@ -30,12 +30,22 @@ export const quickCount = (state: QuickState): number => (Object.keys(EMPTY_QUIC
 /** "Additional Filters", or "Additional Filters (3)" when three are on. */
 export const additionalLabel = (count: number): string => (count > 0 ? `Additional Filters (${count})` : 'Additional Filters');
 
+/** How many filters are in use: each dropdown or status choice, the search box if it has text, and each quick filter that is on. */
+export const activeFilterCount = ({ filters, searchTerm, quick }: { filters: Record<string, unknown>; searchTerm: string; quick: QuickState }): number =>
+  Object.keys(filters).length + (searchTerm.trim().length > 0 ? 1 : 0) + quickCount(quick);
+
 /**
- * Whether anything is filtered: a dropdown or status filter chosen (a status filter in `filters` means it differs from the default), text in the
+ * Whether anything is filtered: a dropdown or status choice chosen (a status filter in `filters` means it differs from the default), text in the
  * search box, or a quick filter on. Clear Filters is shown exactly then, and clears all of it.
  */
-export const anyFilterActive = ({ filters, searchTerm, quick }: { filters: Record<string, unknown>; searchTerm: string; quick: QuickState }): boolean =>
-  Object.keys(filters).length > 0 || searchTerm.trim().length > 0 || quickCount(quick) > 0;
+export const anyFilterActive = (state: { filters: Record<string, unknown>; searchTerm: string; quick: QuickState }): boolean => activeFilterCount(state) > 0;
+
+// ---------------------------------------------------------------- the filters accordion (beside Full Screen)
+export const FILTERS_OPEN_KEY = 'tasks.filtersOpen';
+/** The saved choice: the filters are shown unless it was saved as closed. Anything else (nothing saved, a corrupt value) means shown. */
+export const parseFiltersOpen = (raw: string | null | undefined): boolean => !(raw === '0' || raw === 'false');
+/** "Filters", or "Filters (3)" when they are hidden and some are in use, so a hidden filter is never a surprise. */
+export const filtersToggleLabel = (open: boolean, count: number): string => (!open && count > 0 ? `Filters (${count})` : 'Filters');
 
 // ---------------------------------------------------------------- colors
 export const BTN = 'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors';

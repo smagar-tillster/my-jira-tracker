@@ -12,9 +12,10 @@ import AdditionalFilters from './tasks/AdditionalFilters';
 import StatusFilterGroup from './tasks/StatusFilterGroup';
 import FilterIcon from './tasks/FilterIcon';
 import ViewModeButton from './tasks/ViewModeButton';
+import FiltersToggle from './tasks/FiltersToggle';
 import { useStatusDensity } from './tasks/useStatusDensity';
 import { BoardDatePicker, RegionOptions } from './tasks/ViewOptions';
-import { BTN, EMPTY_QUICK, QuickKey, QuickState, anyFilterActive, stateClass, viewHasOptions, viewSuffix } from '../utils/taskFilters';
+import { BTN, EMPTY_QUICK, FILTERS_OPEN_KEY, QuickKey, QuickState, activeFilterCount, anyFilterActive, parseFiltersOpen, stateClass, viewHasOptions, viewSuffix } from '../utils/taskFilters';
 import RegionView from './views/RegionView';
 
 // Simple hook that returns a value that only updates after `delay` ms of no changes
@@ -71,6 +72,9 @@ interface JiraTasksTrackerProps {
   myLoading: boolean;
   onRefreshSprint: () => void;
   onRefreshMe: () => void;
+  /** Full screen can be controlled by the page (App shows the exit button in the header); without these it keeps its own state. */
+  fullScreen?: boolean;
+  onFullScreenChange?: (on: boolean) => void;
 }
 
 const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
@@ -80,6 +84,8 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
   myLoading,
   onRefreshSprint,
   onRefreshMe,
+  fullScreen,
+  onFullScreenChange,
 }) => {
   // ── Jira Filter: sprint picker (defaults to the current-sprint prop data) ──
   const [sprintOptions, setSprintOptions]           = useState<JiraSprint[]>([]);
@@ -149,7 +155,13 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
   const [groupConfig, setGroupConfig] = useState<GroupConfig>({ column: null, direction: 'asc' });
   const [viewMode, setViewMode]       = useState<'list' | 'board' | 'region'>('list');
   const [boardDateType, setBoardDateType] = useState<'dueDate' | 'releaseDate' | 'plannedUatDate'>('dueDate');
-  const [fullScreenMode, setFullScreenMode]     = useState(false);
+  const [localFullScreen, setLocalFullScreen]   = useState(false);
+  const fullScreenMode = fullScreen ?? localFullScreen;
+  const setFullScreenMode = (on: boolean) => (onFullScreenChange ? onFullScreenChange(on) : setLocalFullScreen(on));
+  // The two toolbar lines of filters can be folded away (the accordion beside Full Screen); the choice is remembered in this browser
+  const [filtersOpen, setFiltersOpen] = useState<boolean>(() => {
+    try { return parseFiltersOpen(window.localStorage.getItem(FILTERS_OPEN_KEY)); } catch { return true; }
+  });
   const [sourceFilter, setSourceFilter]         = useState<SourceFilter>('all');
 
   // Client → Region mapping (manually maintained; unmapped clients fall into 'Other')
@@ -250,7 +262,14 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
   };
   const toggleQuick = (key: QuickKey) => quickSetters[key](v => !v);
   const filtersActive = anyFilterActive({ filters, searchTerm, quick });
-  const { lineRef, statusRef, density: statusDensity } = useStatusDensity(!fullScreenMode);
+  const filterCount = activeFilterCount({ filters, searchTerm, quick });
+  const { lineRef, statusRef, density: statusDensity } = useStatusDensity(!fullScreenMode && filtersOpen);
+  const toggleFilters = () => {
+    const next = !filtersOpen;
+    setFiltersOpen(next);
+    if (!next) setOpenDropdown(null);                                   // a menu cannot stay open under a line that is hidden
+    try { window.localStorage.setItem(FILTERS_OPEN_KEY, next ? '1' : '0'); } catch { /* remembering the choice is optional */ }
+  };
   /** Clear Filters resets everything that filters: the dropdown and status filters, the search box and every quick filter (grouping is left alone). */
   const clearEverything = () => {
     clearAllFilters();
@@ -399,6 +418,18 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
 
   const isRefreshing = sprintLoading || myLoading || sprintQueryLoading;
 
+  // Clear Filters (only when something is filtered) and the issue count. Clear Filters sits left of the count, so the count does not move when it
+  // appears. They end line 2, and move to the top row beside the accordion while the filter lines are hidden.
+  const clearAndCount = (
+    <div className="flex items-center gap-3">
+      {filtersActive && (
+        <button onClick={clearEverything} title="Clear the search, the dropdown filters, the status choice and every quick filter"
+          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-red-500 text-white hover:bg-red-600 transition-colors whitespace-nowrap">🧹 Clear Filters</button>
+      )}
+      <span className="text-sm text-gray-600 whitespace-nowrap">{sortedIssues.length} / {mergedIssues.length} issues</span>
+    </div>
+  );
+
   return (
     <div className="h-full flex flex-col bg-gray-50 relative">
       {/* Shimmer overlay — keeps DOM alive so no destroy/rebuild on refresh */}
@@ -438,7 +469,12 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
               <button onClick={() => setFullScreenMode(true)}
                 title="Full Screen" aria-label="Full Screen"
                 className="px-2.5 py-1.5 bg-gray-700 text-white rounded-lg text-sm hover:bg-gray-800">⛶</button>
+              <FiltersToggle open={filtersOpen} count={filterCount} onToggle={toggleFilters} controls="tasks-filter-lines" />
+              {!filtersOpen && clearAndCount}
             </div>
+
+            {/* The two lines of filters and buttons: hidden, not removed, when the accordion is closed, so nothing they hold is lost */}
+            <div id="tasks-filter-lines" className={`flex flex-col gap-3 ${filtersOpen ? '' : 'hidden'}`}>
 
             {/* Row 2 (line 1) – Source pill + view mode + Group By + status buttons */}
             {/* Layers: line 1 is 48 and line 2 is 47, above every table header (the Region header is 40, the List header 20) so no menu opens behind one,
@@ -553,28 +589,13 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
                 onToggleOpen={() => setOpenDropdown(openDropdown === 'additional' ? null : 'additional')}
                 onClose={() => setOpenDropdown(null)} onToggle={toggleQuick} />
 
-              {/* The right end of this line: Clear Filters (only when something is filtered) and the issue count. Clear Filters sits left of the count,
-                  so the count does not move when it appears. */}
-              <div className="ml-auto flex items-center gap-3">
-                {filtersActive && (
-                  <button onClick={clearEverything} title="Clear the search, the dropdown filters, the status choice and every quick filter"
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-red-500 text-white hover:bg-red-600 transition-colors whitespace-nowrap">🧹 Clear Filters</button>
-                )}
-                <span className="text-sm text-gray-600 whitespace-nowrap">{sortedIssues.length} / {mergedIssues.length} issues</span>
-              </div>
+              {/* The right end of this line: Clear Filters (only when something is filtered) and the issue count */}
+              <div className="ml-auto">{clearAndCount}</div>
 
 
             </div>
+            </div>
           </div>
-        </div>
-      )}
-
-      {fullScreenMode && (
-        <div className="absolute top-2 right-2 z-30">
-          <button onClick={() => setFullScreenMode(false)}
-            className="px-3 py-1.5 bg-gray-800 text-white rounded-lg text-xs hover:bg-gray-700 shadow-lg">
-            ✕ Exit Full Screen
-          </button>
         </div>
       )}
 
