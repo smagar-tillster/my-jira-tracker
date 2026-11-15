@@ -492,18 +492,6 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
 
               {/* Status buttons close the first line */}
               <StatusFilterGroup ref={statusRef} density={statusDensity} counts={statusCounts} active={effectiveSCFilter} onToggle={toggleStatusCat} />
-
-              {/* Active filter chips */}
-              {Object.keys(filters).length > 0 && (
-                <div className="flex flex-wrap gap-1">
-                  {Object.entries(filters).map(([col, val]) => (
-                    <div key={col} className="flex items-center gap-1 bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full text-xs">
-                      <span>{DEFAULT_COLUMNS.find(c => c.key === col)?.label}: {Array.isArray(val) ? val.join(', ') : val}</span>
-                      <button onClick={() => removeFilter(col)} className="hover:text-blue-600 ml-0.5">✕</button>
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
 
             {/* Under the Jira Filter: Clear Filters (when something is filtered), Refresh and Full Screen on one line, the issue count below */}

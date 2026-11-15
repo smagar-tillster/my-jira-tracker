@@ -91,3 +91,11 @@ test('the toolbar lines sit above every table header, so a menu never opens behi
   assert.ok(line1 > line2, `line 1 (${line1}) must be above line 2 (${line2}) so the Group By menu opens in front of the filter row`);
   assert.ok(jira > line1, `the Jira filter (${jira}) must stay above line 1 (${line1})`);
 });
+
+test('the toolbar no longer draws the selected-filter pills with an x: the blue buttons and Clear Filters show what is selected', async () => {
+  const fs = await import('node:fs');
+  const tracker = fs.readFileSync(new URL('../../../frontend/src/components/JiraTasksTracker.tsx', import.meta.url), 'utf8');
+  assert.ok(!/removeFilter\(col\)/.test(tracker));                       // the pill's remove button
+  assert.ok(!/Active filter chips/.test(tracker));
+  assert.ok(tracker.includes('clearEverything') && tracker.includes('Clear Filters'));   // Clear Filters is still there
+});
