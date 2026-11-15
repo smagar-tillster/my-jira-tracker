@@ -180,3 +180,19 @@ test('the All, Sprint and Me pills are a little more compact than the other butt
   const px = Number(/px-([\d.]+)/.exec(m[1])[1]);
   assert.ok(px < 3, 'tighter than the other buttons (px-3)');
 });
+
+test('while refreshing, the shimmer covers the whole toolbar: its layer is above every toolbar layer, and the skeleton has a block for each control', async () => {
+  const fs = await import('node:fs');
+  const tracker = fs.readFileSync(new URL('../../../frontend/src/components/JiraTasksTracker.tsx', import.meta.url), 'utf8');
+  const shimmer = fs.readFileSync(new URL('../../../frontend/src/components/ShimmerLoading.tsx', import.meta.url), 'utf8');
+  const z = (text, re) => { const m = re.exec(text); assert.ok(m, `not found: ${re}`); return Number(m[1] || m[2]); };
+  const num = '(?:z-\\[(\\d+)\\]|z-(\\d+))';
+  const overlay = z(tracker, new RegExp(`\\{isRefreshing && \\(\\s*<div className="absolute inset-0 ${num}`));
+  const line1 = z(tracker, new RegExp(`data-toolbar="line1" className="[^"]*relative ${num}`));
+  const line2 = z(tracker, new RegExp(`data-toolbar="line2" className="[^"]*relative ${num} min-w-0"`));
+  const jira = z(tracker, new RegExp(`className="relative ${num} jira-filter-dropdown`));
+  assert.ok(overlay > line1 && overlay > line2 && overlay > jira, `overlay ${overlay} must be above line 1 (${line1}), line 2 (${line2}) and the Jira filter (${jira})`);
+  assert.match(tracker, /<ShimmerLoading filtersOpen=\{filtersOpen\} \/>/);                  // the skeleton follows the accordion
+  assert.match(shimmer, /filtersOpen = true/);
+  for (const row of ['top', 'line1', 'line2']) assert.ok(shimmer.includes(`data-shimmer="${row}"`), row);   // the same three rows as the toolbar
+});

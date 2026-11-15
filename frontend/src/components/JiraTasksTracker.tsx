@@ -432,10 +432,11 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
 
   return (
     <div className="h-full flex flex-col bg-gray-50 relative">
-      {/* Shimmer overlay — keeps DOM alive so no destroy/rebuild on refresh */}
+      {/* Shimmer overlay — keeps DOM alive so no destroy/rebuild on refresh. Layer 55: above every part of the toolbar (the lines are 47 and 48, the Jira
+          filter 50), so all of it is covered while loading, not only the parts that happen to sit lower. */}
       {isRefreshing && (
-        <div className="absolute inset-0 z-20 bg-gray-50">
-          <ShimmerLoading />
+        <div className="absolute inset-0 z-[55] bg-gray-50">
+          <ShimmerLoading filtersOpen={filtersOpen} />
         </div>
       )}
       {!fullScreenMode && (
