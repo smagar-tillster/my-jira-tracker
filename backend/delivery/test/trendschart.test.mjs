@@ -154,3 +154,15 @@ test('the FE fixes toggle selects only FE, or removes FE and keeps other compone
   eq(C.toggleFeFixes({ client: ['AA'], feTeam: true }), { client: ['AA'], feTeam: true, component: ['FE'] });
   assert.equal(C.FE_COMPONENT, 'FE');
 });
+
+test('an added pattern is Queued until an ingest that finished after it was queued has succeeded, then Pattern added, or failed', () => {
+  const since = '2026-11-14T10:00:00Z';
+  assert.equal(C.ingestPhase(since, { state: 'running', finishedAt: null }), 'queued');
+  assert.equal(C.ingestPhase(since, { state: 'running', finishedAt: '2026-11-14T09:00:00Z' }), 'queued');       // an older run finished, a new one is running: still queued
+  assert.equal(C.ingestPhase(since, { state: 'idle', finishedAt: null }), 'queued');
+  assert.equal(C.ingestPhase(since, { state: 'done', finishedAt: '2026-11-14T09:59:59Z' }), 'queued');          // finished before the pattern was queued: does not cover it
+  assert.equal(C.ingestPhase(since, { state: 'done', finishedAt: '2026-11-14T10:00:00Z' }), 'added');           // finished at or after: added
+  assert.equal(C.ingestPhase(since, { state: 'done', finishedAt: '2026-11-14T10:05:00Z' }), 'added');
+  assert.equal(C.ingestPhase(since, { state: 'failed', finishedAt: '2026-11-14T10:05:00Z' }), 'failed');
+  assert.equal(C.ingestPhase(since, { state: 'failed', finishedAt: '2026-11-14T09:00:00Z' }), 'queued');
+});

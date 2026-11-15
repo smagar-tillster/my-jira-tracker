@@ -47,6 +47,7 @@ export const getAi = (hash) => {
   const r = getDb().prepare('SELECT kind, model, json, created_at AS createdAt FROM trend_ai WHERE hash = ?').get(hash);
   return r ? { kind: r.kind, model: r.model, createdAt: r.createdAt, value: JSON.parse(r.json) } : null;
 };
+export const deleteAi = (hash) => getDb().prepare('DELETE FROM trend_ai WHERE hash = ?').run(hash);
 export const putAi = ({ hash, kind, model, value, at }) =>
   getDb().prepare('INSERT OR REPLACE INTO trend_ai (hash, kind, model, json, created_at) VALUES (?, ?, ?, ?, ?)').run(hash, kind, model, JSON.stringify(value), at);
 

@@ -498,7 +498,25 @@ export interface DefectFacts {
   /** How many of the defects have their merged PR in the app's PR ledger (the PR files help decide the category). */
   prCoverage: { withPr: number; defects: number };
 }
-export interface DefectAnalysis { facts: DefectFacts; scope: string; guidance: DefectGuidance | null; status: TrendsStatus }
+/** A group of defects with no pattern that changed the same files: a candidate for a new pattern in the RAG. */
+export interface PatternCluster {
+  id: string; repo: string; files: string[]; category: string; count: number; tickets: { key: string; title: string; category: string }[]; suggestedName: string;
+  /** Set when the model has already said this group is not a pattern worth recording. */
+  declined: { reason: string; at: string } | null;
+}
+/** The RAG's defect patterns against the defects in view (matched through the files each fix changed, from the PR ledger). */
+export interface DefectPatterns {
+  ragFound: boolean; ragRoot: string; patternCount: number; defects: number; withPr: number; recorded: number; ingest: IngestStatus;
+  /** Every pattern in the RAG, so the page can list them: how often each was seen and how many tickets it names. */
+  known: { id: string; seen: number; tickets: number; status: string; repos: string[] }[];
+  matches: { patternId: string; seen: number; tickets: { key: string; title: string }[] }[]; clusters: PatternCluster[];
+}
+/** The RAG's ingest, which runs in the background after patterns are added or recorded. */
+export interface IngestStatus { state: 'idle' | 'running' | 'done' | 'failed'; startedAt: string | null; finishedAt: string | null; reason: string }
+export interface RecordResult { updated: { id: string; added: string[]; seen: number }[]; skipped: { id: string; reason: string }[]; ingest: 'none' | 'queued'; queuedAt?: string; ingestStatus?: IngestStatus }
+export interface PatternDraft { id?: string; text?: string; path?: string; problems?: string[]; needsCapability?: boolean; notAPattern?: boolean; reason?: string }
+export interface PatternAdded { id: string; path: string; ingest: 'queued'; addedAt: string; ingestStatus?: IngestStatus }
+export interface DefectAnalysis { facts: DefectFacts; scope: string; guidance: DefectGuidance | null; patterns: DefectPatterns | null; status: TrendsStatus }
 
 const apiMessage = (e: any, fallback: string) => String(e?.response?.data?.error || (e instanceof Error ? e.message : fallback));
 
@@ -513,6 +531,23 @@ export const trendsApi = {
   defectGuidance: async (months: TrendMonths, filters: TrendFilters, force = false): Promise<DefectGuidance> => {
     try { return (await apiClient.post('/trends/defects/guidance', { months, client: filters.client ?? [], assignee: filters.assignee ?? [], component: filters.component ?? [], feTeam: !!filters.feTeam, force })).data.data; }
     catch (e: any) { throw new Error(apiMessage(e, 'Could not write the guidance')); }
+  },
+  /** Where the RAG's background ingest stands: running (queued, done when done), done, failed, or idle. */
+  patternIngest: async (): Promise<IngestStatus> => (await apiClient.get('/trends/patterns/ingest')).data.data,
+  /** Records the defects in view that repeat an existing RAG pattern (seen + 1, ticket added) and runs the RAG's ingest. Throws with the reason when it cannot. */
+  recordRepeats: async (months: TrendMonths, filters: TrendFilters): Promise<RecordResult> => {
+    try { return (await apiClient.post('/trends/patterns/record', { months, client: filters.client ?? [], assignee: filters.assignee ?? [], component: filters.component ?? [], feTeam: !!filters.feTeam })).data.data; }
+    catch (e: any) { throw new Error(apiMessage(e, 'Could not record the repeats')); }
+  },
+  /** One model call: a draft pattern for a group of defects, saved for review (never written to the RAG). Throws with the reason when it cannot. */
+  draftPattern: async (months: TrendMonths, filters: TrendFilters, cluster: string): Promise<PatternDraft> => {
+    try { return (await apiClient.post('/trends/patterns/draft', { months, client: filters.client ?? [], assignee: filters.assignee ?? [], component: filters.component ?? [], feTeam: !!filters.feTeam, cluster })).data.data; }
+    catch (e: any) { throw new Error(apiMessage(e, 'Could not draft the pattern')); }
+  },
+  /** Adds a reviewed pattern to the RAG as docs/defects/<id>.md (checked again, never overwriting) and runs ingest. Throws with the reason when it cannot. */
+  addPattern: async (text: string): Promise<PatternAdded> => {
+    try { return (await apiClient.post('/trends/patterns/add', { text })).data.data; }
+    catch (e: any) { throw new Error(apiMessage(e, 'Could not add the pattern')); }
   },
   /** Reads the done tickets of the last 6 months from Jira now: the only way the copy is updated. A read already running is not an error. An empty JSON body on purpose: the backend refuses non-JSON POSTs. */
   refresh: async (): Promise<TrendsStatus> => {
