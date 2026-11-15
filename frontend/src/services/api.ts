@@ -484,6 +484,8 @@ export interface DefectCategory {
   tenants: { name: string; count: number }[]; examples: { key: string; summary: string; url: string }[]; repeats: { phrase: string; count: number; clients: number }[];
   /** Where the fixes were made: the Jira component developers set when the final fix is done (else the PR's), as a share of this category's defects. */
   fixedIn: { name: string; count: number; pct: number }[];
+  /** How many of this category's defects were placed on the description or PR title alone (the weakest evidence). */
+  weak: number;
 }
 export interface DefectClient { name: string; defects: number; done: number; per100: number; times: number | null }
 export interface DefectRepeat { phrase: string; count: number; clients: number; keys: string[] }

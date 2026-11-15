@@ -50,7 +50,7 @@ const componentsOf = (row) => (row.components?.length ? row.components : (row.co
  *   the description and the PR title (1 each). The highest score wins; a tie goes to the earlier category in CATEGORIES; no evidence is "Other".
  * `pr` is the defect's merged PR from the app's PR ledger, if it has one (never fetched).
  */
-export const categorize = (row, pr = null) => {
+export const classify = (row, pr = null) => {
   const title = `${row.summary || ''} ${(row.labels || []).join(' ')}`;
   const hints = new Set(componentsOf(row).map(componentHint).filter(Boolean));
   const files = (pr?.files || []).map((f) => (typeof f === 'string' ? f : f?.name)).filter(Boolean).join(' ');
@@ -65,8 +65,12 @@ export const categorize = (row, pr = null) => {
     if (prTitle && c.re.test(prTitle)) score += 1;
     if (score > (best?.score ?? 0)) best = { name: c.name, score };
   }
-  return best ? best.name : OTHER.name;
+  return best || { name: OTHER.name, score: 0 };
 };
+export const categorize = (row, pr = null) => classify(row, pr).name;
+
+/** A placement resting on the description or the PR title alone (1 point) is the weakest kind; the page says how many there are. */
+export const WEAK_SCORE = 1;
 const infoFor = (name) => CATEGORIES.find((c) => c.name === name) || OTHER;
 
 const DAY = 86400000;
@@ -153,7 +157,8 @@ export const analyzeDefects = ({ rows, months = 6, filters = {}, feMembers = new
   };
 
   const byCat = new Map(); const catOf = new Map();
-  for (const d of defects) { const c = categorize(d, prs.get(d.key)); catOf.set(d.key, c); (byCat.get(c) || byCat.set(c, []).get(c)).push(d); }
+  const weakKeys = new Set();
+  for (const d of defects) { const { name: c, score } = classify(d, prs.get(d.key)); catOf.set(d.key, c); if (score > 0 && score <= WEAK_SCORE) weakKeys.add(d.key); (byCat.get(c) || byCat.set(c, []).get(c)).push(d); }
 
   const allClientNames = [...new Set(rows.flatMap((r) => r.clients || []))];
   const repeatsAll = findRepeats(defects, allClientNames);
@@ -178,7 +183,7 @@ export const analyzeDefects = ({ rows, months = 6, filters = {}, feMembers = new
     const info = infoFor(name);
     return {
       name, meaning: info.meaning, count: rs.length, share: pct(rs.length, total), changePct: perMonthChange(recent, earlier), medianDaysToFix: median(fixDays(rs)),
-      tenants: count(rs, clientsOf).slice(0, 3).map(([n, c]) => ({ name: n, count: c })), fixedIn: fixedIn(rs),
+      tenants: count(rs, clientsOf).slice(0, 3).map(([n, c]) => ({ name: n, count: c })), fixedIn: fixedIn(rs), weak: rs.filter((r) => weakKeys.has(r.key)).length,
       examples, advice: info.advice, repeats: (repeatsByCat.get(name) || []).slice(0, 2),
     };
   }).sort((a, b) => (a.name === OTHER.name) - (b.name === OTHER.name) || b.count - a.count || a.name.localeCompare(b.name));   // "Other or unclear" always last

@@ -280,6 +280,7 @@ test('each category says where its defects were fixed (the Jira component, else 
   const long = D.analyzeDefects({ rows: [Dfx('2026-10-10T12:00:00', 'Receipt total wrong', { components: ['PROD/config.json (AKA "Global Config" - all current PROD stores )'] })], months: 6, now: NOW });
   assert.ok(long.categories[0].fixedIn[0].name.length <= 40);
   assert.equal(f.components, undefined);                                                                                  // there is no analysis view by component any more
+  assert.equal(receipts.weak, 0);
 });
 
 test('the report can be split and filtered by component, tickets with several components count under each, and the old single-component rows still work', () => {
@@ -327,4 +328,20 @@ test('a Jira description (rich text) is stored as clipped plain text, and a miss
   store.upsert([{ ...Dfx('2026-10-10T12:00:00', 'Odd'), description: 'The loyalty reward is not applied', statusCategory: '', updated: null, firstSprintStart: null }]);
   assert.equal(store.allRows()[0].description, 'The loyalty reward is not applied');
   reset();
+});
+
+test('a placement that rests only on the description or the PR title is counted as weak, per category', () => {
+  const rows = [
+    Dfx('2026-10-10T12:00:00', 'Receipt total wrong'),                                                        // the title decides: strong
+    { ...Dfx('2026-10-11T12:00:00', 'Odd one'), description: 'The loyalty reward is not applied' },          // description only: weak
+    { ...Dfx('2026-10-12T12:00:00', 'Another odd one'), description: 'loyalty coupon' },                      // description only: weak
+    { ...Dfx('2026-10-13T12:00:00', 'Offer missing'), description: 'loyalty' },                               // the title also decides: strong
+    Dfx('2026-10-14T12:00:00', 'Nothing to go on'),                                                          // no evidence: Other, not weak
+  ];
+  const f = D.analyzeDefects({ rows, months: 6, now: NOW });
+  const by = Object.fromEntries(f.categories.map((c) => [c.name, [c.count, c.weak]]));
+  assert.deepEqual(by['Loyalty, coupons and offers'], [3, 2]);
+  assert.deepEqual(by['Receipts and printing'], [1, 0]);
+  assert.deepEqual(by['Other or unclear'], [1, 0]);
+  assert.equal(D.classify({ summary: 'Odd', description: 'loyalty' }).score, 1); assert.equal(D.classify({ summary: 'Offer missing' }).score, 3);
 });

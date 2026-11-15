@@ -66,6 +66,7 @@ const CategoryRow: React.FC<{ c: DefectCategory }> = ({ c }) => {
         <span className="text-sm text-gray-700 tabular-nums">({c.count} · {c.share}%)</span>
         <span className={`text-sm tabular-nums ${TONE[tr.tone]}`} title={c.changePct === null ? 'Too few defects in the earlier months for a percentage' : 'Defects per month, recent months against the earlier ones'}>{tr.arrow} {tr.text}</span>
         {c.medianDaysToFix !== null && <span className="text-sm text-gray-500 tabular-nums" title="Median days from created to done">fix {c.medianDaysToFix} d</span>}
+        {c.weak > 0 && <span className="text-sm text-gray-500 tabular-nums" title="Placed on the description or the PR title alone: the title, the fix component and the PR files gave no evidence">{c.weak} by description only</span>}
       </div>
       <p className="text-sm text-gray-600">{c.meaning}</p>
       <Line label="Fixed in">{c.fixedIn.map(x => `${x.name} ${x.pct}%`).join(' · ')}</Line>
