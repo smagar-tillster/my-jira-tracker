@@ -429,7 +429,8 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
             </div>
 
             {/* Row 2 (line 1) – Source pill + view mode + Group By + status buttons */}
-            <div className="flex gap-1.5 items-center flex-wrap min-w-0 col-start-1">
+            {/* Layer 45: above line 2 (40) so the Group By menu opens over the filter row, below the Jira filter (50) so that menu still opens over this line */}
+            <div className="flex gap-1.5 items-center flex-wrap min-w-0 col-start-1 relative z-[45]">
               {/* Source filter pills */}
               <div className="flex rounded-lg border border-gray-300 overflow-hidden text-sm font-medium">
                 {(['all', 'sprint', 'me'] as SourceFilter[]).map(s => (
