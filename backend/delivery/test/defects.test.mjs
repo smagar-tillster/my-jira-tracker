@@ -53,6 +53,7 @@ test('the analysis counts only defect types done in the months shown, with the s
   assert.equal(f.tiles.ticketsDone, 7);
   assert.equal(f.tiles.shareOfDone, 57);
   assert.equal(f.tiles.uat, 1); assert.equal(f.tiles.uatShare, 25);
+  assert.equal(f.tiles.fixedInWeekShare, 0);                                                          // created May 1: all took longer than a week
   assert.deepEqual(f.months, ['2026-06', '2026-07', '2026-08', '2026-09', '2026-10', '2026-11']);
   assert.deepEqual(f.perMonth, [0, 1, 0, 1, 1, 1]);
   assert.deepEqual(D.analyzeDefects({ rows, months: 3, now: NOW }).perMonth, [1, 1, 1]);
@@ -118,6 +119,13 @@ test('the rule-based focus ranks by size and growth, adds a hot-spot client and 
   assert.deepEqual(f.map((x) => x.title), ['B', 'A', 'Client Z', 'Repeat: "receipt total"']);          // B grows (8 x 2 = 16) so it outranks A (10); "Other" is never a focus
   assert.ok(f.every((x) => x.why && x.actions.length && x.measure));
   assert.deepEqual(D.ruleFocus({ ...facts, clients: [{ name: 'Y', per100: 11, times: 1.1 }], repeats: [] }).map((x) => x.title), ['B', 'A']);   // a client barely above average is no hot spot
+});
+
+test('a big category that is already shrinking ranks below a smaller one that is growing, and the hot spot is the client with the most defects', () => {
+  const facts = { months: Array(6).fill('m'), tiles: { defects: 100 }, averagePer100: 30,
+    categories: [{ name: 'Big but falling', count: 65, share: 40, changePct: -41, advice: 'x' }, { name: 'Smaller, growing', count: 49, share: 30, changePct: 23, advice: 'y' }, { name: 'Medium, flat', count: 40, share: 25, changePct: 0, advice: 'z' }],
+    clients: [{ name: 'Tiny', defects: 13, done: 24, per100: 54, times: 1.8 }, { name: 'Large', defects: 87, done: 169, per100: 51, times: 1.7 }], repeats: [] };
+  assert.deepEqual(D.ruleFocus(facts).map((x) => x.title), ['Smaller, growing', 'Medium, flat', 'Big but falling', 'Client Large']);   // scores 60.3, 40, 38.4: falling 41% counts as 0.59 of its size
 });
 
 // ---------------------------------------------------------------- guidance

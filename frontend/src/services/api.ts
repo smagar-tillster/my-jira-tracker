@@ -486,7 +486,7 @@ export interface FocusItem { title: string; why: string; actions: string[]; meas
 export interface DefectGuidance { headline: string; focus: FocusItem[]; caveats: string[]; cached: boolean; model: string; at: string }
 export interface DefectFacts {
   months: string[]; perMonth: number[]; averagePer100: number; minClientDone: number; typesCounted: string[]; typeFilterIgnored: boolean;
-  tiles: { defects: number; ticketsDone: number; shareOfDone: number; medianDaysToFix: number | null; medianDaysRecent: number | null; medianDaysEarlier: number | null; uat: number; uatShare: number };
+  tiles: { defects: number; ticketsDone: number; shareOfDone: number; medianDaysToFix: number | null; medianDaysRecent: number | null; medianDaysEarlier: number | null; uat: number; uatShare: number; fixedInWeekShare: number };
   categories: DefectCategory[]; clients: DefectClient[]; repeats: DefectRepeat[];
 }
 export interface DefectAnalysis { facts: DefectFacts; scope: string; ruleFocus: FocusItem[]; guidance: DefectGuidance | null; status: TrendsStatus }

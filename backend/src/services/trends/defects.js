@@ -106,6 +106,7 @@ export const analyzeDefects = ({ rows, months = 6, filters = {}, feMembers = new
     medianDaysToFix: median(fixDays(defects)),
     medianDaysRecent: median(fixDays(defects.filter(isRecent))), medianDaysEarlier: median(fixDays(defects.filter((r) => !isRecent(r)))),
     uat: defects.filter((r) => r.type === UAT_TYPE).length, uatShare: pct(defects.filter((r) => r.type === UAT_TYPE).length, total),
+    fixedInWeekShare: pct(fixDays(defects).filter((d) => d <= 7).length, fixDays(defects).length),
   };
 
   const byCat = new Map();
@@ -137,12 +138,14 @@ export const analyzeDefects = ({ rows, months = 6, filters = {}, feMembers = new
 /** The focus list without a model: categories by size and growth, a hot-spot client, and the biggest repeat. Always available. */
 export const ruleFocus = (facts) => {
   const out = [];
-  const score = (c) => c.count * (1 + Math.max(0, (c.changePct ?? 0) / 100));
+  // size, pushed up by growth (at most doubled) and down by shrinkage (at most halved): a big category that is already improving ranks below one that is growing
+  const score = (c) => c.count * (1 + Math.max(-0.5, Math.min(1, (c.changePct ?? 0) / 100)));
   for (const c of [...facts.categories].filter((x) => x.name !== OTHER.name).sort((a, b) => score(b) - score(a)).slice(0, 3)) {
     const trend = c.changePct === null ? '' : c.changePct > 0 ? `, up ${c.changePct}% a month` : c.changePct < 0 ? `, down ${-c.changePct}% a month` : ', flat';
     out.push({ title: c.name, why: `${c.count} defects (${c.share}% of all${trend}).`, actions: [c.advice], measure: `Defects in this category per month (now ${Math.round((c.count / Math.max(1, facts.months.length)) * 10) / 10}).` });
   }
-  const hot = facts.clients.find((c) => c.times !== null && c.times >= 1.5);
+  // a hot spot is a client well above the average; of those, the one with the most defects (a high rate on a handful of tickets is not the best lead)
+  const hot = [...facts.clients].filter((c) => c.times !== null && c.times >= 1.5).sort((a, b) => b.defects - a.defects || b.per100 - a.per100)[0];
   if (hot) out.push({ title: `Client ${hot.name}`, why: `${hot.per100} defects per 100 done tickets, ${hot.times} times the average of ${facts.averagePer100}.`, actions: ['Review what this client\'s configuration or flows do differently, together with the team that delivers it.'], measure: 'Its defects per 100 done tickets.' });
   const rep = facts.repeats[0];
   if (rep) out.push({ title: `Repeat: "${rep.phrase}"`, why: `${rep.count} defects use these words${rep.clients ? `, across ${rep.clients} client${rep.clients === 1 ? '' : 's'}` : ''} (for example ${rep.keys.join(', ')}).`, actions: ['Check whether these share one cause; if they do, one fix and one regression test would remove the repeats.'], measure: 'New defects with this wording.' });

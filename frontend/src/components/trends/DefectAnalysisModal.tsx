@@ -70,7 +70,7 @@ export const DefectAnalysisView: React.FC<DefectViewProps> = ({ data, loading, e
               <Tile label="Defects done" value={t.defects.toLocaleString('en-US')} sub={`${t.shareOfDone}% of ${plural(t.ticketsDone, 'ticket')} done`} />
               <Tile label="Median days to fix" value={t.medianDaysToFix === null ? '–' : String(t.medianDaysToFix)}
                 sub={t.medianDaysRecent !== null && t.medianDaysEarlier !== null ? `${t.medianDaysRecent} recent, ${t.medianDaysEarlier} earlier` : 'created to done'} />
-              <Tile label="Found in UAT" value={`${t.uatShare}%`} sub={`${plural(t.uat, 'UAT defect')}`} />
+              <Tile label="Fixed within a week" value={`${t.fixedInWeekShare}%`} sub="created to done, 7 days or less" />
               <Tile label="Biggest category" value={top ? top.name : '–'} sub={top ? `${plural(top.count, 'defect')}, ${top.share}%` : undefined} />
             </div>
 
