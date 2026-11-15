@@ -409,33 +409,41 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
       )}
       {!fullScreenMode && (
         <div className="bg-white border-b border-gray-200 p-4">
-          <div className="grid gap-x-3 gap-y-3" style={{ gridTemplateColumns: 'minmax(0, 1fr) 232px' }}>
+          <div className="flex flex-col gap-3">
 
-            {/* Row 1 – Search (left) and Jira Filter (right) */}
-            <div className="min-w-0">
-              <input
-                type="text"
-                placeholder="Search by key, summary, assignee, type..."
-                value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <div>
-              <JiraFilterDropdown
-                sprints={sprintOptions}
-                selected={selectedSprintNames}
-                onToggle={toggleSprintSelection}
-                onGetData={handleGetData}
-                loading={sprintQueryLoading}
-                usingCustomQuery={usingCustomSprintQuery}
-              />
+            {/* Row 1 – Search (shortened), the Jira Filter, then Refresh and Full Screen */}
+            <div data-toolbar="top" className="flex items-center gap-2 min-w-0">
+              <div className="flex-1 min-w-0 max-w-md">
+                <input
+                  type="text"
+                  placeholder="Search by key, summary, assignee, type..."
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div className="w-[232px] shrink-0">
+                <JiraFilterDropdown
+                  sprints={sprintOptions}
+                  selected={selectedSprintNames}
+                  onToggle={toggleSprintSelection}
+                  onGetData={handleGetData}
+                  loading={sprintQueryLoading}
+                  usingCustomQuery={usingCustomSprintQuery}
+                />
+              </div>
+              <button onClick={() => { usingCustomSprintQuery ? handleGetData() : onRefreshSprint(); onRefreshMe(); }}
+                title="Refresh" aria-label="Refresh"
+                className="px-2.5 py-1.5 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600">🔄</button>
+              <button onClick={() => setFullScreenMode(true)}
+                title="Full Screen" aria-label="Full Screen"
+                className="px-2.5 py-1.5 bg-gray-700 text-white rounded-lg text-sm hover:bg-gray-800">⛶</button>
             </div>
 
             {/* Row 2 (line 1) – Source pill + view mode + Group By + status buttons */}
             {/* Layers: line 1 is 48 and line 2 is 47, above every table header (the Region header is 40, the List header 20) so no menu opens behind one,
                 line 1 above line 2 so the Group By menu opens over the filter row, and both below the Jira filter (50) so its menu opens over this line */}
-            <div ref={lineRef} className="flex gap-1.5 items-center flex-wrap min-w-0 col-start-1 relative z-[48]">
+            <div ref={lineRef} data-toolbar="line1" className="flex gap-1.5 items-center flex-wrap min-w-0 relative z-[48]">
               {/* Source filter pills: a little more compact than the other buttons, to leave room on this line when the Board button shows its date */}
               <div className="flex rounded-lg border border-gray-300 overflow-hidden text-sm font-medium">
                 {(['all', 'sprint', 'me'] as SourceFilter[]).map(s => (
@@ -494,30 +502,8 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
               <StatusFilterGroup ref={statusRef} density={statusDensity} counts={statusCounts} active={effectiveSCFilter} onToggle={toggleStatusCat} />
             </div>
 
-            {/* Under the Jira Filter: Refresh and Full Screen on one line, Clear Filters below them (when something is filtered), the issue count below that.
-                The Clear Filters slot keeps its height when empty so the count does not jump when the link appears. */}
-            <div className="col-start-2 row-start-2 row-span-2 flex flex-col gap-1.5 items-end">
-              <div className="flex gap-1.5 items-center">
-                <button onClick={() => { usingCustomSprintQuery ? handleGetData() : onRefreshSprint(); onRefreshMe(); }}
-                  title="Refresh" aria-label="Refresh"
-                  className="px-2.5 py-1.5 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600">🔄</button>
-                <button onClick={() => setFullScreenMode(true)}
-                  title="Full Screen" aria-label="Full Screen"
-                  className="px-2.5 py-1.5 bg-gray-700 text-white rounded-lg text-sm hover:bg-gray-800">⛶</button>
-              </div>
-              <div className="h-7 flex items-center" data-slot="clear-filters">
-                {filtersActive && (
-                  <button onClick={clearEverything} title="Clear the search, the dropdown filters, the status choice and every quick filter"
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-red-500 text-white hover:bg-red-600 transition-colors whitespace-nowrap">🧹 Clear Filters</button>
-                )}
-              </div>
-              <span className="text-sm text-gray-600 whitespace-nowrap">
-                {sortedIssues.length} / {mergedIssues.length} issues
-              </span>
-            </div>
-
-            {/* Row 3 (line 2) – the dropdown filters, then Additional Filters last */}
-            <div className="flex flex-wrap gap-1.5 items-center relative z-[47] min-w-0 col-start-1">
+            {/* Row 3 (line 2) – the dropdown filters, Additional Filters last, then Clear Filters and the count at the right end */}
+            <div data-toolbar="line2" className="flex flex-wrap gap-1.5 items-center relative z-[47] min-w-0">
               {/* Type filter */}
               <DropdownFilter label="Type" dropKey="type" search={typeSearch} setSearch={setTypeSearch}
                 options={dropdownOptions.type}
@@ -566,6 +552,16 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
               <AdditionalFilters state={quick} open={openDropdown === 'additional'}
                 onToggleOpen={() => setOpenDropdown(openDropdown === 'additional' ? null : 'additional')}
                 onClose={() => setOpenDropdown(null)} onToggle={toggleQuick} />
+
+              {/* The right end of this line: Clear Filters (only when something is filtered) and the issue count. Clear Filters sits left of the count,
+                  so the count does not move when it appears. */}
+              <div className="ml-auto flex items-center gap-3">
+                {filtersActive && (
+                  <button onClick={clearEverything} title="Clear the search, the dropdown filters, the status choice and every quick filter"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-red-500 text-white hover:bg-red-600 transition-colors whitespace-nowrap">🧹 Clear Filters</button>
+                )}
+                <span className="text-sm text-gray-600 whitespace-nowrap">{sortedIssues.length} / {mergedIssues.length} issues</span>
+              </div>
 
 
             </div>

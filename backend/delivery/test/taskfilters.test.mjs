@@ -84,8 +84,8 @@ test('the toolbar lines sit above every table header, so a menu never opens behi
   const z = (text, re) => { const m = re.exec(text); assert.ok(m, `not found: ${re}`); return Number(m[1] || m[2]); };
   const num = '(?:z-\\[(\\d+)\\]|z-(\\d+))';
   const tracker = src('JiraTasksTracker.tsx');
-  const line1 = z(tracker, new RegExp(`ref=\\{lineRef\\} className="[^"]*relative ${num}`));
-  const line2 = z(tracker, new RegExp(`className="flex flex-wrap gap-1\\.5 items-center relative ${num} min-w-0 col-start-1"`));
+  const line1 = z(tracker, new RegExp(`data-toolbar="line1" className="[^"]*relative ${num}`));
+  const line2 = z(tracker, new RegExp(`data-toolbar="line2" className="[^"]*relative ${num} min-w-0"`));
   const jira = z(tracker, new RegExp(`className="relative ${num} jira-filter-dropdown`));
   const regionHeader = z(src('views/RegionView.tsx'), new RegExp(`<ListHeader[^>]*className="${num}"`));
   const listHeader = z(src('views/ListView.tsx'), /className = 'z-(\d+)'/);
@@ -102,16 +102,22 @@ test('the toolbar no longer draws the selected-filter pills with an x: the blue 
   assert.ok(tracker.includes('clearEverything') && tracker.includes('Clear Filters'));   // Clear Filters is still there
 });
 
-test('in the right column Clear Filters sits below Refresh and Full Screen and above the issue count, in a slot that keeps its height', async () => {
+test('the top row is Search (shortened), the Jira filter, Refresh, then Full Screen; Clear Filters and the count end line 2, with Clear Filters left of the count', async () => {
   const fs = await import('node:fs');
   const src = fs.readFileSync(new URL('../../../frontend/src/components/JiraTasksTracker.tsx', import.meta.url), 'utf8');
-  const col = src.slice(src.indexOf('Under the Jira Filter'));
-  const at = (s) => col.indexOf(s);
-  assert.ok(at('aria-label="Refresh"') > -1 && at('aria-label="Refresh"') < at('aria-label="Full Screen"'));
-  assert.ok(at('aria-label="Full Screen"') < at('Clear Filters</button>'));                 // Clear Filters is below the buttons...
-  assert.ok(at('Clear Filters</button>') < at('/ {mergedIssues.length} issues'));            // ...and above the count
-  assert.ok(/data-slot="clear-filters"/.test(col) && /className="h-7 flex items-center" data-slot="clear-filters"/.test(col));   // the slot has a fixed height
-  assert.ok(/\{filtersActive && \(\s*<button onClick=\{clearEverything\}/.test(col));        // the link is only inside the slot, and only when something is filtered
+  const top = src.slice(src.indexOf('data-toolbar="top"'), src.indexOf('data-toolbar="line1"'));
+  const at = (t, s) => t.indexOf(s);
+  assert.ok(at(top, 'placeholder="Search by key') > -1 && at(top, 'placeholder="Search by key') < at(top, '<JiraFilterDropdown'));
+  assert.ok(at(top, '<JiraFilterDropdown') < at(top, 'aria-label="Refresh"') && at(top, 'aria-label="Refresh"') < at(top, 'aria-label="Full Screen"'));
+  assert.match(top, /flex-1 min-w-0 max-w-md/);                                           // the search is shortened, not full width
+  assert.match(top, /w-\[232px\] shrink-0/);                                              // the Jira filter keeps its width
+  assert.ok(!src.includes('gridTemplateColumns') && !src.includes('col-start-'));           // no reserved column on the right: lines 1 and 2 use the full width
+  assert.ok(!/aria-label="Refresh"/.test(src.slice(src.indexOf('data-toolbar="line1"'))));  // Refresh and Full Screen are only on the top row
+  const line2 = src.slice(src.indexOf('data-toolbar="line2"'));
+  assert.ok(at(line2, '<AdditionalFilters') < at(line2, 'Clear Filters</button>'));          // Clear Filters and the count come after Additional Filters
+  assert.ok(at(line2, 'Clear Filters</button>') < at(line2, '/ {mergedIssues.length} issues'));   // Clear Filters is left of the count, so the count does not move
+  assert.match(line2, /ml-auto flex items-center gap-3/);                                   // both at the right end
+  assert.ok(/\{filtersActive && \(\s*<button onClick=\{clearEverything\}/.test(line2));    // only when something is filtered
 });
 
 test('Clear Filters is a small red button with an icon, so it stands out as the reset action', async () => {
