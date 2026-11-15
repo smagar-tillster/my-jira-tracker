@@ -48,8 +48,8 @@ export const stateClass = (on: boolean): string => (on ? ON : OFF);
 /** The status buttons in a fixed order, with an icon each. Any other category Jira sends comes after these, in name order, without an icon. */
 export const STATUS_ORDER = ['In Progress', 'Done', 'To Do'];
 export const STATUS_ICONS: Record<string, string> = { 'In Progress': '⏳', 'Done': '✅', 'To Do': '📝' };
-/** These two show the icon and the count only (the name is in the tooltip and the screen reader label); To Do and any other category keep their words. */
-export const STATUS_ICON_ONLY = new Set(['In Progress', 'Done']);
+/** Done shows the icon and the count only (the name is in the tooltip and the screen reader label); In Progress, To Do and any other category keep their words. */
+export const STATUS_ICON_ONLY = new Set(['Done']);
 export const orderedStatuses = (counts: Record<string, number>): [string, number][] => {
   const known = STATUS_ORDER.filter((c) => c in counts).map((c): [string, number] => [c, counts[c]]);
   const rest = Object.keys(counts).filter((c) => !STATUS_ORDER.includes(c)).sort().map((c): [string, number] => [c, counts[c]]);
@@ -76,7 +76,7 @@ export type StatusDensity = 0 | 1 | 2;
 /** The next smaller step when the buttons did not fit on the line, else the same step. */
 export const nextDensity = (current: StatusDensity, wrapped: boolean): StatusDensity => (wrapped && current < 2 ? ((current + 1) as StatusDensity) : current);
 
-/** "⏳ 198" for In Progress, "✅ 189" for Done, "📝 To Do 115" for To Do: the icon, the count, and the words only where they are kept. */
+/** "⏳ In Progress 198", "✅ 189" for Done, "📝 To Do 115": the icon, the count, and the words everywhere except Done. */
 export const statusText = (category: string, count: number): string => {
   const icon = STATUS_ICONS[category];
   if (icon && STATUS_ICON_ONLY.has(category)) return `${icon} ${count}`;
