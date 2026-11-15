@@ -108,6 +108,17 @@ test('in the right column Clear Filters sits below Refresh and Full Screen and a
   assert.ok(at('aria-label="Refresh"') > -1 && at('aria-label="Refresh"') < at('aria-label="Full Screen"'));
   assert.ok(at('aria-label="Full Screen"') < at('Clear Filters</button>'));                 // Clear Filters is below the buttons...
   assert.ok(at('Clear Filters</button>') < at('/ {mergedIssues.length} issues'));            // ...and above the count
-  assert.ok(/data-slot="clear-filters"/.test(col) && /className="h-6 flex items-center" data-slot="clear-filters"/.test(col));   // the slot has a fixed height
+  assert.ok(/data-slot="clear-filters"/.test(col) && /className="h-7 flex items-center" data-slot="clear-filters"/.test(col));   // the slot has a fixed height
   assert.ok(/\{filtersActive && \(\s*<button onClick=\{clearEverything\}/.test(col));        // the link is only inside the slot, and only when something is filtered
+});
+
+test('Clear Filters is a small red button with an icon, so it stands out as the reset action', async () => {
+  const fs = await import('node:fs');
+  const src = fs.readFileSync(new URL('../../../frontend/src/components/JiraTasksTracker.tsx', import.meta.url), 'utf8');
+  const m = /<button onClick=\{clearEverything\}[^>]*className="([^"]*)">([^<]*)<\/button>/.exec(src);
+  assert.ok(m, 'the Clear Filters button was not found');
+  assert.match(m[1], /bg-red-500 text-white hover:bg-red-600/);            // red background, white text
+  assert.match(m[1], /rounded-lg/);                                         // a button, not a text link
+  assert.equal(m[2], '🧹 Clear Filters');                                    // an icon and the same words
+  assert.ok(!/text-blue-600/.test(m[1]));                                   // not the old blue link
 });

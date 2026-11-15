@@ -505,10 +505,10 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
                   title="Full Screen" aria-label="Full Screen"
                   className="px-2.5 py-1.5 bg-gray-700 text-white rounded-lg text-sm hover:bg-gray-800">⛶</button>
               </div>
-              <div className="h-6 flex items-center" data-slot="clear-filters">
+              <div className="h-7 flex items-center" data-slot="clear-filters">
                 {filtersActive && (
                   <button onClick={clearEverything} title="Clear the search, the dropdown filters, the status choice and every quick filter"
-                    className="px-1 text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline whitespace-nowrap">Clear Filters</button>
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-red-500 text-white hover:bg-red-600 transition-colors whitespace-nowrap">🧹 Clear Filters</button>
                 )}
               </div>
               <span className="text-sm text-gray-600 whitespace-nowrap">
