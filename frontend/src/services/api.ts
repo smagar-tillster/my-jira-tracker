@@ -498,7 +498,16 @@ export interface DefectFacts {
   /** How many of the defects have their merged PR in the app's PR ledger (the PR files help decide the category). */
   prCoverage: { withPr: number; defects: number };
 }
-export interface DefectAnalysis { facts: DefectFacts; scope: string; guidance: DefectGuidance | null; status: TrendsStatus }
+/** A group of defects with no pattern that changed the same files: a candidate for a new pattern in the RAG. */
+export interface PatternCluster { id: string; repo: string; files: string[]; category: string; count: number; tickets: { key: string; title: string; category: string }[]; suggestedName: string }
+/** The RAG's defect patterns against the defects in view (matched through the files each fix changed, from the PR ledger). */
+export interface DefectPatterns {
+  ragFound: boolean; ragRoot: string; patternCount: number; defects: number; withPr: number; recorded: number;
+  matches: { patternId: string; seen: number; tickets: { key: string; title: string }[] }[]; clusters: PatternCluster[];
+}
+export interface RecordResult { updated: { id: string; added: string[]; seen: number }[]; skipped: { id: string; reason: string }[]; ingest: 'none' | 'ok' | 'failed'; reason: string }
+export interface PatternDraft { id?: string; text?: string; path?: string; problems?: string[]; needsCapability?: boolean; notAPattern?: boolean; reason?: string }
+export interface DefectAnalysis { facts: DefectFacts; scope: string; guidance: DefectGuidance | null; patterns: DefectPatterns | null; status: TrendsStatus }
 
 const apiMessage = (e: any, fallback: string) => String(e?.response?.data?.error || (e instanceof Error ? e.message : fallback));
 
@@ -513,6 +522,16 @@ export const trendsApi = {
   defectGuidance: async (months: TrendMonths, filters: TrendFilters, force = false): Promise<DefectGuidance> => {
     try { return (await apiClient.post('/trends/defects/guidance', { months, client: filters.client ?? [], assignee: filters.assignee ?? [], component: filters.component ?? [], feTeam: !!filters.feTeam, force })).data.data; }
     catch (e: any) { throw new Error(apiMessage(e, 'Could not write the guidance')); }
+  },
+  /** Records the defects in view that repeat an existing RAG pattern (seen + 1, ticket added) and runs the RAG's ingest. Throws with the reason when it cannot. */
+  recordRepeats: async (months: TrendMonths, filters: TrendFilters): Promise<RecordResult> => {
+    try { return (await apiClient.post('/trends/patterns/record', { months, client: filters.client ?? [], assignee: filters.assignee ?? [], component: filters.component ?? [], feTeam: !!filters.feTeam })).data.data; }
+    catch (e: any) { throw new Error(apiMessage(e, 'Could not record the repeats')); }
+  },
+  /** One model call: a draft pattern for a group of defects, saved for review (never written to the RAG). Throws with the reason when it cannot. */
+  draftPattern: async (months: TrendMonths, filters: TrendFilters, cluster: string): Promise<PatternDraft> => {
+    try { return (await apiClient.post('/trends/patterns/draft', { months, client: filters.client ?? [], assignee: filters.assignee ?? [], component: filters.component ?? [], feTeam: !!filters.feTeam, cluster })).data.data; }
+    catch (e: any) { throw new Error(apiMessage(e, 'Could not draft the pattern')); }
   },
   /** Reads the done tickets of the last 6 months from Jira now: the only way the copy is updated. A read already running is not an error. An empty JSON body on purpose: the backend refuses non-JSON POSTs. */
   refresh: async (): Promise<TrendsStatus> => {
