@@ -8,7 +8,8 @@
     "rbi-loyalty-client",
     "kiosk-avolta-loyalty-client",
     "kiosk-loyalty-api",
-    "rbe-loyalty-client"
+    "rbe-loyalty-client",
+    "kiosk-pos-integration"
   ],
   "sprintPrefix": "NGK Sprint",
   "component": "FE",
@@ -48,7 +49,8 @@
       "rbi-loyalty-client": "Tillster/rbi-loyalty-client",
       "kiosk-avolta-loyalty-client": "Tillster/kiosk-avolta-loyalty-client",
       "kiosk-loyalty-api": "Tillster/kiosk-loyalty-api",
-      "rbe-loyalty-client": "Tillster/rbe-loyalty-client"
+      "rbe-loyalty-client": "Tillster/rbe-loyalty-client",
+      "kiosk-pos-integration": "Tillster/kiosk-pos-integration"
     },
     "skipAuthors": [
       "dependabot[bot]",
