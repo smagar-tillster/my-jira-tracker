@@ -8,10 +8,10 @@ const group = (n) => { const k = classifyComponent(n); return k.kind === 'softwa
 
 test('component names from the live data land in software, menu, assets or configs', () => {
   const expect = {
-    software: ['FE', 'SW', 'SW Override', 'Kiosk Web Service', 'Device Service', 'Kiosk Menu Service', 'MSS Payment Service Client', 'RBI Loyalty', 'OCC'],
+    software: ['FE', 'SW', 'SW Override', 'Kiosk Web Service', 'Device Service', 'Kiosk Menu Service', 'MSS Payment Service Client', 'RBI Loyalty'],
     Menu: ['Menu', 'Skumap', 'TCE Menu', 'Menu Override', 'NutritionInfo'],
     Assets: ['ImageOverride', 'Banner', 'Attract Loop', 'OCC Attract Loop', 'Screensaver', 'Receipt Images', 'media/layout/x-subdirectory-x/images', 'AVOL-US - assets/theme', 'AVOL-US - style override'],
-    Configs: ['TranslationFiles', 'PROD/config.json', 'layout/config.json', 'attract-loop.properties', 'Coupons', 'Receipt.xsl', 'tenant-config.json', 'languageinfo.json', 'Receipt Localization Properties'],
+    Configs: ['TranslationFiles', 'PROD/config.json', 'layout/config.json', 'attract-loop.properties', 'Coupons', 'Receipt.xsl', 'tenant-config.json', 'languageinfo.json', 'Receipt Localization Properties', 'OCC'],
   };
   for (const [g, names] of Object.entries(expect)) for (const n of names) assert.equal(group(n), g, n);
 });
