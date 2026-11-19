@@ -28,12 +28,14 @@ You save the result as a **draft** through the My Tracker backend. The user read
    3. **Knowledge base (`${RAG_ROOT}` is the my-rag checkout, defined in `~/.claude/skills/paths.env`).**
       - **Always:** `${RAG_ROOT}/.venv/bin/python ${RAG_ROOT}/scripts/capabilities_for_files.py --repo kiosk-ui <paths from the packet's "Changed files">`. It is local and free. It prints the capabilities that own the files (shared files like `constants.js` are set aside) and the **defect patterns whose `paths` match**.
       - **If a pattern matched:** `query_data` with `@datafeed defect: <pattern ids and the PR's area words>`. Treat each matched pattern as a **mandatory check**: say whether the PR meets it, in plain words (no ids in the comment). If the check needs something you cannot read (for example `kiosk-configuration`), say what to look at; never claim a check passed that you could not run.
+      - **Run both calls on every review, including a re-review of a new head commit.** Do not reuse the pattern list from an earlier run on the same PR: the changed files can differ, and the check must be run again.
+      - **Never assume the knowledge base is down.** An earlier "server disconnected" notice, or a tool that is only listed as deferred, is not a failure. If `query_data` is not loaded, load it with ToolSearch, then call it. Only write `RAG unavailable` after a call actually failed, and put the error in the chat summary.
       - **`light` with no pattern matched:** stop here. No searches.
       - **`deep`:** also follow *Knowledge base, beyond the helper* in `references/deep-review.md`.
       - List the pattern ids you applied in `patterns` in the draft, never in the comment text.
    4. **Review the code.** `deep`: read `references/deep-review.md` first. `light`: see *Light reviews* below.
    5. **Write the draft** (formats below) and **save it**.
-3. **Finish** with one line per PR: `kiosk-ui#123 — draft saved (deep): 2 issues, 3 suggestions, 1 question (risk medium)` or `skipped: <reason>`, then `Skipped by rules: N (kiosk-ui#120 docs only, …)` and `Waiting (recently updated): N`, then any internal notes: `Docs to update: …`, `RAG unavailable`, patterns applied. Do not paste review text into the summary.
+3. **Finish** with one line per PR: `kiosk-ui#123 — draft saved (deep): 2 issues, 3 suggestions, 1 question (risk medium)` or `skipped: <reason>`, then `Skipped by rules: N (kiosk-ui#120 docs only, …)` and `Waiting (recently updated): N`, then any internal notes: `Docs to update: …`, `RAG unavailable: <the actual error>` (only if a call failed), patterns applied and whether the helper and `query_data` were both run this time. Do not paste review text into the summary.
 
 ## One PR you are given
 
