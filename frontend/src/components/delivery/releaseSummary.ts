@@ -10,7 +10,7 @@ const SOFTWARE = /service|client|^(fe|sw|ws)\b/i;
 const CONFIG_FILE = /\.(json|properties|xsl|xml|html)$/i;
 const MENU =/menu|sku|nutrition/i;
 const ASSETS = /image|media[\\/]|asset|theme|style|banner|attract|screensaver|campaign[\\/]/i;
-const CONFIGS = /^occ$|config|\.json|\.properties|\.xsl|\.html|translation|language|receipt|coupon|promotion|profanity|layout|localization|metadata/i;
+const CONFIGS = /^(occ|lpid)$|config|\.json|\.properties|\.xsl|\.html|translation|language|receipt|coupon|promotion|profanity|layout|localization|metadata/i;
 
 /** Software unless the name looks like menu, asset or config content. A name nobody recognizes counts as software. */
 export const classifyComponent = (name: string): ComponentKind => {
