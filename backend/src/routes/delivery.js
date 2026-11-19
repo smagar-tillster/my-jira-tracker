@@ -73,8 +73,20 @@ router.get('/delivery/open-prs', (req, res) => {
 // "PRs only" (--prs-only) skips the Jira sprint and release sync, so it is much quicker, and it leaves the marker alone.
 let job = { state: 'idle', kind: null, startedAt: null, finishedAt: null, log: [] };
 
+/** Start the daily report for the 8 AM schedule (see services/dailySchedule.js). Returns false when another run is in progress. */
+export const runScheduledReport = () => {
+  if (job.state === 'running') return false;
+  launch('full', []);
+  return true;
+};
+
 const startJob = (res, kind, extraArgs = []) => {
   if (job.state === 'running') return res.status(409).json({ success: false, error: 'A report is already running', data: job });
+  launch(kind, extraArgs);
+  res.status(202).json({ success: true, data: job });
+};
+
+function launch(kind, extraArgs) {
   job = { state: 'running', kind, startedAt: new Date().toISOString(), finishedAt: null, log: [] };
   const child = spawn(process.execPath, [path.join(DELIVERY_DIR, 'scripts', 'daily.mjs'), ...extraArgs], { cwd: DELIVERY_DIR, env: NODE_ENV() });
   const keep = (buf) => { job.log.push(...String(buf).split('\n').filter(Boolean)); job.log = job.log.slice(-40); };
@@ -82,8 +94,7 @@ const startJob = (res, kind, extraArgs = []) => {
   child.stderr.on('data', keep);
   child.on('error', (e) => { job.state = 'failed'; job.finishedAt = new Date().toISOString(); job.log.push(`Could not start: ${e.message}`); });
   child.on('close', (code) => { job.finishedAt = new Date().toISOString(); job.state = code === 0 ? 'done' : 'failed'; });
-  res.status(202).json({ success: true, data: job });
-};
+}
 
 router.post('/delivery/refresh', (req, res) => startJob(res, 'full'));
 router.post('/delivery/refresh-prs', (req, res) => startJob(res, 'prs', ['--prs-only']));

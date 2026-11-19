@@ -2,6 +2,7 @@
 // Ad hoc lookup in the current NGK sprint: any client, any component. Read-only; does NOT touch the snapshot cleanup uses.
 // Usage: node find.mjs --client Tillster-All                     active sprint, all components, active tickets
 //        node find.mjs --client "Tillster-All,Tillster-Kiosk" --component FE --text modifier
+//        node find.mjs --no-client                                      tickets with no client, all components (add --component FE to narrow)
 //        node find.mjs --assignee "Sandeep" | --status "Blocked,Code Review" | --include-future | --include-done | --exclude-types none
 // Defaults match the skill: sprint prefix from config.json (NGK Sprint), active sprint only, not done, excluded types
 // Release / Content Change Request / Coupon Change Request / Sub-task, ALL components.
@@ -22,6 +23,7 @@ const assignee = list(a.assignee).map((s) => s.toLowerCase());
 
 const clauses = ['project = NGK', `sprint in ${a['include-future'] ? '(openSprints(), futureSprints())' : 'openSprints()'}`];
 if (!a['include-done']) clauses.push('statusCategory != Done');
+if (a['no-client']) clauses.push('cf[16047] is EMPTY'); // tickets with no client at all
 if (clients.length) clauses.push(`cf[16047] in (${clients.map(quote).join(',')})`);
 if (list(a.text).length) clauses.push(`(${list(a.text).map((t) => `text ~ ${quote(t)}`).join(' OR ')})`);
 const jql = `${clauses.join(' AND ')} ORDER BY duedate ASC, key ASC`;

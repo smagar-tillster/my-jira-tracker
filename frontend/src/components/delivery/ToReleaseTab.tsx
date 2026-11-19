@@ -1,13 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { deliveryApi, DeliveryMeta, DeliveryRelease } from '../../services/api';
 import ReleaseTable from './ReleaseTable';
 import { MultiSelect, dayLabel } from './shared';
+import { RELEASE_TYPES, filterByType } from './releaseSummary';
 
 /** To Release Today: always today. Red status = at least one ticket is not ready; green = everything is ready. */
 export default function ToReleaseTab({ meta, refreshKey }: { meta: DeliveryMeta; refreshKey: number }) {
   const [tenants, setTenants] = useState<string[]>([]);
   const [envs, setEnvs] = useState<string[]>([]);
-  const [rows, setRows] = useState<DeliveryRelease[]>([]);
+  const [types, setTypes] = useState<string[]>([]);
+  const [allRows, setRows] = useState<DeliveryRelease[]>([]);
+  const rows = useMemo(() => filterByType(allRows, types), [allRows, types]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,6 +32,7 @@ export default function ToReleaseTab({ meta, refreshKey }: { meta: DeliveryMeta;
         <span className="text-sm font-medium text-gray-700">Today · {dayLabel(meta.day)}</span>
         <MultiSelect label="Tenant" options={meta.tenants} value={tenants} onChange={setTenants} />
         <MultiSelect label="Env" options={meta.envs} value={envs} onChange={setEnvs} tone="indigo" />
+        <MultiSelect label="Type" options={RELEASE_TYPES} value={types} onChange={setTypes} />
         <span className="text-sm text-gray-500 ml-auto">{rows.length} to release · <span className="text-red-600 font-medium">{red} not ready</span> · <span className="text-green-700 font-medium">{rows.length - red} ready</span></span>
       </div>
       <div className="flex-1 overflow-auto p-4">
