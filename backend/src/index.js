@@ -10,6 +10,10 @@ import quickRouter from './routes/quick.js';
 import jiraIconRouter from './routes/jiraIcon.js';
 import trendsRouter from './routes/trends.js';
 import { quickService } from './services/quick/service.js';
+import { createDailySchedule } from './services/dailySchedule.js';
+import { runScheduledReport } from './routes/delivery.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { initDb } from './db/database.js';
 import { migrateFromJson } from './db/migrate.js';
 
@@ -57,5 +61,8 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Jira Tracker Backend running on http://localhost:${PORT}`);
   console.log(`📝 API available at http://localhost:${PORT}/api`);
   console.log(`🏥 Health check at http://localhost:${PORT}/api/health`);
+  // Release & PRs report: every day at 8 AM Pacific (see delivery/config.json "dailyReport")
+  const dataDir = process.env.NGK_DATA_DIR ? path.resolve(process.env.NGK_DATA_DIR) : path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../data/delivery');
+  createDailySchedule({ run: runScheduledReport, stateFile: path.join(dataDir, '.cache', 'daily-schedule.json') }).start();
   quickService.start(); // Quick Analysis: every 15 minutes during working hours (see delivery/config.json "quickAnalysis")
 });

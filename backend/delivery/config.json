@@ -63,6 +63,7 @@
       "kiosk-ui": "FE"
     }
   },
+  "dailyReport": { "hour": 8, "timezone": "America/Los_Angeles", "disabled": false },
   "quickAnalysis": {
     "startHour": 7,
     "endHour": 18,
