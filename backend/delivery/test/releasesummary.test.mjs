@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-const { classifyComponent, buildReleaseSummary } = await import('../../../frontend/src/components/delivery/releaseSummary.ts');
+const { classifyComponent, buildReleaseSummary, filterByType } = await import('../../../frontend/src/components/delivery/releaseSummary.ts');
 
 const group = (n) => { const k = classifyComponent(n); return k.kind === 'software' ? 'software' : k.group; };
 
@@ -49,4 +49,18 @@ test('an entry is released only when every release ticket in it is', () => {
 test('newest day first', () => {
   const r = (date) => ({ tenant: 'T', date, env: 'PROD', released: true, components: [] });
   assert.deepEqual(buildReleaseSummary([r('2026-11-16'), r('2026-11-18'), r('2026-11-17')])[0].entries.map(e => e.date), ['2026-11-18', '2026-11-17', '2026-11-16']);
+});
+
+test('the Type filter keeps only components of the chosen types and drops releases left empty', () => {
+  const rows = [
+    { id: 1, components: [{ name: 'FE', version: '1' }, { name: 'Menu', version: '' }] },
+    { id: 2, components: [{ name: 'Banner', version: '' }] },
+    { id: 3, components: [] },
+  ];
+  assert.equal(filterByType(rows, []), rows); // nothing chosen: everything
+  const sw = filterByType(rows, ['Software']);
+  assert.deepEqual(sw.map(r => [r.id, r.components.map(c => c.name)]), [[1, ['FE']]]);
+  const content = filterByType(rows, ['Menu', 'Assets']);
+  assert.deepEqual(content.map(r => [r.id, r.components.map(c => c.name)]), [[1, ['Menu']], [2, ['Banner']]]);
+  assert.equal(filterByType(rows, ['Configs']).length, 0);
 });

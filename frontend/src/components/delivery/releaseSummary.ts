@@ -68,3 +68,15 @@ export const buildReleaseSummary = (rows: SummaryInput[]): TenantSummary[] => {
       entries: [...entries.values()].sort((a, b) => b.date.localeCompare(a.date) || prodFirst(a.env, b.env)),
     }));
 };
+
+export type ReleaseType = 'Software' | ContentGroup;
+export const RELEASE_TYPES: ReleaseType[] = ['Software', ...CONTENT_GROUPS];
+export const typeOfComponent = (name: string): ReleaseType => { const k = classifyComponent(name); return k.kind === 'software' ? 'Software' : k.group; };
+
+/** Keep only the components of the chosen types, and drop releases left with none. No types chosen = everything. */
+export const filterByType = <R extends { components: { name: string; version: string }[] }>(rows: R[], types: string[]): R[] => {
+  if (types.length === 0) return rows;
+  return rows
+    .map(r => ({ ...r, components: r.components.filter(c => types.includes(typeOfComponent(c.name))) }))
+    .filter(r => r.components.length > 0);
+};

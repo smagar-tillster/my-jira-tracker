@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { deliveryApi, DeliveryMeta, DeliveryRelease } from '../../services/api';
 import ReleaseTable from './ReleaseTable';
 import { MultiSelect } from './shared';
 import ReleaseSummaryModal from './ReleaseSummaryModal';
+import { RELEASE_TYPES, filterByType } from './releaseSummary';
 
 /** Released: defaults to the last released day; pick a date or a from/to range; filter by tenant and env. */
 export default function ReleasedTab({ meta, refreshKey }: { meta: DeliveryMeta; refreshKey: number }) {
@@ -10,7 +11,9 @@ export default function ReleasedTab({ meta, refreshKey }: { meta: DeliveryMeta; 
   const [to, setTo] = useState('');
   const [tenants, setTenants] = useState<string[]>([]);
   const [envs, setEnvs] = useState<string[]>([]);
-  const [rows, setRows] = useState<DeliveryRelease[]>([]);
+  const [types, setTypes] = useState<string[]>([]);
+  const [allRows, setRows] = useState<DeliveryRelease[]>([]);
+  const rows = useMemo(() => filterByType(allRows, types), [allRows, types]);
   const [range, setRange] = useState<{ from: string; to: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -46,6 +49,7 @@ export default function ReleasedTab({ meta, refreshKey }: { meta: DeliveryMeta; 
         )}
         <MultiSelect label="Tenant" options={meta.tenants} value={tenants} onChange={setTenants} />
         <MultiSelect label="Env" options={meta.envs} value={envs} onChange={setEnvs} tone="indigo" />
+        <MultiSelect label="Type" options={RELEASE_TYPES} value={types} onChange={setTypes} />
         <button onClick={() => setSummaryOpen(true)} disabled={rows.length === 0}
           className="px-3 py-1.5 rounded-lg text-sm bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">Release summary</button>
         <span className="text-sm text-gray-500 ml-auto">{rows.length} release ticket{rows.length === 1 ? '' : 's'} · {released} released</span>
