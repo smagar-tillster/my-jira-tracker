@@ -386,8 +386,8 @@ const JiraTasksTracker: React.FC<JiraTasksTrackerProps> = ({
     );
     const s = sortIssues(f, sortConfig);
     const grouped = groupIssues(s, groupConfig.column);
-    // Assignees with the fewest aligned tickets first (who has room)
-    const g = groupConfig.column === 'assignee' ? orderGroups(grouped, 'aligned-asc') : grouped;
+    // Grouped lists: the group with the most aligned tickets first
+    const g = groupConfig.column ? orderGroups(grouped, 'aligned-desc') : grouped;
     return { filteredIssues: f, sortedIssues: s, groupedIssues: g };
   }, [mergedIssues, effectiveSprintIssues, myIssues, sourceFilter, showImportantOnly, showMyDayOnly, showUrgentOnly, showAttentionOnly, showNoDueDate, showFETeamOnly, showNoSubtasks, showUnassigned, feTeamMembers, filters, effectiveSCFilter, debouncedSearch, sortConfig, groupConfig]);
 
