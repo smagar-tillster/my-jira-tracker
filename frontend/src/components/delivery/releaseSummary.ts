@@ -24,11 +24,15 @@ export const classifyComponent = (name: string): ComponentKind => {
 
 export interface SummaryInput {
   tenant: string; date: string; env: string; released: boolean;
+  key?: string | null; url?: string | null; status?: string;
   components: { name: string; version: string }[];
 }
 export interface ComponentLine { name: string; version: string }
+export interface SummaryTicket { key: string; url: string | null; status: string }
 export interface SummaryEntry {
   date: string; env: string; released: boolean;
+  /** The release tickets behind this entry (one per ticket key). */
+  tickets: SummaryTicket[];
   software: ComponentLine[];
   content: Record<ContentGroup, ComponentLine[]>;
 }
@@ -47,9 +51,10 @@ export const buildReleaseSummary = (rows: SummaryInput[]): TenantSummary[] => {
     const entries = tenants.get(r.tenant) ?? new Map<string, SummaryEntry>();
     tenants.set(r.tenant, entries);
     const k = `${r.date}|${r.env}`;
-    const e = entries.get(k) ?? { date: r.date, env: r.env, released: true, software: [], content: { Menu: [], Assets: [], Configs: [] } };
+    const e = entries.get(k) ?? { date: r.date, env: r.env, released: true, tickets: [], software: [], content: { Menu: [], Assets: [], Configs: [] } };
     entries.set(k, e);
     e.released = e.released && r.released;
+    if (r.key && !e.tickets.some(t => t.key === r.key)) e.tickets.push({ key: r.key, url: r.url ?? null, status: r.status ?? '' });
     for (const c of r.components) {
       const kind = classifyComponent(c.name);
       addUnique(kind.kind === 'software' ? e.software : e.content[kind.group], c);

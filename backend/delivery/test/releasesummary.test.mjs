@@ -34,6 +34,12 @@ test('one entry per tenant, day and env; software and content are separate; vers
   assert.equal(bk[1].released, false);
 });
 
+test('each entry lists its release tickets once, with link and status', () => {
+  const r = (key, status) => ({ tenant: 'T', date: '2026-11-18', env: 'PROD', released: true, key, url: `https://j/${key}`, status, components: [] });
+  const e = buildReleaseSummary([r('NGK-1', 'Released'), r('NGK-2', 'Done'), r('NGK-1', 'Released'), r(null, '')])[0].entries[0];
+  assert.deepEqual(e.tickets, [{ key: 'NGK-1', url: 'https://j/NGK-1', status: 'Released' }, { key: 'NGK-2', url: 'https://j/NGK-2', status: 'Done' }]);
+});
+
 test('an entry is released only when every release ticket in it is', () => {
   const r = (released) => ({ tenant: 'T', date: '2026-11-18', env: 'PROD', released, components: [] });
   assert.equal(buildReleaseSummary([r(true), r(false)])[0].entries[0].released, false);
