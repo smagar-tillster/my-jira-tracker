@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { deliveryApi, DeliveryMeta, RefreshJob, generateBusy, reviewsApi } from '../services/api';
 import PrReviews from './PrReviews';
+import { SUBTAB_KEY } from './delivery/useCodeReview';
 import ReleasedTab from './delivery/ReleasedTab';
 import ToReleaseTab from './delivery/ToReleaseTab';
 import MergedPrsTab from './delivery/MergedPrsTab';
@@ -10,7 +11,6 @@ import { RefreshContext } from './delivery/RefreshContext';
 type SubTab = 'released' | 'toRelease' | 'prs' | 'open' | 'reviews';
 
 // The notification bell asks for the PR Reviews pill by leaving a note here; it is read once.
-const SUBTAB_KEY = 'mytracker.releases.subtab';
 const takeRequestedTab = (): SubTab | null => {
   try { const v = sessionStorage.getItem(SUBTAB_KEY); sessionStorage.removeItem(SUBTAB_KEY); return v === 'reviews' ? 'reviews' : null; } catch { return null; }
 };

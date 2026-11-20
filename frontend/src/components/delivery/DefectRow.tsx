@@ -86,7 +86,7 @@ export default function DefectRowButton({ p }: { p: DeliveryPr }) {
   return (
     <span className="inline-flex flex-col">
       <button onClick={run} disabled={state === 'working'} title={`Propose a row for the defects feed from ${key} and this PR. One model call; nothing is saved to the feed.`}
-        className="text-xs px-2 py-1 rounded bg-rose-100 text-rose-800 hover:bg-rose-200 whitespace-nowrap disabled:opacity-60">
+        className="text-xs px-3 py-0.5 rounded-full font-medium border border-rose-200 bg-rose-50 text-rose-800 hover:bg-rose-100 whitespace-nowrap disabled:opacity-60">
         {state === 'working' ? '⏳ Drafting row…' : 'Defect row'}
       </button>
       {err && <span className="text-[11px] text-red-600 max-w-[170px]" title={err}>{err.slice(0, 80)}</span>}
