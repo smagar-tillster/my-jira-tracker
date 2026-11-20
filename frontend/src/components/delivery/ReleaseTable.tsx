@@ -111,9 +111,10 @@ function ReleaseRows({ rows, showStatus, showTenant, onOpen }: { rows: DeliveryR
           <tr>
             {showTenant && <th className="px-2 py-[7px] w-[110px]">Tenant</th>}
             <th className="px-2 py-[7px] w-[110px]">Date</th><th className="px-2 py-[7px] w-[130px]">Env</th>
-            <th className="px-2 py-[7px] w-[26%]">Description</th>
-            <th className="px-2 py-[7px]">Components{showStatus ? '' : ' released'} (version)</th><th className="px-2 py-[7px] w-[200px]">Release ticket</th>
+            <th className="px-2 py-[7px] w-[200px]">Release ticket</th>
             {showStatus && <th className="px-2 py-[7px] w-[130px]">Status</th>}<th className="px-2 py-[7px] w-[70px]"></th>
+            <th className="px-2 py-[7px] w-[26%]">Description</th>
+            <th className="px-2 py-[7px]">Components{showStatus ? '' : ' released'} (version)</th>
           </tr>
         </thead>
         <tbody>
@@ -122,6 +123,15 @@ function ReleaseRows({ rows, showStatus, showTenant, onOpen }: { rows: DeliveryR
               {showTenant && <td className="px-2 py-[5.5px] font-medium text-gray-800" title={r.tenant}>{r.tenant}</td>}
               <td className="px-2 py-[5.5px] whitespace-nowrap text-gray-600">{dayLabel(r.date)}</td>
               <td className="px-2 py-[5.5px]">{envBadge(r.env)}</td>
+              <td className="px-2 py-[5.5px] whitespace-nowrap">
+                {r.key ? <><TicketLink k={r.key} url={r.url} /> <span className="text-xs text-gray-500">{r.status}</span></> : <span className="text-xs text-red-600 font-medium">none yet</span>}
+              </td>
+              {showStatus && (
+                <td className="px-2 py-[5.5px] whitespace-nowrap">
+                  <StatusDot ok={r.ready} label={r.ready ? 'Ready' : `${r.notReady} not ready`} />
+                </td>
+              )}
+              <td className="px-2 py-[5.5px] whitespace-nowrap"><button onClick={() => setOpen(r)} className="text-blue-600 hover:underline">Details</button></td>
               <td className="px-2 py-[5.5px]" title={r.summary}>
                 <div className="line-clamp-2 text-gray-800">{r.noReleaseTicket ? r.summary : (r.what || r.title)}</div>
               </td>
@@ -133,15 +143,6 @@ function ReleaseRows({ rows, showStatus, showTenant, onOpen }: { rows: DeliveryR
                   ))}
                 </div>
               </td>
-              <td className="px-2 py-[5.5px] whitespace-nowrap">
-                {r.key ? <><TicketLink k={r.key} url={r.url} /> <span className="text-xs text-gray-500">{r.status}</span></> : <span className="text-xs text-red-600 font-medium">none yet</span>}
-              </td>
-              {showStatus && (
-                <td className="px-2 py-[5.5px] whitespace-nowrap">
-                  <StatusDot ok={r.ready} label={r.ready ? 'Ready' : `${r.notReady} not ready`} />
-                </td>
-              )}
-              <td className="px-2 py-[5.5px] whitespace-nowrap"><button onClick={() => setOpen(r)} className="text-blue-600 hover:underline">Details</button></td>
             </tr>
           ))}
         </tbody>
