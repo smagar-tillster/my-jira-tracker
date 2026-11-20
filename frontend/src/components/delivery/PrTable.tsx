@@ -203,7 +203,7 @@ const prSummary = (prs: DeliveryPr[], open?: boolean) => {
 // The tenant with the most PRs first.
 const mostFirst = byCount<DeliveryPr>();
 
-export default function PrTable({ rows, open, empty, onChanged }: { rows: DeliveryPr[]; open?: boolean; empty: string; onChanged: () => void }) {
+export default function PrTable({ rows, open, empty, onChanged, controls }: { rows: DeliveryPr[]; open?: boolean; empty: string; onChanged: () => void; controls?: React.ReactNode }) {
   const [shown, setShown] = useState<DeliveryPr | null>(null);
   const { jobs, start } = useAnalyze(onChanged);
   const review = useCodeReview(onChanged);
@@ -231,7 +231,7 @@ export default function PrTable({ rows, open, empty, onChanged }: { rows: Delive
 
   if (rows.length === 0) return (
     <>
-      <div className="flex items-center gap-3 mb-2"><FetchPrsButton /></div>
+      <div className="flex items-center gap-3 mb-2">{controls}<FetchPrsButton /></div>
       <div className="p-8 text-center text-gray-400">{empty}</div>
     </>
   );
@@ -240,7 +240,7 @@ export default function PrTable({ rows, open, empty, onChanged }: { rows: Delive
   const counts = `${groupCount} ${groupLabel}${groupCount === 1 ? '' : 's'} · ${visible.length} PR${visible.length === 1 ? '' : 's'}`;
   return (
     <>
-      <ListControls groups={GROUPS} groupBy={groupBy} onGroupBy={setGroupBy} query={query} onQuery={setQuery} shown={visible.length} total={rows.length} unit="PR" extra={<FetchPrsButton counts={counts} />} allOpen={allOpen} onToggleAll={toggleAll} placeholder="Search PR #, ticket or title…" />
+      <ListControls groups={GROUPS} groupBy={groupBy} onGroupBy={setGroupBy} query={query} onQuery={setQuery} shown={visible.length} total={rows.length} unit="PR" extra={<>{controls}<FetchPrsButton counts={counts} /></>} allOpen={allOpen} onToggleAll={toggleAll} placeholder="Search PR #, ticket or title…" />
       {visible.length === 0 ? <div className="p-8 text-center text-gray-400">Nothing matches &ldquo;{query.trim()}&rdquo;.</div> : (
       <TenantGroupList command={cmd} onAllOpenChange={setAllOpen} items={visible} tenantsOf={byClient ? prTenants : prRepo} unit="PR" summary={prs => byClient ? prSummary(prs, open) : repoSummary(prs, open)}
         groupLabel={groupLabel} expandAll={!!query.trim()} order={mostFirst} orderLabel="most PRs first" hideIntro>
