@@ -140,10 +140,10 @@ function ReleaseRows({ rows, showStatus, showTenant, onOpen }: { rows: DeliveryR
         </thead>
         <tbody>
           {rows.map(r => (
-            <tr key={r.id} className="border-t border-gray-100 hover:bg-gray-50 align-middle">
-              {showTenant && <td className="px-2 py-[5.5px] font-medium text-gray-800" title={r.tenant}>{r.tenant}</td>}
-              <td className="px-2 py-[5.5px] whitespace-nowrap text-gray-600">{dayLabel(r.date)}</td>
-              <td className="px-2 py-[5.5px]">{envBadge(r.env)}</td>
+            <tr key={r.id} className="border-t border-gray-100 hover:bg-gray-50 align-top">
+              {showTenant && <td className="px-2 py-2 font-medium text-gray-800" title={r.tenant}>{r.tenant}</td>}
+              <td className="px-2 py-2 whitespace-nowrap text-gray-600">{dayLabel(r.date)}</td>
+              <td className="px-2 py-2">{envBadge(r.env)}</td>
               <td className="px-2 py-2 whitespace-nowrap">
                 {r.key ? <><TicketLink k={r.key} url={r.url} /> <span className="text-xs text-gray-500">{r.status}</span></> : <span className="text-xs text-red-600 font-medium">none yet</span>}
               </td>
@@ -153,10 +153,10 @@ function ReleaseRows({ rows, showStatus, showTenant, onOpen }: { rows: DeliveryR
                   : <StatusDot ok={r.released} label={r.released ? 'Released' : 'Not released'} />}
                 <div className="mt-1.5">{detailsPill(r)}</div>
               </td>
-              <td className="px-2 py-[5.5px]" title={r.summary}>
+              <td className="px-2 py-2" title={r.summary}>
                 <div className="line-clamp-2 text-gray-800">{r.noReleaseTicket ? r.summary : (r.what || r.title)}</div>
               </td>
-              <td className="px-2 py-[5.5px]">
+              <td className="px-2 py-2">
                 <div className="flex flex-wrap gap-1">
                   {r.components.length === 0 && <span className="text-gray-400">—</span>}
                   {r.components.map(c => (
