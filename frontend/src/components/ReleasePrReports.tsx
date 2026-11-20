@@ -72,7 +72,7 @@ export default function ReleasePrReports() {
   ];
 
   return (
-    <RefreshContext.Provider value={{ fetchPrs: refreshPrs, job, running, prsAt }}>
+    <RefreshContext.Provider value={{ fetchPrs: refreshPrs, refreshReleases, releasesAt: meta?.generatedAt || null, job, running, prsAt }}>
     <div className="h-full flex flex-col bg-gray-50 overflow-hidden">
       <div className="bg-white border-b border-gray-200 px-4 pt-3 flex items-end gap-2">
         <span className="text-lg font-semibold text-gray-800 mr-3 pb-2">📦 Release &amp; PRs</span>
@@ -89,11 +89,6 @@ export default function ReleasePrReports() {
               {meta.timing && <> · last run took {Math.round(meta.timing.totalSec)}s</>}
             </span>
           )}
-          <button onClick={refreshReleases} disabled={running}
-            title="Re-reads Jira only (about half the time of the full report): refreshes Released and To Release Today. PR lists are left as they are."
-            className="px-3 py-1.5 bg-white text-blue-700 border border-blue-300 rounded-lg text-sm hover:bg-blue-50 disabled:opacity-60 disabled:cursor-not-allowed">
-            {running && job?.kind === 'releases' ? '⏳ Refreshing releases…' : '↻ Refresh releases'}
-          </button>
           <button onClick={refresh} disabled={running}
             title="Re-reads Jira and GitHub and rebuilds the data on these tabs, then moves the 'since last run' marker for merged PRs."
             className="px-3 py-1.5 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 disabled:opacity-60 disabled:cursor-not-allowed">

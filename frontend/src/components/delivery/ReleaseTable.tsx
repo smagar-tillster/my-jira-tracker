@@ -4,6 +4,7 @@ import { ListControls, Modal, Section, StatusDot, TicketLink, dayLabel } from '.
 import { filterRows } from './search';
 import TenantGroupList from './TenantGroupList';
 import { byCount, byNotReady } from './tenantGrouping';
+import { useRefresh } from './RefreshContext';
 
 const envBadge = (env: string) => (
   <span className={`px-2 py-0.5 rounded text-xs font-medium ${/PROD/i.test(env) ? 'bg-orange-100 text-orange-800' : 'bg-sky-100 text-sky-800'}`}>{env || '—'}</span>
@@ -66,6 +67,24 @@ const notReadyFirst = byNotReady<DeliveryRelease>(notReadyCount);
 const mostFirst = byCount<DeliveryRelease>();
 const hasNotReady = (items: DeliveryRelease[]) => notReadyCount(items) > 0;
 
+/** "Refresh releases": re-reads Jira only (no GitHub), so it is quicker than the full report; the PR lists are left as they are. */
+function RefreshReleasesButton() {
+  const r = useRefresh();
+  if (!r) return null;
+  const mine = r.running && r.job?.kind === 'releases';
+  const at = r.releasesAt ? new Date(r.releasesAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : null;
+  return (
+    <>
+      <button onClick={r.refreshReleases} disabled={r.running}
+        title={r.running && !mine ? 'A report is running; releases refresh with it' : 'Re-reads Jira only: refreshes Released and To Release Today. Quicker than the full report; PR lists are not refreshed.'}
+        className="px-3 py-1 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap">
+        {mine ? '⏳ Refreshing releases…' : '⟳ Refresh releases'}
+      </button>
+      {at && <span className="text-xs text-gray-500">Releases as of {at}</span>}
+    </>
+  );
+}
+
 /** What a collapsed tenant group says about its releases, across every day in the filter. */
 const groupSummary = (rows: DeliveryRelease[], showStatus?: boolean) => {
   const notReady = rows.filter(r => !r.ready).length;
@@ -87,7 +106,7 @@ export default function ReleaseTable({ rows, showStatus, empty }: { rows: Delive
   const byClient = groupBy === 'client';
   return (
     <>
-      <ListControls groups={GROUPS} groupBy={groupBy} onGroupBy={setGroupBy} query={query} onQuery={setQuery} shown={shown.length} total={rows.length} unit="release ticket" allOpen={allOpen} onToggleAll={toggleAll} />
+      <ListControls groups={GROUPS} groupBy={groupBy} onGroupBy={setGroupBy} query={query} onQuery={setQuery} shown={shown.length} total={rows.length} unit="release ticket" allOpen={allOpen} onToggleAll={toggleAll} extra={<RefreshReleasesButton />} />
       {shown.length === 0 ? <div className="p-8 text-center text-gray-400">Nothing matches &ldquo;{query.trim()}&rdquo;.</div> : (
         <TenantGroupList command={cmd} onAllOpenChange={setAllOpen} items={shown} tenantsOf={byClient ? releaseTenants : releaseComponents} unit="release ticket" summary={items => groupSummary(items, showStatus)}
           groupLabel={byClient ? 'tenant' : 'component'} fallback={byClient ? undefined : '(no component)'} expandAll={!!query.trim()}
