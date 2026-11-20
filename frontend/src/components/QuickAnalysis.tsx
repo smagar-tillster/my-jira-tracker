@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  quickApi, jiraApi, jiraIcon, QuickReport, QuickStatus, QuickTicket, QuickNewTicket, QuickFeCandidate, QuickGroup, QuickSize,
+  quickApi, jiraApi, jiraIcon, QuickReport, QuickStatus, QuickTicket, QuickNewTicket, QuickFeCandidate, QuickGroup,
 } from '../services/api';
 import { BUCKET_PILL } from '../utils/statusBuckets';
 import { parseLocalDate } from '../utils/dateUtils';
@@ -18,10 +18,6 @@ const dayTime = (iso: string) => {
 const hour = (h: number) => `${h % 12 === 0 ? 12 : h % 12} ${h < 12 ? 'AM' : 'PM'}`;
 const shortDate = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
-const SIZE_PILL: Record<QuickSize, string> = {
-  S: 'bg-green-100 text-green-800', M: 'bg-sky-100 text-sky-800', L: 'bg-amber-100 text-amber-800', XL: 'bg-red-100 text-red-800',
-};
-const SIZE_HINT: Record<QuickSize, string> = { S: 'About a day or less', M: 'Two to three days', L: 'About a week', XL: 'More than a week, or split it first' };
 const TicketLink = ({ t }: { t: Pick<QuickTicket, 'key' | 'url'> }) => (
   <a href={t.url} target="_blank" rel="noopener noreferrer" title={`Open ${t.key} in Jira`} className="font-semibold text-blue-700 hover:underline whitespace-nowrap">{t.key}</a>
 );
@@ -233,7 +229,7 @@ const FeAssignment = ({ report, showTeam, onToggleTeam }: { report: QuickReport;
     {showTeam && report.feTeam.length > 0 && (
       <div className="mb-3 p-3 rounded-lg bg-white border border-gray-200">
         <FeTeam team={report.feTeam} />
-        <p className="text-xs text-gray-500 mt-2">Aligned means in progress and not blocked. Suggestions go by this load and by related work, and each one counts the suggestions above it so one person is not offered everything. They are a starting point, you decide.</p>
+        <p className="text-xs text-gray-500 mt-2">Aligned means in progress and not blocked.</p>
       </div>
     )}
     <QuickList items={report.feCandidates} unit="ticket" groups={FE_GROUPS} textOf={feTextOf} placeholder="Search key, summary, client, area or person…"
@@ -241,35 +237,23 @@ const FeAssignment = ({ report, showTeam, onToggleTeam }: { report: QuickReport;
       extra={report.feTeam.length > 0 ? <button onClick={onToggleTeam} className="px-3 py-1 rounded-lg text-sm font-medium bg-white ring-1 ring-gray-300 text-gray-700 hover:bg-gray-100 whitespace-nowrap">{showTeam ? 'Hide' : 'Show'} who has what</button> : undefined}
       summary={(rows) => {
         const n = rows.filter(c => c.origin === 'new').length; const m = rows.length - n;
-        const sizes = ['S', 'M', 'L', 'XL'].map(z => [z, rows.filter(c => c.size === z).length] as const).filter(([, k]) => k > 0).map(([z, k]) => `${z} ${k}`).join(' · ');
-        return `${rows.length} ticket${rows.length === 1 ? '' : 's'} · ${n} new · ${m} mine${sizes ? ` · ${sizes}` : ''}`;
+        return `${rows.length} ticket${rows.length === 1 ? '' : 's'} · ${n} new · ${m} mine`;
       }}
       table={(rows) => (
         <table className={TABLE}>
           <thead className={THEAD}><tr>
-            <th className={`${TH} w-[72px]`}>From</th><th className={`${TH} w-[26%]`}>Ticket</th><th className={`${TH} w-[84px]`}>Size</th><th className={`${TH} w-[140px]`}>Status</th>
-            <th className={`${TH} w-[130px]`}>Date</th><th className={`${TH} w-[130px]`}>Now with</th><th className={TH}>Analysis</th><th className={`${TH} w-[22%]`}>Suggestion</th>
+            <th className={`${TH} w-[72px]`}>From</th><th className={`${TH} w-[28%]`}>Ticket</th><th className={`${TH} w-[140px]`}>Status</th>
+            <th className={`${TH} w-[130px]`}>Date</th><th className={`${TH} w-[130px]`}>Now with</th><th className={TH}>Analysis</th>
           </tr></thead>
           <tbody>
             {rows.map(c => (
               <tr key={`${c.origin}-${c.key}`} className={ROW}>
                 <td className={TD}><span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${c.origin === 'new' ? 'bg-sky-100 text-sky-800' : 'bg-gray-100 text-gray-700'}`}>{c.origin === 'new' ? 'New' : 'Mine'}</span></td>
                 <td className={TD}><TicketCell t={c} tags={<><Pills items={c.clients} />{c.areas.map(a => <span key={a} className="px-1.5 py-0.5 rounded text-xs text-gray-600 bg-white ring-1 ring-gray-200">{a}</span>)}</>} /></td>
-                <td className={TD}>{c.size
-                  ? <span title={`${SIZE_HINT[c.size]}${c.sizeWhy ? `\n${c.sizeWhy}` : ''}`} className={`px-2 py-0.5 rounded text-xs font-bold ${SIZE_PILL[c.size]}`}>Size {c.size}</span>
-                  : <span className="px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-500" title="No size could be written for this ticket">No size</span>}</td>
                 <td className={TD}><StatusPill t={c} /></td>
                 <td className={TD}><DateChip t={c} /></td>
                 <td className={`${TD} text-gray-700`}>{c.assignee || <span className="text-gray-400">unassigned</span>}</td>
-                <td className={TD}><p className="text-sm text-gray-700">{c.analysis}</p>{c.sizeWhy && <p className="text-xs text-gray-500 mt-0.5">Size: {c.sizeWhy}</p>}</td>
-                <td className={TD}>
-                  {c.suggestion ? (
-                    <div className="rounded-md bg-indigo-50 border border-indigo-100 px-3 py-1.5 text-sm text-indigo-900">
-                      <span className="font-semibold">Suggest {c.suggestion.name}.</span> <span className="text-indigo-800">{c.suggestion.why.replace(`${c.suggestion.name}: `, '')}</span>
-                      {c.suggestion.alternatives.length > 0 && <span className="text-indigo-700"> Also: {c.suggestion.alternatives.map(a => `${a.name} (${a.aligned})`).join(', ')}.</span>}
-                    </div>
-                  ) : <p className="text-xs text-gray-400">No suggestion: no one else on the FE team to offer it to.</p>}
-                </td>
+                <td className={TD}><p title={c.analysis} className="text-sm text-gray-700 break-words" style={{ display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 5, overflow: 'hidden' }}>{c.analysis}</p></td>
               </tr>
             ))}
           </tbody>
