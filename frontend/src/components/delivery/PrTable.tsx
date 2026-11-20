@@ -244,7 +244,7 @@ export default function PrTable({ rows, open, empty, onChanged }: { rows: Delive
         {prs => (
             <table className="w-full table-fixed text-[14px] leading-[22px] [overflow-wrap:anywhere]">
               <thead className="bg-gray-50 text-left text-[13px] font-semibold text-gray-600 border-b border-gray-200">
-                <tr><th className="px-2 py-[7px] w-[170px]">PR</th><th className="px-2 py-[7px] w-[170px]">Ticket</th><th className="px-2 py-[7px]">What it builds</th><th className="px-2 py-[7px] w-[30%]">Understanding</th></tr>
+                <tr><th className="px-2 py-[7px] w-[220px]">PR</th><th className="px-2 py-[7px] w-[250px]">Ticket</th><th className="px-2 py-[7px]">What it builds</th><th className="px-2 py-[7px] w-[30%]">Understanding</th></tr>
               </thead>
               <tbody>
                 {prs.map(p => (
