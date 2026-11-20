@@ -3,17 +3,20 @@ import { trendsService, MONTH_CHOICES, BASES, GROUPS } from '../services/trends/
 import { sameMachineOnly } from './reviews.js';
 
 // Trends: monthly counts of the NGK tickets that were in a sprint, from a local copy that is read from Jira only when asked.
+/** 3, 6 or 'ytd' (this year so far); anything else is left as it is so the check below rejects it. */
+const parseMonths = (v) => (v === 'ytd' ? 'ytd' : Number(v || 6));
+
 export const createTrendsRouter = ({ service = trendsService } = {}) => {
   const router = express.Router();
 
   // GET /api/trends/status  — the sync state
   router.get('/trends/status', (req, res) => res.json({ success: true, data: service.status() }));
 
-  // GET /api/trends/sprint-tickets?basis=sprint|created|resolved&months=3|6&group=all|type|client|component|assignee&type=&client=&component=&assignee=&feTeam=1
+  // GET /api/trends/sprint-tickets?basis=sprint|created|resolved&months=3|6|ytd&group=all|type|client|component|assignee&type=&client=&component=&assignee=&feTeam=1
   router.get('/trends/sprint-tickets', (req, res) => {
     const basis = String(req.query.basis || 'resolved');
     const group = String(req.query.group || 'all');
-    const months = Number(req.query.months || 6);
+    const months = parseMonths(req.query.months);
     if (!BASES.includes(basis) || !GROUPS.includes(group) || !MONTH_CHOICES.includes(months)) {
       return res.status(400).json({ success: false, error: `basis is one of ${BASES.join(', ')}; group is one of ${GROUPS.join(', ')}; months is one of ${MONTH_CHOICES.join(', ')}` });
     }
@@ -23,14 +26,26 @@ export const createTrendsRouter = ({ service = trendsService } = {}) => {
     res.json({ success: true, data: { ...service.sprintTickets({ basis, group, months, filters }), status: service.status() } });
   });
 
+  // GET /api/trends/sprint-tickets/list?basis=&months=&type=&client=&component=&assignee=&feTeam=1  — the tickets behind the chart (same filters), newest first
+  router.get('/trends/sprint-tickets/list', (req, res) => {
+    const basis = String(req.query.basis || 'resolved');
+    const months = parseMonths(req.query.months);
+    if (!BASES.includes(basis) || !MONTH_CHOICES.includes(months)) {
+      return res.status(400).json({ success: false, error: `basis is one of ${BASES.join(', ')}; months is one of ${MONTH_CHOICES.join(', ')}` });
+    }
+    const many = (v) => (Array.isArray(v) ? v : [v]).filter((x) => typeof x === 'string' && x);
+    const filters = { type: many(req.query.type), client: many(req.query.client), assignee: many(req.query.assignee), component: many(req.query.component), feTeam: ['1', 'true'].includes(String(req.query.feTeam)) };
+    res.json({ success: true, data: service.ticketList({ basis, months, filters }) });
+  });
+
   const readFilters = (src) => {
     const many = (v) => (Array.isArray(v) ? v : [v]).filter((x) => typeof x === 'string' && x);
     return { client: many(src.client), assignee: many(src.assignee), component: many(src.component), feTeam: ['1', 'true', true].includes(src.feTeam) };
   };
 
-  // GET /api/trends/defects?months=3|6&client=&assignee=&feTeam=1  — the defect analysis (numbers, rule-based focus, and the saved guidance if there is one). Never calls the model.
+  // GET /api/trends/defects?months=3|6|ytd&client=&assignee=&feTeam=1  — the defect analysis (numbers, rule-based focus, and the saved guidance if there is one). Never calls the model.
   router.get('/trends/defects', (req, res) => {
-    const months = Number(req.query.months || 6);
+    const months = parseMonths(req.query.months);
     if (!MONTH_CHOICES.includes(months)) return res.status(400).json({ success: false, error: `months is one of ${MONTH_CHOICES.join(', ')}` });
     res.json({ success: true, data: { ...service.defectAnalysis({ months, filters: readFilters(req.query) }), status: service.status() } });
   });
@@ -38,7 +53,7 @@ export const createTrendsRouter = ({ service = trendsService } = {}) => {
   // POST /api/trends/defects/guidance  {months, client:[], assignee:[], feTeam, force}  — asks the model for the written guidance. One at a time.
   router.post('/trends/defects/guidance', sameMachineOnly, async (req, res) => {
     const b = req.body || {};
-    const months = Number(b.months || 6);
+    const months = parseMonths(b.months);
     if (!MONTH_CHOICES.includes(months)) return res.status(400).json({ success: false, error: `months is one of ${MONTH_CHOICES.join(', ')}` });
     const r = await service.defectGuidance({ months, filters: readFilters(b), force: b.force === true });
     if (r.busy) return res.status(409).json({ success: false, error: 'The guidance is already being written' });
@@ -54,7 +69,7 @@ export const createTrendsRouter = ({ service = trendsService } = {}) => {
   // (seen + 1, ticket added; nothing else is edited) and run the RAG's ingest once. 409 when one is running.
   router.post('/trends/patterns/record', sameMachineOnly, async (req, res) => {
     const b = req.body || {};
-    const months = Number(b.months || 6);
+    const months = parseMonths(b.months);
     if (!MONTH_CHOICES.includes(months)) return res.status(400).json({ success: false, error: `months is one of ${MONTH_CHOICES.join(', ')}` });
     const r = await service.recordRepeats({ months, filters: readFilters(b) });
     if (r.busy) return res.status(409).json({ success: false, error: 'Repeats are already being recorded' });
@@ -66,7 +81,7 @@ export const createTrendsRouter = ({ service = trendsService } = {}) => {
   // POST /api/trends/patterns/draft  {months, filters..., cluster: "<id from the analysis>"}  — one model call: a draft pattern saved for review, never written to the RAG.
   router.post('/trends/patterns/draft', sameMachineOnly, async (req, res) => {
     const b = req.body || {};
-    const months = Number(b.months || 6);
+    const months = parseMonths(b.months);
     if (!MONTH_CHOICES.includes(months) || typeof b.cluster !== 'string' || !/^[0-9a-f]{8}$/.test(b.cluster)) return res.status(400).json({ success: false, error: 'Send {"months": 3|6, "cluster": "<id>"}' });
     const r = await service.draftForCluster({ months, filters: readFilters(b), cluster: b.cluster });
     if (r.busy) return res.status(409).json({ success: false, error: 'A pattern is already being drafted' });

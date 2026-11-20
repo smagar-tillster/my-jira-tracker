@@ -17,6 +17,9 @@ export const monthOf = (iso) => {
 export const BASES = ['sprint', 'created', 'resolved'];
 const dateFor = (row, basis) => (basis === 'created' ? row.created : basis === 'resolved' ? row.resolved : row.firstSprintStart);
 
+/** The number of months a range choice covers. 'ytd' is the current year so far: January up to the current month. */
+export const resolveMonths = (choice, now = new Date()) => (choice === 'ytd' ? Number(monthOf(now.toISOString()).slice(5)) : Number(choice));
+
 /** Every month from `from` to `to` inclusive, as "YYYY-MM". */
 export const monthRange = (from, to) => {
   const out = [];
@@ -77,6 +80,23 @@ export const filterRows = (rows, filters = {}, feMembers = new Set()) => {
     && (!components.length || valuesFor(r, 'component').some((c) => components.includes(c)))
     && (!assignees.length || assignees.includes(r.assignee || NO_ASSIGNEE))
     && (!f.feTeam || (!!r.assignee && feMembers.has(r.assignee))));
+};
+
+/**
+ * The tickets behind the chart: the ones counted in the months shown, after the filters, newest first. Same month rules as `aggregate`
+ * (a ticket with no date, one older than the range, or one in a future month is not in view).
+ */
+export const ticketsInView = ({ rows, basis = 'resolved', months = 6, filters = {}, feMembers = new Set(), now = new Date() }) => {
+  const current = monthOf(now.toISOString());
+  const wanted = new Set(monthRange(addMonths(current, -(Number(months) - 1)), current));
+  return filterRows(rows, filters, feMembers)
+    .map((r) => ({ r, date: dateFor(r, basis) }))
+    .filter(({ date }) => wanted.has(monthOf(date)))
+    .sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(a.r.key).localeCompare(String(b.r.key)))
+    .map(({ r, date }) => ({
+      key: r.key, summary: r.summary || '', type: r.type || 'Unknown', assignee: r.assignee || '', clients: r.clients || [], components: r.components || [],
+      date, month: monthOf(date),
+    }));
 };
 
 export const aggregate = ({ rows, basis = 'sprint', group = 'all', months = 6, filters = {}, feMembers = new Set(), now = new Date() }) => {

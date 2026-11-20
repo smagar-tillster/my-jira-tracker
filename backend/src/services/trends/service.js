@@ -1,7 +1,7 @@
 // Trends as a service: a manual read of the sprint tickets from Jira (one at a time), and the monthly counts built from the local copy.
 import * as store from './store.js';
 import { runTrendsSync } from './sync.js';
-import { aggregate, BASES, GROUPS } from './aggregate.js';
+import { aggregate, ticketsInView, resolveMonths, BASES, GROUPS } from './aggregate.js';
 import { getAllFETeamMembers } from '../feteamService.js';
 import { analyzeDefects, defectsInView, categorize } from './defects.js';
 import fs from 'node:fs';
@@ -15,7 +15,7 @@ import { ledgerIndex } from './ledger.js';
 import { jiraUrl } from '../../../delivery/lib/jira.mjs';
 import { generateGuidance, cachedGuidance } from './guidance.js';
 
-export const MONTH_CHOICES = [3, 6];
+export const MONTH_CHOICES = [3, 6, 'ytd'];
 
 /** The scope in plain words for the model: counts only, never the names of clients or people. */
 export const scopeText = (f = {}) => {
@@ -66,6 +66,12 @@ export const createTrendsService = ({ sync = runTrendsSync, now = () => new Date
 
   const sprintTickets = ({ basis = 'resolved', group = 'all', months = 6, filters = {} } = {}) =>
     aggregate({ rows: store.allRows(), basis, group, months, filters, feMembers: filters.feTeam ? feMembers() : new Set(), now: now() });
+
+  const ticketList = ({ basis = 'resolved', months = 6, filters = {} } = {}) => {
+    const host = String(process.env.JIRA_HOST || '').replace(/\/$/, '');
+    return ticketsInView({ rows: store.allRows(), basis, months, filters, feMembers: filters.feTeam ? feMembers() : new Set(), now: now() })
+      .map((t) => ({ ...t, url: host ? `${host}/browse/${t.key}` : '' }));
+  };
 
   const defectFacts = ({ months = 6, filters = {} } = {}) => analyzeDefects({ rows: store.allRows(), months, filters, feMembers: filters.feTeam ? feMembers() : new Set(), prs: ledgerIndex(ledger()), now: now() });
 
@@ -172,7 +178,9 @@ export const createTrendsService = ({ sync = runTrendsSync, now = () => new Date
     } finally { adding = false; }
   };
 
-  return { refresh, status, sprintTickets, defectAnalysis, defectGuidance, recordRepeats, draftForCluster, addPattern, ingestStatus, isRunning: () => running, isGuiding: () => guiding };
+  // every public call may be given 'ytd' (this year so far) for months; the work below counts real months
+  const inMonths = (fn) => (o = {}) => fn({ ...o, months: resolveMonths(o.months ?? 6, now()) });
+  return { refresh, status, sprintTickets: inMonths(sprintTickets), ticketList: inMonths(ticketList), defectAnalysis: inMonths(defectAnalysis), defectGuidance: inMonths(defectGuidance), recordRepeats: inMonths(recordRepeats), draftForCluster: inMonths(draftForCluster), addPattern, ingestStatus, isRunning: () => running, isGuiding: () => guiding };
 };
 
 export const trendsService = createTrendsService();

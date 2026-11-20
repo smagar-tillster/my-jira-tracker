@@ -453,7 +453,9 @@ export const quickApi = {
 // ---------------------------------------------------------------- Trends
 export type TrendBasis = 'sprint' | 'created' | 'resolved';
 export type TrendGroup = 'all' | 'type' | 'client' | 'component' | 'assignee';
-export type TrendMonths = 3 | 6;
+/** 3 or 6 months, or 'ytd': this year so far (January up to the current month). */
+export type TrendMonths = 3 | 6 | 'ytd';
+export interface TrendTicket { key: string; summary: string; type: string; assignee: string; clients: string[]; components: string[]; date: string; month: string; url: string }
 export interface TrendsStatus {
   running: boolean; lastSyncAt: string | null; lastStatus: 'running' | 'ok' | 'failed' | null; lastError: string | null;
   lastDurationMs: number | null; tickets: number; firstLoad: boolean;
@@ -518,6 +520,9 @@ export const trendsApi = {
   status: async (): Promise<TrendsStatus> => (await apiClient.get('/trends/status')).data.data,
   sprintTickets: async (basis: TrendBasis, months: TrendMonths, group: TrendGroup, filters: TrendFilters): Promise<SprintTrend> =>
     (await apiClient.get('/trends/sprint-tickets', { params: trendQuery(basis, months, group, filters) })).data.data,
+  /** The tickets behind the chart (the ones counted in the months shown, after the filters), newest first. */
+  ticketList: async (basis: TrendBasis, months: TrendMonths, filters: TrendFilters): Promise<TrendTicket[]> =>
+    (await apiClient.get('/trends/sprint-tickets/list', { params: trendQuery(basis, months, 'all', filters) })).data.data,
   /** The defect analysis for the page's months and filters. Never asks the model; the saved guidance comes with it when there is one. */
   defects: async (months: TrendMonths, filters: TrendFilters): Promise<DefectAnalysis> =>
     (await apiClient.get('/trends/defects', { params: defectQuery(months, filters) })).data.data,

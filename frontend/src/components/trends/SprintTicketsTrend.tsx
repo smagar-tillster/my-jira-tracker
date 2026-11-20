@@ -1,11 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { trendsApi, SprintTrend, TrendFilters, TrendGroup, TrendMonths } from '../../services/api';
+import { trendsApi, SprintTrend, TrendFilters, TrendGroup, TrendMonths, TrendTicket } from '../../services/api';
+import TenantGroupList from '../delivery/TenantGroupList';
+import { byCount } from '../delivery/tenantGrouping';
 import { buildSeries, seriesCounts, monthLabel, OTHER_COLOR, SERIES_COLORS, MAX_NAMED } from '../../utils/trendsChart';
 import LineChart, { LineSeries, INK } from './LineChart';
 import MultiSelect from './MultiSelect';
 import DefectAnalysisModal from './DefectAnalysisModal';
 
-const RANGES: { id: TrendMonths; label: string }[] = [{ id: 3, label: '3 months' }, { id: 6, label: '6 months' }];
+const RANGES: { id: TrendMonths; label: string; hint?: string }[] = [{ id: 3, label: '3 months' }, { id: 6, label: '6 months' }, { id: 'ytd', label: 'YTD', hint: 'This year so far: January up to the current month' }];
 const GROUPS: { id: TrendGroup; label: string; one: string; many: string; hint: string }[] = [
   { id: 'all', label: 'All', one: 'ticket', many: 'tickets', hint: 'One line with every ticket.' },
   { id: 'client', label: 'Client', one: 'client', many: 'clients', hint: 'One line per client. A ticket with several clients is counted under each; a ticket with none is "No client".' },
@@ -43,11 +45,13 @@ const Tile: React.FC<{ label: string; value: string; sub?: string; children?: Re
   </div>
 );
 
+export type TrendView = 'chart' | 'table' | 'list';
+
 export interface TrendViewProps {
   data: SprintTrend | null; loading: boolean; error: string | null;
-  group: TrendGroup; months: TrendMonths; filters: TrendFilters; hidden: ReadonlySet<string>; view: 'chart' | 'table';
+  group: TrendGroup; months: TrendMonths; filters: TrendFilters; hidden: ReadonlySet<string>; view: TrendView;
   onGroup: (g: TrendGroup) => void; onMonths: (m: TrendMonths) => void; onFilters: (f: TrendFilters) => void; onToggleSeries: (id: string) => void; onShowAll: () => void;
-  onView: (v: 'chart' | 'table') => void; onRefresh: () => void; onDefects: () => void;
+  onView: (v: TrendView) => void; onRefresh: () => void; onDefects: () => void;
 }
 
 /** The Ticket trend report for given data and choices. No loading here, so it can be rendered on its own. */
@@ -133,9 +137,9 @@ export const SprintTicketsTrendView: React.FC<TrendViewProps> = ({ data, loading
                 <h2 className="text-[15px] font-semibold text-gray-800">Ticket trend report{group === 'all' ? '' : `, by ${groupInfo.one}`}</h2>
                 <span className="text-xs text-gray-500">Done = passed QA or later (Jira's Done). Counted in the month it was done, each ticket once.</span>
                 <div className="ml-auto inline-flex rounded-lg overflow-clip ring-1 ring-gray-300 bg-white" role="group" aria-label="View">
-                  {(['chart', 'table'] as const).map(v => (
+                  {(['chart', 'table', 'list'] as const).map(v => (
                     <button key={v} onClick={() => onView(v)} aria-pressed={view === v}
-                      className={`px-3 py-1 text-sm font-medium ${view === v ? 'bg-indigo-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}>{v === 'chart' ? 'Chart' : 'Table'}</button>
+                      className={`px-3 py-1 text-sm font-medium ${view === v ? 'bg-indigo-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}>{v === 'chart' ? 'Chart' : v === 'table' ? 'Table' : 'List'}</button>
                   ))}
                 </div>
               </div>
@@ -161,6 +165,7 @@ export const SprintTicketsTrendView: React.FC<TrendViewProps> = ({ data, loading
 
               <div className="p-4">
                 {shown.length === 0 ? <p className="text-sm text-gray-400 py-10 text-center">Every line is hidden. Click one above to show it.</p>
+                  : view === 'list' ? <TrendTicketList months={months} group={group} filters={filters} hiddenNames={hiddenNames(series, hidden)} readAt={data.status.lastSyncAt} />
                   : view === 'chart' ? <LineChart months={data.months} data={shown} dimmed={loading} ariaLabel={`Tickets per month${group === 'all' ? '' : `, one line per ${groupInfo.one}`}`} />
                   : <TrendTable months={data.months} label={groupInfo.label} series={data.series.filter(t => !hiddenNames(series, hidden).has(t.name))} counts={data.counts} totals={data.totals} dimmed={loading} />}
               </div>
@@ -225,13 +230,73 @@ const TrendTable: React.FC<{ months: string[]; label: string; series: SprintTren
   );
 };
 
+// ---------------------------------------------------------------- the list view: every ticket in view, grouped like the chart is split
+const GROUP_OF: Record<TrendGroup, { tenantsOf: (t: TrendTicket) => string[]; fallback?: string }> = {
+  all: { tenantsOf: () => ['All tickets'] },
+  client: { tenantsOf: t => t.clients, fallback: 'No client' },
+  type: { tenantsOf: t => [t.type] },
+  component: { tenantsOf: t => t.components, fallback: 'No component' },
+  assignee: { tenantsOf: t => [t.assignee || 'Unassigned'] },
+};
+const mostTickets = byCount<TrendTicket>();
+const dayOf = (iso: string) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+const TicketRows: React.FC<{ rows: TrendTicket[]; showGroupCols: boolean }> = ({ rows, showGroupCols }) => (
+  <table className="w-full table-fixed text-[14px] leading-[22px] [overflow-wrap:anywhere]">
+    <thead className="bg-gray-50 text-left text-[13px] font-semibold text-gray-600 border-b border-gray-200">
+      <tr><th className="px-3 py-[7px] w-[110px]">Done</th><th className="px-3 py-[7px] w-[130px]">Ticket</th><th className="px-3 py-[7px]">Summary</th><th className="px-3 py-[7px] w-[90px]">Type</th>
+        <th className="px-3 py-[7px] w-[150px]">Assignee</th>{showGroupCols && <th className="px-3 py-[7px] w-[22%]">Clients</th>}</tr>
+    </thead>
+    <tbody>
+      {rows.map(t => (
+        <tr key={t.key} className="border-t border-gray-100 align-top hover:bg-gray-50">
+          <td className="px-3 py-2 whitespace-nowrap text-gray-600">{dayOf(t.date)}</td>
+          <td className="px-3 py-2 whitespace-nowrap">{t.url ? <a href={t.url} target="_blank" rel="noreferrer" className="font-semibold text-blue-700 hover:underline">{t.key}</a> : <span className="font-semibold">{t.key}</span>}</td>
+          <td className="px-3 py-2 text-gray-800">{t.summary || <span className="text-gray-400">No summary</span>}</td>
+          <td className="px-3 py-2"><span className={`px-2 py-0.5 rounded text-xs font-medium ${t.type === 'Defect' ? 'bg-rose-100 text-rose-800' : 'bg-gray-100 text-gray-700'}`}>{t.type}</span></td>
+          <td className="px-3 py-2 text-gray-700">{t.assignee || <span className="text-gray-400">Unassigned</span>}</td>
+          {showGroupCols && <td className="px-3 py-2 text-gray-600">{t.clients.join(', ') || '–'}</td>}
+        </tr>
+      ))}
+    </tbody>
+  </table>
+);
+
+/** The tickets behind the chart, newest first, grouped by the same Split by. A ticket with several clients or components shows under each. */
+const TrendTicketList: React.FC<{ months: TrendMonths; group: TrendGroup; filters: TrendFilters; hiddenNames: ReadonlySet<string>; readAt: string | null }> = ({ months, group, filters, hiddenNames: off, readAt }) => {
+  const [rows, setRows] = useState<TrendTicket[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    setError(null);
+    trendsApi.ticketList('resolved', months, filters)
+      .then(r => { if (alive) setRows(r); })
+      .catch(e => { if (alive) setError(e instanceof Error ? e.message : 'Could not load the tickets'); });
+    return () => { alive = false; };
+  }, [months, filters, readAt]);
+  const spec = GROUP_OF[group];
+  const names = (t: TrendTicket) => { const v = spec.tenantsOf(t); return v.length ? v : [spec.fallback ?? 'Unknown']; };
+  const shown = useMemo(() => (rows ?? []).filter(t => group === 'all' || names(t).some(n => !off.has(n))), [rows, off, group]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (error) return <p className="text-sm text-red-700">❌ {error}</p>;
+  if (!rows) return <p className="text-sm text-gray-500 py-6 text-center">Loading…</p>;
+  if (shown.length === 0) return <p className="text-sm text-gray-400 py-10 text-center">No tickets in view.</p>;
+  return group === 'all' ? (
+    <div className="overflow-auto max-h-[560px] border border-gray-200 rounded-md"><TicketRows rows={shown} showGroupCols /></div>
+  ) : (
+    <TenantGroupList items={shown} tenantsOf={names} unit="ticket" groupLabel={GROUPS.find(g => g.id === group)?.one ?? 'group'} fallback={spec.fallback} hideIntro order={mostTickets}
+      summary={items => `${items.length} ticket${items.length === 1 ? '' : 's'}`}>
+      {items => <TicketRows rows={items} showGroupCols={group !== 'client'} />}
+    </TenantGroupList>
+  );
+};
+
 // ---------------------------------------------------------------- loading and choices
 /** Sprint tickets by month: loads the counts and keeps the choices. Nothing refreshes on its own; while a read you started is running it checks until it is done. */
 const SprintTicketsTrend: React.FC = () => {
   const [group, setGroup] = useState<TrendGroup>('all');
   const [months, setMonths] = useState<TrendMonths>(6);
   const [filters, setFilters] = useState<TrendFilters>({});
-  const [view, setView] = useState<'chart' | 'table'>('chart');
+  const [view, setView] = useState<TrendView>('chart');
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [defectsOpen, setDefectsOpen] = useState(false);
   const [data, setData] = useState<SprintTrend | null>(null);

@@ -41,7 +41,9 @@ export const runTrendsSync = async ({ searchJira = search, now = () => new Date(
   const t0 = Date.now();
   store.startSync();
   try {
-    const rows = (await searchJira(buildJql(), FIELDS)).map(toRow);
+    // at least 6 months, and back to January so the Year to date view is complete
+    const months = Math.max(6, started.getMonth() + 1);
+    const rows = (await searchJira(buildJql({ months }), FIELDS)).map(toRow);
     store.upsert(rows);
     store.deleteMissing(new Set(rows.map((r) => r.key)));
     store.finishSync({ status: 'ok', durationMs: Date.now() - t0, at: started.toISOString(), full: true, count: store.count() });
