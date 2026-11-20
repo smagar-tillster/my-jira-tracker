@@ -159,9 +159,9 @@ const SHIP_TONE: Record<string, string> = { prod: 'bg-green-100 text-green-800',
 function Shipped({ p }: { p: DeliveryPr }) {
   if (p.open) return null;
   const rows = p.shipped || [];
-  if (!rows.length) return <div className="text-[11px] text-gray-400 mt-0.5" title="No release ticket dated on or after the merge lists this PR's ticket">not in a release yet</div>;
+  if (!rows.length) return <div className="text-[11px] text-gray-400 mt-0.5 whitespace-normal" title="No release ticket dated on or after the merge lists this PR's ticket">not in a release yet</div>;
   return (
-    <div className="flex flex-wrap gap-1 mt-0.5">
+    <div className="flex flex-wrap gap-1 mt-0.5 whitespace-normal">
       {rows.slice(0, 3).map(r => (
         <span key={r.key} className={`text-[11px] px-1.5 py-px rounded ${SHIP_TONE[r.released ? (/PROD/i.test(r.env) ? 'prod' : 'uat') : 'planned']}`}
           title={`${r.key} · ${r.tenant} · ${r.env} · ${r.date} · ${r.released ? 'released' : r.status}${p.shippedApprox ? ' · by ticket: it also has PRs in other repos, so this PR may not be in this release' : ''}`}>
@@ -261,7 +261,7 @@ export default function PrTable({ rows, open, empty, onChanged }: { rows: Delive
                     <td className="px-2 py-[5.5px] whitespace-nowrap">
                       {p.tickets.map(t => <div key={t.key}><a href={t.url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">{t.key}</a></div>)}
                       {p.tickets.length === 0 && <span className="text-gray-400">—</span>}
-                      {p.tenants.length > 0 && <div className="text-xs text-gray-500">{p.tenants.join(', ')}</div>}
+                      {p.tenants.length > 0 && <div className="text-xs text-gray-500 whitespace-normal break-words">{p.tenants.join(', ')}</div>}
                       <Shipped p={p} />
                     </td>
                     <td className="px-2 py-[5.5px]">
