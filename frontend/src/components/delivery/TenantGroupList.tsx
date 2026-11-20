@@ -56,7 +56,7 @@ export default function TenantGroupList<T>({ items, tenantsOf, summary, unit, ch
           return (
             <div key={g.tenant} className={`mt-2 rounded-lg overflow-clip bg-white shadow-sm ${red ? 'ring-1 ring-red-300' : ''}`}>
               <button onClick={() => toggle(g.tenant)} data-alert={red || undefined}
-                className={`w-full flex items-center gap-3 px-3 py-[5px] text-left border-l-4 ${red ? 'bg-red-50 hover:bg-red-100 border-red-500' : `bg-gray-100 hover:bg-gray-200/70 ${isOpen ? 'border-indigo-500' : 'border-gray-300'}`}`}>
+                className={`w-full flex items-center gap-3 px-3 py-[5px] text-left border-l-4 ${red ? 'bg-gradient-to-r from-red-50 via-red-100 to-red-50 hover:from-red-100 hover:via-red-100 hover:to-red-100 border-red-500' : isOpen ? 'bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 border-indigo-500' : 'bg-gradient-to-r from-white to-gray-100 hover:from-gray-50 hover:to-gray-200/70 border-gray-300'}`}>
                 <span className={`text-xs ${red ? 'text-red-400' : 'text-gray-400'}`}>{isOpen ? '▼' : '▶'}</span>
                 <span className={`text-[13.4px] font-semibold ${red ? 'text-red-700' : 'text-gray-800'}`}>{g.tenant}</span>
                 <span className={`text-[11.5px] px-2 py-px rounded-full ${red ? 'bg-red-100 text-red-700' : 'bg-white text-gray-700 ring-1 ring-gray-300'}`}>{g.items.length}</span>
