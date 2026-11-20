@@ -8,6 +8,14 @@ import MergedPrsTab from './delivery/MergedPrsTab';
 import OpenPrsTab from './delivery/OpenPrsTab';
 import { RefreshContext } from './delivery/RefreshContext';
 
+/** Time of day when it is today, with the date when it is older. */
+const runTime = (iso: string) => {
+  const d = new Date(iso);
+  const t = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  return d.toDateString() === new Date().toDateString() ? t : `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, ${t}`;
+};
+
+
 type SubTab = 'released' | 'toRelease' | 'prs' | 'open' | 'reviews';
 
 // The notification bell asks for the PR Reviews pill by leaving a note here; it is read once.
@@ -147,8 +155,7 @@ export default function ReleasePrReports() {
         {tab !== 'reviews' && <div className="ml-auto flex items-center gap-3 whitespace-nowrap">
           {meta && (
             <span className="text-xs text-gray-500" title={meta.timing ? Object.entries(meta.timing.stages).map(([k, v]) => `${k}: ${v}s`).join('\n') : undefined}>
-              Data as of {new Date(meta.generatedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
-              {meta.timing && <> · {Math.round(meta.timing.totalSec)}s</>}
+              Last run {runTime(meta.generatedAt)}{meta.timing && <> ({Math.round(meta.timing.totalSec)}s)</>}
             </span>
           )}
           <button onClick={refresh} disabled={running}
