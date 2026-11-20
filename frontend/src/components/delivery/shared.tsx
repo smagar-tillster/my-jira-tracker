@@ -21,6 +21,7 @@ export function MultiSelect({ label, options, value, onChange, tone = 'purple' }
   return (
     <div className="relative" ref={ref}>
       <button onClick={() => setOpen(o => !o)} className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium ${cls}`}>
+        <svg aria-hidden viewBox="0 0 16 16" className="w-3.5 h-3.5 shrink-0" fill="currentColor"><path d="M1.5 2h13a.5.5 0 0 1 .38.82L10 8.6V13.5a.5.5 0 0 1-.72.45l-2.5-1.25A.5.5 0 0 1 6.5 12.25V8.6L1.12 2.82A.5.5 0 0 1 1.5 2z" /></svg>
         <span>{label}: {value.length ? (value.length <= 2 ? value.join(', ') : `${value.length} selected`) : 'All'}</span>
         {value.length > 0 && (
           <span onClick={e => { e.stopPropagation(); onChange([]); }} title="Clear" className="ml-1 hover:opacity-70">✕</span>

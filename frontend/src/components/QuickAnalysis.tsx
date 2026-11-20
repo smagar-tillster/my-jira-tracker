@@ -159,26 +159,13 @@ const FlagButtons = ({ k, flags, onFlag }: { k: string; flags: QuickFlags; onFla
 const NewTickets = ({ all, showRead, onToggleRead, onRead, flags, onFlag }: {
   all: QuickNewTicket[]; showRead: boolean; onToggleRead: () => void; onRead: (key: string, read: boolean) => void; flags: QuickFlags; onFlag: (flag: QuickFlag, key: string) => void;
 }) => {
-  const [onlyImp, setOnlyImp] = useState(false);
-  const [onlyDay, setOnlyDay] = useState(false);
   const readCount = all.filter(t => t.read).length;
-  const impCount = all.filter(t => flags.important[t.key]).length;
-  const dayCount = all.filter(t => flags.myDay[t.key]).length;
-  // Filtering by a mark shows every marked ticket, read or not, so a follow-up never hides behind the read mark.
-  const items = onlyImp || onlyDay
-    ? all.filter(t => (!onlyImp || flags.important[t.key]) && (!onlyDay || flags.myDay[t.key]))
-    : showRead ? all : all.filter(t => !t.read);
-  const toggle = (on: boolean, set: (v: boolean) => void, label: string, n: number) => (
-    <button onClick={() => set(!on)} aria-pressed={on} disabled={!on && n === 0}
-      className={`px-3 py-1 rounded-lg text-sm font-medium whitespace-nowrap ring-1 disabled:opacity-40 disabled:cursor-not-allowed ${on ? 'bg-blue-600 text-white ring-blue-600' : 'bg-white text-gray-700 ring-gray-300 hover:bg-gray-100'}`}>{label} ({n})</button>
-  );
+  const items = showRead ? all : all.filter(t => !t.read);
   return (
     <QuickList items={items} unit="ticket" groups={NEW_GROUPS} textOf={newTextOf} placeholder="Search key, summary, assignee or description…"
-      empty={onlyImp || onlyDay ? 'No tickets with these marks.' : 'Nothing new since you last read. New tickets added to the sprint show up here.'}
+      empty={'Nothing new since you last read. New tickets added to the sprint show up here.'}
       extra={<>
         {readCount > 0 && <button onClick={onToggleRead} className="px-3 py-1 rounded-lg text-sm font-medium bg-white ring-1 ring-gray-300 text-gray-700 hover:bg-gray-100 whitespace-nowrap">{showRead ? 'Hide' : 'Show'} read ({readCount})</button>}
-        {toggle(onlyImp, setOnlyImp, '⭐ Imp', impCount)}
-        {toggle(onlyDay, setOnlyDay, '☀️ My Day', dayCount)}
       </>}
       summary={(rows) => { const unread = rows.filter(t => !t.read).length; const fe = rows.filter(t => t.fe).length; return `${rows.length} ticket${rows.length === 1 ? '' : 's'} · ${unread} unread${fe ? ` · ${fe} FE` : ''}`; }}
       table={(rows) => (
