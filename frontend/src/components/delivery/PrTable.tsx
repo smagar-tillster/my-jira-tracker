@@ -277,13 +277,15 @@ export default function PrTable({ rows, open, empty, onChanged }: { rows: Delive
                           ))}
                         </div>
                       )}
+                    </td>
+                    <td className="px-2 py-[5.5px] text-xs text-gray-700">
+                      <Understanding p={p} />
                       <div className="flex flex-wrap items-start gap-2 mt-2">
                         <button onClick={() => setShown(p)} className={PILL_BLUE}>Details</button>
                         {p.open && !p.isDraft && <CodeReviewPill p={p} job={review.jobs[prId(p)]} reviewed={reviewedIds.has(prId(p))} onStart={startReview} />}
                         <DefectRowButton p={p} />
                       </div>
                     </td>
-                    <td className="px-2 py-[5.5px] text-xs text-gray-700"><Understanding p={p} /></td>
                   </tr>
                 ))}
               </tbody>
