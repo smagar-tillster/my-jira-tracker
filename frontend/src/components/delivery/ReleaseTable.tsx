@@ -114,7 +114,7 @@ function ReleaseRows({ rows, showStatus, showTenant, onOpen }: { rows: DeliveryR
             {showTenant && <th className="px-2 py-[7px] w-[110px]">Tenant</th>}
             <th className="px-2 py-[7px] w-[110px]">Date</th><th className="px-2 py-[7px] w-[130px]">Env</th>
             <th className="px-2 py-[7px] w-[200px]">Release ticket</th>
-            {showStatus && <th className="px-2 py-[7px] w-[140px]">Status</th>}
+            <th className="px-2 py-[7px] w-[140px]">Status</th>
             <th className="px-2 py-[7px] w-[26%]">Description</th>
             <th className="px-2 py-[7px]">Components{showStatus ? '' : ' released'} (version)</th>
           </tr>
@@ -127,14 +127,13 @@ function ReleaseRows({ rows, showStatus, showTenant, onOpen }: { rows: DeliveryR
               <td className="px-2 py-[5.5px]">{envBadge(r.env)}</td>
               <td className="px-2 py-2 whitespace-nowrap">
                 {r.key ? <><TicketLink k={r.key} url={r.url} /> <span className="text-xs text-gray-500">{r.status}</span></> : <span className="text-xs text-red-600 font-medium">none yet</span>}
-                {!showStatus && <div className="mt-1.5">{detailsPill(r)}</div>}
               </td>
-              {showStatus && (
-                <td className="px-2 py-2 whitespace-nowrap">
-                  <StatusDot ok={r.ready} label={r.ready ? 'Ready' : `${r.notReady} not ready`} />
-                  <div className="mt-1.5">{detailsPill(r)}</div>
-                </td>
-              )}
+              <td className="px-2 py-2 whitespace-nowrap">
+                {showStatus
+                  ? <StatusDot ok={r.ready} label={r.ready ? 'Ready' : `${r.notReady} not ready`} />
+                  : <StatusDot ok={r.released} label={r.released ? 'Released' : 'Not released'} />}
+                <div className="mt-1.5">{detailsPill(r)}</div>
+              </td>
               <td className="px-2 py-[5.5px]" title={r.summary}>
                 <div className="line-clamp-2 text-gray-800">{r.noReleaseTicket ? r.summary : (r.what || r.title)}</div>
               </td>
