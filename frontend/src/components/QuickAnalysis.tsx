@@ -15,7 +15,11 @@ const dayTime = (iso: string) => {
   const same = d.toDateString() === new Date().toDateString();
   return same ? timeOf(iso) : `${d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} ${timeOf(iso)}`;
 };
-const clock = (iso: string) => timeOf(iso).replace(' ', '').toLowerCase();
+const clock = (iso: string) => {
+  const d = new Date(iso);
+  const t = timeOf(iso).replace(' ', '').toLowerCase();
+  return d.toDateString() === new Date().toDateString() ? t : `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${t}`;
+};
 const shortTime = (iso: string) => {
   const d = new Date(iso);
   return d.toDateString() === new Date().toDateString() ? timeOf(iso) : `${d.toLocaleDateString('en-US', { weekday: 'short' })} ${timeOf(iso)}`;
