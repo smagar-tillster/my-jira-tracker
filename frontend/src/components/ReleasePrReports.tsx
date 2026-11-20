@@ -1,16 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { deliveryApi, DeliveryMeta, RefreshJob } from '../services/api';
+import { deliveryApi, DeliveryMeta, RefreshJob, reviewsApi } from '../services/api';
+import PrReviews from './PrReviews';
 import ReleasedTab from './delivery/ReleasedTab';
 import ToReleaseTab from './delivery/ToReleaseTab';
 import MergedPrsTab from './delivery/MergedPrsTab';
 import OpenPrsTab from './delivery/OpenPrsTab';
 import { RefreshContext } from './delivery/RefreshContext';
 
-type SubTab = 'released' | 'toRelease' | 'prs' | 'open';
+type SubTab = 'released' | 'toRelease' | 'prs' | 'open' | 'reviews';
+
+// The notification bell asks for the PR Reviews pill by leaving a note here; it is read once.
+const SUBTAB_KEY = 'mytracker.releases.subtab';
+const takeRequestedTab = (): SubTab | null => {
+  try { const v = sessionStorage.getItem(SUBTAB_KEY); sessionStorage.removeItem(SUBTAB_KEY); return v === 'reviews' ? 'reviews' : null; } catch { return null; }
+};
 
 /** Release & PRs: live data (no stored reports). "Run latest report" re-reads Jira and GitHub on demand; nothing is scheduled. */
 export default function ReleasePrReports() {
-  const [tab, setTab] = useState<SubTab>('released');
+  const [tab, setTab] = useState<SubTab>(() => takeRequestedTab() ?? 'released');
+  const [reviewDrafts, setReviewDrafts] = useState<number | undefined>(undefined);
   const [meta, setMeta] = useState<DeliveryMeta | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [job, setJob] = useState<RefreshJob | null>(null);
@@ -23,6 +31,22 @@ export default function ReleasePrReports() {
   }, []);
 
   useEffect(() => { loadMeta(); }, [loadMeta]);
+
+  useEffect(() => {
+    const open = () => { const t = takeRequestedTab(); if (t) setTab(t); };
+    window.addEventListener('releases-subtab', open);
+    return () => window.removeEventListener('releases-subtab', open);
+  }, []);
+
+  // Count on the PR Reviews pill: drafts waiting to be read and posted. Quiet on failure.
+  useEffect(() => {
+    let alive = true;
+    const poll = () => reviewsApi.summary().then(c => { if (alive) setReviewDrafts(c.draft || 0); }).catch(() => {});
+    poll();
+    window.addEventListener('reviews-changed', poll);
+    window.addEventListener('focus', poll);
+    return () => { alive = false; window.removeEventListener('reviews-changed', poll); window.removeEventListener('focus', poll); };
+  }, []);
 
   const stopPolling = () => { if (pollRef.current !== null) { window.clearInterval(pollRef.current); pollRef.current = null; } };
   useEffect(() => stopPolling, []);
@@ -69,6 +93,7 @@ export default function ReleasePrReports() {
     { id: 'toRelease', label: '⏰ To Release Today', count: meta?.counts.toRelease },
     { id: 'prs', label: '🔀 Merged PRs', count: meta?.counts.prsToday },
     { id: 'open', label: '📬 Open PRs', count: meta?.counts.openPrs },
+    { id: 'reviews', label: '📝 PR Reviews', count: reviewDrafts },
   ];
 
   return (
@@ -82,7 +107,7 @@ export default function ReleasePrReports() {
             {t.label}{t.count !== undefined && <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${tab === t.id ? 'bg-white/25 text-white' : 'bg-gray-200 text-gray-700'}`}>{t.count}</span>}
           </button>
         ))}
-        <div className="ml-auto flex items-center gap-3">
+        {tab !== 'reviews' && <div className="ml-auto flex items-center gap-3">
           {meta && (
             <span className="text-xs text-gray-500" title={meta.timing ? Object.entries(meta.timing.stages).map(([k, v]) => `${k}: ${v}s`).join('\n') : undefined}>
               Data as of {new Date(meta.generatedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
@@ -94,10 +119,10 @@ export default function ReleasePrReports() {
             className="px-3 py-1.5 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 disabled:opacity-60 disabled:cursor-not-allowed">
             {running ? (job?.kind === 'prs' ? '⏳ Fetching PRs…' : '⏳ Running…') : '▶ Run latest report'}
           </button>
-        </div>
+        </div>}
       </div>
 
-      {job && job.state !== 'idle' && job.state !== 'running' && (
+      {tab !== 'reviews' && job && job.state !== 'idle' && job.state !== 'running' && (
         <div className={`px-4 py-2 text-sm border-b flex items-start gap-3 ${job.state === 'failed' ? 'bg-red-50 text-red-800 border-red-200' : 'bg-green-50 text-green-800 border-green-200'}`}>
           <span className="font-medium">{job.state === 'failed'
             ? (job.kind === 'prs' ? 'Fetching PRs failed.' : job.kind === 'releases' ? 'Refreshing releases failed.' : 'The report run failed.')
@@ -108,13 +133,14 @@ export default function ReleasePrReports() {
           <button onClick={() => setJob(null)} className="ml-auto text-gray-500 hover:text-gray-700">✕</button>
         </div>
       )}
-      {error && !meta && <div className="m-4 px-3 py-2 text-sm bg-red-50 text-red-700 border border-red-200 rounded">❌ {error} — click “Run latest report” to build it now.</div>}
+      {tab !== 'reviews' && error && !meta && <div className="m-4 px-3 py-2 text-sm bg-red-50 text-red-700 border border-red-200 rounded">❌ {error} — click “Run latest report” to build it now.</div>}
 
       <div className="flex-1 overflow-hidden">
         {meta && tab === 'released' && <ReleasedTab meta={meta} refreshKey={refreshKey} />}
         {meta && tab === 'toRelease' && <ToReleaseTab meta={meta} refreshKey={refreshKey} />}
         {meta && tab === 'prs' && <MergedPrsTab meta={meta} refreshKey={refreshKey} />}
         {meta && tab === 'open' && <OpenPrsTab meta={meta} refreshKey={refreshKey} />}
+        {tab === 'reviews' && <PrReviews />}
       </div>
     </div>
     </RefreshContext.Provider>
