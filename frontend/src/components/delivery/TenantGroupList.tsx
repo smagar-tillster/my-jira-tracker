@@ -9,7 +9,7 @@ import { FALLBACK_TENANT, GroupOrder, groupByTenant } from './tenantGrouping';
  * with something not ready). `groupLabel` names what the groups are ("tenant" by default, or "repo", "component"); `fallback` is the group for
  * an item with none. `expandAll` opens every group (and keeps them open as the list changes), used while searching.
  */
-export default function TenantGroupList<T>({ items, tenantsOf, summary, unit, children, order, orderLabel = 'alphabetical', alert, groupLabel = 'tenant', fallback = FALLBACK_TENANT, expandAll = false, command, onAllOpenChange }: {
+export default function TenantGroupList<T>({ items, tenantsOf, summary, unit, children, order, orderLabel = 'alphabetical', alert, groupLabel = 'tenant', fallback = FALLBACK_TENANT, expandAll = false, hideIntro = false, command, onAllOpenChange }: {
   items: T[];
   tenantsOf: (item: T) => readonly string[] | null | undefined;
   summary: (items: T[], tenant: string) => ReactNode;
@@ -21,6 +21,8 @@ export default function TenantGroupList<T>({ items, tenantsOf, summary, unit, ch
   groupLabel?: string;
   fallback?: string;
   expandAll?: boolean;
+  /** Leave out the sentence above the list that says how it is grouped (the page shows the counts itself). */
+  hideIntro?: boolean;
   /** Opens or closes every group each time `n` changes (the Expand all / Collapse all button lives with the page's other controls). */
   command?: { open: boolean; n: number };
   /** Tells the page whether every group is open, so its button can say Collapse all or Expand all. */
@@ -40,13 +42,13 @@ export default function TenantGroupList<T>({ items, tenantsOf, summary, unit, ch
 
   return (
     <div>
-      <div className="flex items-center gap-3 text-xs text-gray-500 pb-2">
+      {!hideIntro && <div className="flex items-center gap-3 text-xs text-gray-500 pb-2">
         <span>
           {groups.length} {groupLabel}{groups.length === 1 ? '' : 's'} · {items.length} {unit}{items.length === 1 ? '' : 's'}.
           Grouped by {groupLabel}, {orderLabel}{several > 0 ? `; ${several} ${several === 1 ? 'names' : 'name'} more than one ${groupLabel} and ${several === 1 ? 'is' : 'are'} listed under each` : ''}.
           {groupLabel !== 'repo' && <>Anything without a clear {groupLabel} is under {fallback}.</>}
         </span>
-      </div>
+      </div>}
       {/* Same look as the Tasks list: gray strip with one card per tenant (overflow-clip keeps the card corners round) */}
       <div className="bg-gray-200 rounded-lg px-2 pt-2 pb-2">
         {groups.map(g => {

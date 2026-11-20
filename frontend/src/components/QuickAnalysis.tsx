@@ -7,7 +7,7 @@ import { parseLocalDate } from '../utils/dateUtils';
 import { ListControls } from './delivery/shared';
 import { filterRows } from './delivery/search';
 import TenantGroupList from './delivery/TenantGroupList';
-import { GroupOrder, byCount } from './delivery/tenantGrouping';
+import { GroupOrder, cleanTenants } from './delivery/tenantGrouping';
 
 const timeOf = (iso: string) => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 const dayTime = (iso: string) => {
@@ -57,7 +57,15 @@ const DateChip = ({ t }: { t: QuickTicket }) => {
 const Empty = ({ children }: { children: React.ReactNode }) => <div className="p-8 text-center text-sm text-gray-400">{children}</div>;
 
 // ---------------------------------------------------------------- one grouped, searchable list (the same look as the Release & PRs lists)
-interface GroupSpec<T> { id: string; label: string; hint?: string; tenantsOf: (item: T) => string[]; order?: GroupOrder<T>; fallback?: string }
+/** One way to group a list. A spec without `tenantsOf` is "None": the rows are shown as one flat table. */
+interface GroupSpec<T> { id: string; label: string; hint?: string; tenantsOf?: (item: T) => string[]; order?: GroupOrder<T>; fallback?: string }
+
+/** Largest group first (ties A to Z). Every grouping on these pages sorts like this. */
+const mostFirst = <T,>(): GroupOrder<T> => (a, b) => b.items.length - a.items.length || a.tenant.localeCompare(b.tenant, 'en', { sensitivity: 'base' });
+
+const CountPill = ({ n, label }: { n: number; label: string }) => (
+  <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700 ring-1 ring-gray-200 whitespace-nowrap">{n} {label}{n === 1 ? '' : 's'}</span>
+);
 
 function QuickList<T>({ items, unit, groups, summary, alert, textOf, placeholder, extra, before, table, empty }: {
   items: T[]; unit: string; groups: GroupSpec<T>[];
@@ -71,13 +79,18 @@ function QuickList<T>({ items, unit, groups, summary, alert, textOf, placeholder
   const [allOpen, setAllOpen] = useState(false);
   const spec = groups.find(g => g.id === groupBy) || groups[0];
   const shown = useMemo(() => filterRows(items, query, textOf), [items, query, textOf]);
+  const tenantsOf = spec.tenantsOf;
+  const groupCount = tenantsOf ? new Set(shown.flatMap(i => cleanTenants(tenantsOf(i), spec.fallback))).size : 0;
   return (
     <>
       <ListControls groups={groups.map(g => ({ id: g.id, label: g.label, hint: g.hint }))} groupBy={spec.id} onGroupBy={setGroupBy} query={query} onQuery={setQuery}
-        shown={shown.length} total={items.length} unit={unit} extra={extra} allOpen={allOpen} onToggleAll={() => setCmd(c => ({ open: !allOpen, n: c.n + 1 }))} placeholder={placeholder} />
-      {items.length === 0 ? <Empty>{empty}</Empty> : shown.length === 0 ? <Empty>Nothing matches &ldquo;{query.trim()}&rdquo;.</Empty> : (
-        <TenantGroupList command={cmd} onAllOpenChange={setAllOpen} items={shown} tenantsOf={spec.tenantsOf} unit={unit} summary={summary} alert={alert}
-          groupLabel={spec.label.toLowerCase()} fallback={spec.fallback} order={spec.order} orderLabel={spec.order ? 'in this order' : 'alphabetical'} expandAll={!!query.trim()}>
+        shown={shown.length} total={items.length} unit={unit} allOpen={allOpen} onToggleAll={tenantsOf ? () => setCmd(c => ({ open: !allOpen, n: c.n + 1 })) : undefined} placeholder={placeholder}
+        extra={<>{extra}<CountPill n={shown.length} label={unit} />{tenantsOf && <CountPill n={groupCount} label={spec.label.toLowerCase()} />}</>} />
+      {items.length === 0 ? <Empty>{empty}</Empty> : shown.length === 0 ? <Empty>Nothing matches &ldquo;{query.trim()}&rdquo;.</Empty> : !tenantsOf ? (
+        <div className="rounded-lg border border-gray-200 bg-white overflow-clip">{table(shown)}</div>
+      ) : (
+        <TenantGroupList command={cmd} onAllOpenChange={setAllOpen} items={shown} tenantsOf={tenantsOf} unit={unit} summary={summary} alert={alert} hideIntro
+          groupLabel={spec.label.toLowerCase()} fallback={spec.fallback} order={spec.order} orderLabel="most first" expandAll={!!query.trim()}>
           {(rows, group) => <>{before?.(group, rows)}{table(rows)}</>}
         </TenantGroupList>
       )}
@@ -102,8 +115,9 @@ const TicketCell = ({ t, tags }: { t: QuickTicket; tags?: React.ReactNode }) => 
 // ---------------------------------------------------------------- 1. new tickets
 const newTextOf = (t: QuickNewTicket) => [t.key, t.summary, t.assignee, t.status, t.description, ...t.clients].join(' ');
 const NEW_GROUPS: GroupSpec<QuickNewTicket>[] = [
-  { id: 'client', label: 'Client', hint: 'One group per client (a ticket for several clients appears under each)', tenantsOf: t => t.clients, order: byCount<QuickNewTicket>() },
-  { id: 'assignee', label: 'Assignee', hint: 'One group per person', tenantsOf: t => [t.assignee || 'Unassigned'], order: byCount<QuickNewTicket>(), fallback: 'Unassigned' },
+  { id: 'none', label: 'None', hint: 'One list, no groups' },
+  { id: 'client', label: 'Client', hint: 'One group per client (a ticket for several clients appears under each)', tenantsOf: t => t.clients, order: mostFirst<QuickNewTicket>() },
+  { id: 'assignee', label: 'Assignee', hint: 'One group per person', tenantsOf: t => [t.assignee || 'Unassigned'], order: mostFirst<QuickNewTicket>(), fallback: 'Unassigned' },
 ];
 
 const NewTickets = ({ tickets, showRead, onToggleRead, readCount, onRead }: { tickets: QuickNewTicket[]; showRead: boolean; onToggleRead: () => void; readCount: number; onRead: (key: string, read: boolean) => void }) => (
@@ -140,13 +154,10 @@ const NewTickets = ({ tickets, showRead, onToggleRead, readCount, onRead }: { ti
 );
 
 // ---------------------------------------------------------------- 2. FE ticket assignment
-const SIZE_ORDER = ['Size S', 'Size M', 'Size L', 'Size XL', 'No size'];
-const bySize: GroupOrder<QuickFeCandidate> = (a, b) => SIZE_ORDER.indexOf(a.tenant) - SIZE_ORDER.indexOf(b.tenant);
 const feTextOf = (c: QuickFeCandidate) => [c.key, c.summary, c.assignee, c.status, c.analysis, c.suggestion?.name, ...c.clients, ...c.areas].join(' ');
 const FE_GROUPS: GroupSpec<QuickFeCandidate>[] = [
-  { id: 'client', label: 'Client', hint: 'One group per client', tenantsOf: c => c.clients, order: byCount<QuickFeCandidate>() },
-  { id: 'size', label: 'Size', hint: 'Smallest first', tenantsOf: c => [c.size ? `Size ${c.size}` : 'No size'], order: bySize, fallback: 'No size' },
-  { id: 'who', label: 'Suggested', hint: 'Grouped by who the ticket is suggested for', tenantsOf: c => [c.suggestion?.name || 'No suggestion'], order: byCount<QuickFeCandidate>(), fallback: 'No suggestion' },
+  { id: 'none', label: 'None', hint: 'One list, no groups' },
+  { id: 'client', label: 'Client', hint: 'One group per client', tenantsOf: c => c.clients, order: mostFirst<QuickFeCandidate>() },
 ];
 
 const FeTeam = ({ team }: { team: QuickReport['feTeam'] }) => (
@@ -264,6 +275,14 @@ const MyTickets = ({ mine, source }: { mine: QuickGroup[]; source: 'ai' | 'rules
 };
 
 // ---------------------------------------------------------------- the page
+/** Notes about a failed model call (sign-in expired, no size or grouping written) say nothing the person can act on here, so they are not shown. */
+const isUsefulNote = (n: string) => !/Failed to authenticate|OAuth|model could not be used|could not be written/i.test(n);
+/** The note about FE team members with no sprint ticket, said briefly. Any other note is shown as it is. */
+const tidyNote = (n: string) => {
+  const m = n.match(/^(\d+) FE [Tt]eam members? (?:have|has) no ticket in this sprint and (?:are|is) not offered work \((.+)\)\.?$/);
+  return m ? `${m[1]} FE team member${m[1] === '1' ? '' : 's'} with no sprint ticket (not offered work): ${m[2]}` : n;
+};
+
 export type QuickTab = 'new' | 'fe' | 'mine';
 
 export interface QuickViewProps {
@@ -278,6 +297,7 @@ export const QuickAnalysisView: React.FC<QuickViewProps> = ({ report, status, er
   const sched = status?.schedule;
   const unread = report?.newTickets.filter(t => !t.read) ?? [];
   const read = report?.newTickets.filter(t => t.read) ?? [];
+  const notes = (report?.notes ?? []).filter(isUsefulNote).map(tidyNote);
   const tabs: { id: QuickTab; label: string; count?: number }[] = [
     { id: 'new', label: '🆕 New tickets', count: report ? unread.length : undefined },
     { id: 'fe', label: '🧩 FE ticket assignment', count: report?.feCandidates.length },
@@ -314,8 +334,8 @@ export const QuickAnalysisView: React.FC<QuickViewProps> = ({ report, status, er
           ❌ {error || `The last run failed: ${status?.lastError || 'unknown error'}`}{report ? ' The report below is from the last good run.' : ''}
         </div>
       )}
-      {report && report.notes.length > 0 && (
-        <ul className="text-xs text-gray-600 bg-white border-b border-gray-200 px-4 py-2 list-disc pl-8 space-y-0.5">{report.notes.map(n => <li key={n}>{n}</li>)}</ul>
+      {notes.length > 0 && (
+        <ul className="text-[15px] font-semibold text-gray-800 bg-white border-b border-gray-200 px-4 py-2.5 list-disc pl-9 space-y-1">{notes.map(n => <li key={n}>{n}</li>)}</ul>
       )}
 
       <div className="flex-1 overflow-auto p-4">
