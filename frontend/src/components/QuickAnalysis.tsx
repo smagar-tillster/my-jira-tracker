@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  quickApi, jiraIcon, QuickReport, QuickStatus, QuickTicket, QuickNewTicket, QuickFeCandidate, QuickGroup, QuickSize,
+  quickApi, jiraApi, jiraIcon, QuickReport, QuickStatus, QuickTicket, QuickNewTicket, QuickFeCandidate, QuickGroup, QuickSize,
 } from '../services/api';
 import { BUCKET_PILL } from '../utils/statusBuckets';
 import { parseLocalDate } from '../utils/dateUtils';
@@ -135,38 +135,75 @@ const NEW_GROUPS: GroupSpec<QuickNewTicket>[] = [
   { id: 'assignee', label: 'Assignee', hint: 'One group per person', tenantsOf: t => [t.assignee || 'Unassigned'], order: mostFirst<QuickNewTicket>(), fallback: 'Unassigned' },
 ];
 
-const NewTickets = ({ tickets, showRead, onToggleRead, readCount, onRead }: { tickets: QuickNewTicket[]; showRead: boolean; onToggleRead: () => void; readCount: number; onRead: (key: string, read: boolean) => void }) => (
-  <QuickList items={tickets} unit="ticket" groups={NEW_GROUPS} textOf={newTextOf} placeholder="Search key, summary, assignee or description…"
-    empty="Nothing new since you last read. New tickets added to the sprint show up here."
-    extra={readCount > 0 ? <button onClick={onToggleRead} className="px-3 py-1 rounded-lg text-sm font-medium bg-white ring-1 ring-gray-300 text-gray-700 hover:bg-gray-100 whitespace-nowrap">{showRead ? 'Hide' : 'Show'} read ({readCount})</button> : undefined}
-    summary={(rows) => { const unread = rows.filter(t => !t.read).length; const fe = rows.filter(t => t.fe).length; return `${rows.length} ticket${rows.length === 1 ? '' : 's'} · ${unread} unread${fe ? ` · ${fe} FE` : ''}`; }}
-    table={(rows) => (
-      <table className={TABLE}>
-        <thead className={THEAD}><tr>
-          <th className={`${TH} w-[64px]`}>Read</th><th className={`${TH} w-[34%]`}>Ticket</th><th className={`${TH} w-[150px]`}>Status</th>
-          <th className={`${TH} w-[160px]`}>Assignee</th><th className={`${TH} w-[130px]`}>Added</th><th className={TH}>Description</th>
-        </tr></thead>
-        <tbody>
-          {rows.map(t => (
-            <tr key={t.key} className={`${ROW} ${t.read ? 'opacity-60' : ''}`}>
-              <td className={TD}>
-                <button onClick={() => onRead(t.key, !t.read)} aria-pressed={t.read}
-                  title={t.read ? 'Read. Click to mark unread' : 'Mark as read: it is skipped from the next run on'}
-                  className={`w-8 h-8 rounded-full ring-1 flex items-center justify-center text-sm ${t.read ? 'bg-green-100 ring-green-300 text-green-700' : 'bg-white ring-gray-300 text-gray-500 hover:bg-blue-50 hover:text-blue-700'}`}>
-                  {t.read ? '✓' : '👁'}
-                </button>
-              </td>
-              <td className={TD}><TicketCell t={t} tags={<><Pills items={t.clients} />{t.fe && <span className="px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">FE</span>}</>} /></td>
-              <td className={TD}><StatusPill t={t} /></td>
-              <td className={`${TD} text-gray-700`}>{t.assignee || <span className="text-gray-400">Unassigned</span>}</td>
-              <td className={`${TD} text-xs text-gray-500`}>{dayTime(t.firstSeenAt)}</td>
-              <td className={TD}>{t.description ? <p className="text-sm text-gray-700 line-clamp-4">{t.description}</p> : <p className="text-sm text-gray-400">No description on the ticket.</p>}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    )} />
-);
+export type QuickFlag = 'important' | 'myDay';
+export type QuickFlags = Record<QuickFlag, Record<string, boolean>>;
+
+/** The same two marks as the Tasks list: ⭐ Imp and ☀️ My Day (the follow-up list). Marking here shows there, and the other way round. */
+const FlagButtons = ({ k, flags, onFlag }: { k: string; flags: QuickFlags; onFlag: (flag: QuickFlag, key: string) => void }) => {
+  const imp = !!flags.important[k]; const day = !!flags.myDay[k];
+  const cls = (on: boolean) => `w-6 text-center text-[16px] leading-none cursor-pointer hover:scale-110 transition-all ${on ? 'opacity-100 grayscale-0' : 'opacity-30 grayscale hover:opacity-60'}`;
+  return (
+    <div className="flex gap-2 items-center">
+      <button onClick={() => onFlag('important', k)} className={cls(imp)} title={imp ? 'Remove Imp' : 'Mark Imp'} aria-pressed={imp}>⭐</button>
+      <button onClick={() => onFlag('myDay', k)} className={cls(day)} title={day ? 'Remove from My Day (follow up)' : 'Add to My Day (follow up)'} aria-pressed={day}>☀️</button>
+    </div>
+  );
+};
+
+const NewTickets = ({ all, showRead, onToggleRead, onRead, flags, onFlag }: {
+  all: QuickNewTicket[]; showRead: boolean; onToggleRead: () => void; onRead: (key: string, read: boolean) => void; flags: QuickFlags; onFlag: (flag: QuickFlag, key: string) => void;
+}) => {
+  const [onlyImp, setOnlyImp] = useState(false);
+  const [onlyDay, setOnlyDay] = useState(false);
+  const readCount = all.filter(t => t.read).length;
+  const impCount = all.filter(t => flags.important[t.key]).length;
+  const dayCount = all.filter(t => flags.myDay[t.key]).length;
+  // Filtering by a mark shows every marked ticket, read or not, so a follow-up never hides behind the read mark.
+  const items = onlyImp || onlyDay
+    ? all.filter(t => (!onlyImp || flags.important[t.key]) && (!onlyDay || flags.myDay[t.key]))
+    : showRead ? all : all.filter(t => !t.read);
+  const toggle = (on: boolean, set: (v: boolean) => void, label: string, n: number) => (
+    <button onClick={() => set(!on)} aria-pressed={on} disabled={!on && n === 0}
+      className={`px-3 py-1 rounded-lg text-sm font-medium whitespace-nowrap ring-1 disabled:opacity-40 disabled:cursor-not-allowed ${on ? 'bg-blue-600 text-white ring-blue-600' : 'bg-white text-gray-700 ring-gray-300 hover:bg-gray-100'}`}>{label} ({n})</button>
+  );
+  return (
+    <QuickList items={items} unit="ticket" groups={NEW_GROUPS} textOf={newTextOf} placeholder="Search key, summary, assignee or description…"
+      empty={onlyImp || onlyDay ? 'No tickets with these marks.' : 'Nothing new since you last read. New tickets added to the sprint show up here.'}
+      extra={<>
+        {readCount > 0 && <button onClick={onToggleRead} className="px-3 py-1 rounded-lg text-sm font-medium bg-white ring-1 ring-gray-300 text-gray-700 hover:bg-gray-100 whitespace-nowrap">{showRead ? 'Hide' : 'Show'} read ({readCount})</button>}
+        {toggle(onlyImp, setOnlyImp, '⭐ Imp', impCount)}
+        {toggle(onlyDay, setOnlyDay, '☀️ My Day', dayCount)}
+      </>}
+      summary={(rows) => { const unread = rows.filter(t => !t.read).length; const fe = rows.filter(t => t.fe).length; return `${rows.length} ticket${rows.length === 1 ? '' : 's'} · ${unread} unread${fe ? ` · ${fe} FE` : ''}`; }}
+      table={(rows) => (
+        <table className={TABLE}>
+          <thead className={THEAD}><tr>
+            <th className={`${TH} w-[64px]`}>Read</th><th className={`${TH} w-[84px]`}>Mark</th><th className={`${TH} w-[32%]`}>Ticket</th><th className={`${TH} w-[150px]`}>Status</th>
+            <th className={`${TH} w-[160px]`}>Assignee</th><th className={`${TH} w-[130px]`}>Added</th><th className={TH}>Description</th>
+          </tr></thead>
+          <tbody>
+            {rows.map(t => (
+              <tr key={t.key} className={`${ROW} ${t.read ? 'opacity-60' : ''}`}>
+                <td className={TD}>
+                  <button onClick={() => onRead(t.key, !t.read)} aria-pressed={t.read}
+                    title={t.read ? 'Read. Click to mark unread' : 'Mark as read: it is skipped from the next run on'}
+                    className={`w-8 h-8 rounded-full ring-1 flex items-center justify-center text-sm ${t.read ? 'bg-green-100 ring-green-300 text-green-700' : 'bg-white ring-gray-300 text-gray-500 hover:bg-blue-50 hover:text-blue-700'}`}>
+                    {t.read ? '✓' : '👁'}
+                  </button>
+                </td>
+                <td className={`${TD} pt-[11px]`}><FlagButtons k={t.key} flags={flags} onFlag={onFlag} /></td>
+                <td className={TD}><TicketCell t={t} tags={<><Pills items={t.clients} />{t.fe && <span className="px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">FE</span>}</>} /></td>
+                <td className={TD}><StatusPill t={t} /></td>
+                <td className={`${TD} text-gray-700`}>{t.assignee || <span className="text-gray-400">Unassigned</span>}</td>
+                <td className={`${TD} text-xs text-gray-500`}>{dayTime(t.firstSeenAt)}</td>
+                <td className={TD}>{t.description ? <p className="text-sm text-gray-700 line-clamp-4">{t.description}</p> : <p className="text-sm text-gray-400">No description on the ticket.</p>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )} />
+  );
+};
 
 // ---------------------------------------------------------------- 2. FE ticket assignment
 const feTextOf = (c: QuickFeCandidate) => [c.key, c.summary, c.assignee, c.status, c.analysis, c.suggestion?.name, ...c.clients, ...c.areas].join(' ');
@@ -304,11 +341,12 @@ export interface QuickViewProps {
   report: QuickReport | null; status: QuickStatus | null; error: string | null; loading: boolean;
   tab: QuickTab; onTab: (t: QuickTab) => void;
   showRead: boolean; showTeam: boolean;
+  flags: QuickFlags; onFlag: (flag: QuickFlag, key: string) => void;
   onToggleRead: () => void; onToggleTeam: () => void; onRun: () => void; onSetRead: (key: string, read: boolean) => void;
 }
 
 /** What the page looks like for a given report and state. No data loading here, so it can be rendered on its own. */
-export const QuickAnalysisView: React.FC<QuickViewProps> = ({ report, status, error, loading, tab, onTab, showRead, showTeam, onToggleRead, onToggleTeam, onRun, onSetRead }) => {
+export const QuickAnalysisView: React.FC<QuickViewProps> = ({ report, status, error, loading, tab, onTab, showRead, showTeam, flags, onFlag, onToggleRead, onToggleTeam, onRun, onSetRead }) => {
   const sched = status?.schedule;
   const unread = report?.newTickets.filter(t => !t.read) ?? [];
   const read = report?.newTickets.filter(t => t.read) ?? [];
@@ -361,7 +399,7 @@ export const QuickAnalysisView: React.FC<QuickViewProps> = ({ report, status, er
             No report yet. It builds by itself during working hours, or press <b>Run now</b> to build the first one.
           </div>
         )}
-        {report && tab === 'new' && <NewTickets tickets={showRead ? [...unread, ...read] : unread} showRead={showRead} onToggleRead={onToggleRead} readCount={read.length} onRead={onSetRead} />}
+        {report && tab === 'new' && <NewTickets all={[...unread, ...read]} showRead={showRead} onToggleRead={onToggleRead} onRead={onSetRead} flags={flags} onFlag={onFlag} />}
         {report && tab === 'fe' && <FeAssignment report={report} showTeam={showTeam} onToggleTeam={onToggleTeam} />}
         {report && tab === 'mine' && <MyTickets mine={report.myTickets.groups} source={report.myTickets.source} />}
       </div>
@@ -378,6 +416,7 @@ const QuickAnalysis: React.FC<{ active?: boolean }> = ({ active = true }) => {
   const [showRead, setShowRead] = useState(false);
   const [showTeam, setShowTeam] = useState(false);
   const [tab, setTab] = useState<QuickTab>('new');
+  const [flags, setFlags] = useState<QuickFlags>({ important: {}, myDay: {} });
   const seen = useRef<string | null>(null);
 
   const load = useCallback(async () => {
@@ -393,6 +432,24 @@ const QuickAnalysis: React.FC<{ active?: boolean }> = ({ active = true }) => {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // the Imp and My Day marks are the Tasks list's own, so they are read from the same place
+  useEffect(() => {
+    let alive = true;
+    const loadFlags = () => Promise.all([jiraApi.getAllImportantFlags(), jiraApi.getAllMyDayFlags()])
+      .then(([important, myDay]) => { if (alive) setFlags({ important, myDay }); }).catch(() => { /* the icons just show unmarked */ });
+    loadFlags();
+    window.addEventListener('focus', loadFlags); // marks changed on the Tasks page show up when you come back
+    return () => { alive = false; window.removeEventListener('focus', loadFlags); };
+  }, []);
+
+  const toggleFlag = async (flag: QuickFlag, key: string) => {
+    const next = !flags[flag][key];
+    setFlags(f => ({ ...f, [flag]: { ...f[flag], [key]: next } }));
+    try { await (flag === 'important' ? jiraApi.setIssueImportant(key, next) : jiraApi.setIssueMyDay(key, next)); }
+    catch { setFlags(f => ({ ...f, [flag]: { ...f[flag], [key]: !next } })); } // not saved: put the icon back
+  };
+
   // opening the page clears the bell
   useEffect(() => { if (active) markViewed(); }, [active, markViewed]);
 
@@ -427,7 +484,7 @@ const QuickAnalysis: React.FC<{ active?: boolean }> = ({ active = true }) => {
   };
 
   return (
-    <QuickAnalysisView report={report} status={status} error={error} loading={loading} tab={tab} onTab={setTab} showRead={showRead} showTeam={showTeam}
+    <QuickAnalysisView report={report} status={status} error={error} loading={loading} tab={tab} onTab={setTab} showRead={showRead} showTeam={showTeam} flags={flags} onFlag={toggleFlag}
       onToggleRead={() => setShowRead(s => !s)} onToggleTeam={() => setShowTeam(s => !s)} onRun={runNow} onSetRead={setRead} />
   );
 };
