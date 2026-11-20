@@ -143,8 +143,7 @@ export default function ReleasePrReports() {
   return (
     <RefreshContext.Provider value={{ fetchPrs: refreshPrs, refreshReleases, releasesAt: meta?.generatedAt || null, job, running, prsAt }}>
     <div className="h-full flex flex-col bg-gray-50 overflow-hidden">
-      <div className="bg-white border-b border-gray-200 px-4 py-2.5 flex items-center gap-2 flex-wrap">
-        <span className="text-lg font-semibold text-gray-800 mr-3 whitespace-nowrap">📦 Release &amp; PRs</span>
+      <div className="bg-white border-b border-gray-200 px-4 py-2.5 flex items-center gap-2">
         {tabs.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} aria-current={tab === t.id ? 'page' : undefined}
             className={`inline-flex items-center gap-2 whitespace-nowrap shrink-0 px-4 py-1.5 text-sm font-medium rounded-full border transition-colors ${tab === t.id ? 'bg-blue-600 border-blue-600 text-white shadow-sm' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-100 hover:border-gray-400'}`}>
