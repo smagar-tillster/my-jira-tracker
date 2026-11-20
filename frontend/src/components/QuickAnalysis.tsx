@@ -340,23 +340,23 @@ export const QuickAnalysisView: React.FC<QuickViewProps> = ({ report, status, er
 
   return (
     <div className="h-full flex flex-col bg-gray-50 overflow-hidden">
-      <div className="bg-white border-b border-gray-200 px-4 py-2.5 flex items-center gap-2">
+      <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-2">
         {tabs.map(t => (
           <button key={t.id} onClick={() => onTab(t.id)} aria-current={tab === t.id ? 'page' : undefined}
             className={`inline-flex items-center gap-2 whitespace-nowrap shrink-0 px-4 py-1.5 text-sm font-medium rounded-full border transition-colors ${tab === t.id ? 'bg-blue-600 border-blue-600 text-white shadow-sm' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-100 hover:border-gray-400'}`}>
             {t.label}{t.count !== undefined && <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${tab === t.id ? 'bg-white/25 text-white' : 'bg-gray-200 text-gray-700'}`}>{t.count}</span>}
           </button>
         ))}
-        <div className="ml-auto flex items-center gap-3 whitespace-nowrap">
-          <span className="text-xs text-gray-500" title={status?.nextRunAt ? `Next run about ${shortTime(status.nextRunAt)}. Set in backend/delivery/config.json, quickAnalysis` : undefined}>
-            {status?.running ? '⏳ Running now…'
-              : status?.lastRunAt ? `Last run ${clock(status.lastRunAt)}${status.lastDurationMs ? ` (${Math.round(status.lastDurationMs / 1000)}s)` : ''}` : 'Not run yet'}
-            {status?.disabled ? ' · automatic runs are off' : sched ? ` · ${sched.weekdaysOnly ? 'M-F ' : ''}${hour(sched.startHour)}-${hour(sched.endHour)} · ${sched.intervalMinutes}m` : ''}
-          </span>
+        <div className="ml-auto flex flex-col items-end gap-0.5 whitespace-nowrap">
           <button onClick={onRun} disabled={!!status?.running}
             className="px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-60 disabled:cursor-not-allowed">
             {status?.running ? '⏳ Running…' : '🔄 Run now'}
           </button>
+          <span className="text-[11px] leading-tight text-gray-500" title={status?.nextRunAt ? `Next run about ${shortTime(status.nextRunAt)}. Set in backend/delivery/config.json, quickAnalysis` : undefined}>
+            {status?.running ? '⏳ Running now…'
+              : status?.lastRunAt ? `Last run ${clock(status.lastRunAt)}${status.lastDurationMs ? ` (${Math.round(status.lastDurationMs / 1000)}s)` : ''}` : 'Not run yet'}
+            {status?.disabled ? ' · automatic runs are off' : sched ? ` · ${sched.weekdaysOnly ? 'M-F ' : ''}${hour(sched.startHour)}-${hour(sched.endHour)} · ${sched.intervalMinutes}m` : ''}
+          </span>
         </div>
       </div>
 

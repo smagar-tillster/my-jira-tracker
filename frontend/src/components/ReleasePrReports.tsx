@@ -143,7 +143,7 @@ export default function ReleasePrReports() {
   return (
     <RefreshContext.Provider value={{ fetchPrs: refreshPrs, refreshReleases, releasesAt: meta?.generatedAt || null, job, running, prsAt }}>
     <div className="h-full flex flex-col bg-gray-50 overflow-hidden">
-      <div className="bg-white border-b border-gray-200 px-4 py-2.5 flex items-center gap-2">
+      <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-2">
         {tabs.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} aria-current={tab === t.id ? 'page' : undefined}
             className={`inline-flex items-center gap-2 whitespace-nowrap shrink-0 px-4 py-1.5 text-sm font-medium rounded-full border transition-colors ${tab === t.id ? 'bg-blue-600 border-blue-600 text-white shadow-sm' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-100 hover:border-gray-400'}`}>
@@ -151,17 +151,17 @@ export default function ReleasePrReports() {
             {t.id === 'reviews' && busyReviews > 0 && <span title="Code reviews waiting or running" className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">⏳ {busyReviews}</span>}
           </button>
         ))}
-        {tab !== 'reviews' && <div className="ml-auto flex items-center gap-3 whitespace-nowrap">
-          {meta && (
-            <span className="text-xs text-gray-500" title={meta.timing ? Object.entries(meta.timing.stages).map(([k, v]) => `${k}: ${v}s`).join('\n') : undefined}>
-              Last run {runTime(meta.generatedAt)}{meta.timing && <> ({Math.round(meta.timing.totalSec)}s)</>}
-            </span>
-          )}
+        {tab !== 'reviews' && <div className="ml-auto flex flex-col items-end gap-0.5 whitespace-nowrap">
           <button onClick={refresh} disabled={running}
             title="Re-reads Jira and GitHub and rebuilds the data on these tabs, then moves the 'since last run' marker for merged PRs."
             className="px-3 py-1.5 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 disabled:opacity-60 disabled:cursor-not-allowed">
             {running ? (job?.kind === 'prs' ? '⏳ Fetching PRs…' : '⏳ Running…') : '▶ Run latest report'}
           </button>
+          {meta && (
+            <span className="text-[11px] leading-tight text-gray-500" title={meta.timing ? Object.entries(meta.timing.stages).map(([k, v]) => `${k}: ${v}s`).join('\n') : undefined}>
+              Last run {runTime(meta.generatedAt)}{meta.timing && <> ({Math.round(meta.timing.totalSec)}s)</>}
+            </span>
+          )}
         </div>}
       </div>
 
