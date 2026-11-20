@@ -15,11 +15,12 @@ const dayTime = (iso: string) => {
   const same = d.toDateString() === new Date().toDateString();
   return same ? timeOf(iso) : `${d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} ${timeOf(iso)}`;
 };
+const clock = (iso: string) => timeOf(iso).replace(' ', '').toLowerCase();
 const shortTime = (iso: string) => {
   const d = new Date(iso);
   return d.toDateString() === new Date().toDateString() ? timeOf(iso) : `${d.toLocaleDateString('en-US', { weekday: 'short' })} ${timeOf(iso)}`;
 };
-const hour = (h: number) => `${h % 12 === 0 ? 12 : h % 12} ${h < 12 ? 'AM' : 'PM'}`;
+const hour = (h: number) => `${h % 12 === 0 ? 12 : h % 12}${h < 12 ? 'am' : 'pm'}`;
 const shortDate = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
 const TicketLink = ({ t }: { t: Pick<QuickTicket, 'key' | 'url'> }) => (
@@ -357,13 +358,11 @@ export const QuickAnalysisView: React.FC<QuickViewProps> = ({ report, status, er
           </button>
         ))}
         <div className="ml-auto flex items-center gap-3">
-          <span className="text-xs text-gray-500">
+          <span className="text-xs text-gray-500" title={status?.nextRunAt ? `Next run about ${shortTime(status.nextRunAt)}. Set in backend/delivery/config.json, quickAnalysis` : undefined}>
             {status?.running ? '⏳ Running now…'
-              : status?.lastRunAt ? `Last ${shortTime(status.lastRunAt)}` : 'Not run yet'}
-            {!status?.running && !status?.disabled && status?.nextRunAt && ` · next ${shortTime(status.nextRunAt)}`}
-            {status?.disabled && ' · automatic runs are off'}
+              : status?.lastRunAt ? `Last run ${clock(status.lastRunAt)}${status.lastDurationMs ? ` (${Math.round(status.lastDurationMs / 1000)}s)` : ''}` : 'Not run yet'}
+            {status?.disabled ? ' · automatic runs are off' : sched ? ` · ${sched.weekdaysOnly ? 'M-F ' : ''}${hour(sched.startHour)}-${hour(sched.endHour)} · ${sched.intervalMinutes}m` : ''}
           </span>
-          {sched && <span className="text-xs text-gray-400" title="Set in backend/delivery/config.json, quickAnalysis">{sched.intervalMinutes}m · {hour(sched.startHour)}-{hour(sched.endHour)}{sched.weekdaysOnly ? ' · Mon-Fri' : ''}</span>}
           <button onClick={onRun} disabled={!!status?.running}
             className="px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-60 disabled:cursor-not-allowed">
             {status?.running ? '⏳ Running…' : '🔄 Run now'}
