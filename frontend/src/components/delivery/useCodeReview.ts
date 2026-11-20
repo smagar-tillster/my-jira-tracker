@@ -33,11 +33,13 @@ export function useCodeReview(onDone: () => void) {
 
   const follow = useCallback(() => { if (timer.current === null) timer.current = window.setInterval(poll, 3000); }, [poll]);
 
-  // pick up reviews that are already running (the tab was reopened)
+  // pick up reviews that are already running (the tab was reopened), and follow ones another page just queued
   useEffect(() => {
     reviewsApi.generateStatus().then(next => { setJobs(next); if (Object.values(next).some(generateBusy)) follow(); }).catch(() => { /* none yet */ });
-    return stop;
-  }, [follow]);
+    const queuedElsewhere = () => { follow(); poll(); };
+    window.addEventListener('reviews-queued', queuedElsewhere);
+    return () => { stop(); window.removeEventListener('reviews-queued', queuedElsewhere); };
+  }, [follow, poll]);
 
   const start = async (prs: { repo: string; number: number }[]) => {
     setError(null);
@@ -45,6 +47,7 @@ export function useCodeReview(onDone: () => void) {
       const started = await reviewsApi.generate(prs);
       setJobs(prev => ({ ...prev, ...started }));
       follow();
+      window.dispatchEvent(new Event('reviews-queued')); // PR Reviews shows them as queued; nothing alerts until one is done
     } catch (e) {
       setError(e instanceof ReviewApiError ? e.message : String((e as Error)?.message || e));
     }

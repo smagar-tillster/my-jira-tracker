@@ -215,6 +215,10 @@ const PrReviews: React.FC = () => {
 
   useEffect(() => { load(); }, [load]);
 
+  // Reviews started from Open PRs (or here) that are not finished: shown at the top of the list until they become drafts.
+  const { jobs: reviewJobs } = useCodeReview(() => { load(); });
+  const inProgress = Object.values(reviewJobs).filter(generateBusy);
+
   const counts = useMemo(() => ({
     todo: reviews.filter(r => r.status === 'draft').length,
     posted: reviews.filter(r => r.status === 'posted').length,
@@ -343,6 +347,17 @@ const PrReviews: React.FC = () => {
         {/* List */}
         <div className="w-96 max-w-[40%] border-r border-gray-200 overflow-y-auto bg-white">
           <InitiatePanel onDone={load} />
+          {inProgress.length > 0 && (
+            <div className="px-4 py-2 border-b border-amber-200 bg-amber-50">
+              <div className="text-xs font-semibold text-amber-800 mb-1">In the queue ({inProgress.length}) · you will be told when each one is ready</div>
+              {inProgress.map(j => (
+                <div key={j.id} className="flex items-center gap-2 text-xs py-0.5">
+                  <span className="font-semibold text-blue-700">{j.id}</span>
+                  <Badge className={j.state === 'running' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-800'}>{j.state === 'running' ? 'reviewing' : 'queued'}</Badge>
+                </div>
+              ))}
+            </div>
+          )}
           {loading && reviews.length === 0 && <p className="p-4 text-sm text-gray-400">Loading…</p>}
           {!loading && shown.length === 0 && (
             <div className="p-6 text-center text-sm text-gray-400">

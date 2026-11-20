@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { deliveryApi, DeliveryMeta, RefreshJob, reviewsApi } from '../services/api';
+import { deliveryApi, DeliveryMeta, RefreshJob, generateBusy, reviewsApi } from '../services/api';
 import PrReviews from './PrReviews';
 import ReleasedTab from './delivery/ReleasedTab';
 import ToReleaseTab from './delivery/ToReleaseTab';
@@ -19,6 +19,9 @@ const takeRequestedTab = (): SubTab | null => {
 export default function ReleasePrReports() {
   const [tab, setTab] = useState<SubTab>(() => takeRequestedTab() ?? 'released');
   const [reviewDrafts, setReviewDrafts] = useState<number | undefined>(undefined);
+  const [busyReviews, setBusyReviews] = useState(0); // Initiate Code Review jobs waiting or running
+  const [readyToasts, setReadyToasts] = useState<{ id: string; at: number }[]>([]);
+  const prevBusy = useRef<Set<string>>(new Set());
   const [reviewsSeen, setReviewsSeen] = useState(false); // once opened, PR Reviews stays mounted (hidden) so its list and its cache survive switching pills
   const [meta, setMeta] = useState<DeliveryMeta | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -38,6 +41,36 @@ export default function ReleasePrReports() {
     window.addEventListener('releases-subtab', open);
     return () => window.removeEventListener('releases-subtab', open);
   }, []);
+
+  // Follow Initiate Code Review jobs: the pill shows how many are queued, and a toast appears only when one finishes (not when it is queued).
+  const pollReviewJobs = useCallback(async () => {
+    try {
+      const next = await reviewsApi.generateStatus();
+      const busyNow = new Set(Object.entries(next).filter(([, j]) => generateBusy(j)).map(([id]) => id));
+      const finished = [...prevBusy.current].filter(id => next[id]?.state === 'done');
+      prevBusy.current = busyNow;
+      setBusyReviews(busyNow.size);
+      if (finished.length) {
+        setReadyToasts(t => [...t, ...finished.map(id => ({ id, at: Date.now() }))]);
+        window.dispatchEvent(new Event('reviews-changed')); // the bell and the pill recount the drafts
+      }
+    } catch { /* backend busy: next tick */ }
+  }, []);
+  useEffect(() => {
+    pollReviewJobs();
+    window.addEventListener('reviews-queued', pollReviewJobs);
+    return () => window.removeEventListener('reviews-queued', pollReviewJobs);
+  }, [pollReviewJobs]);
+  useEffect(() => {
+    if (busyReviews === 0) return;
+    const t = window.setInterval(pollReviewJobs, 3000);
+    return () => window.clearInterval(t);
+  }, [busyReviews, pollReviewJobs]);
+  useEffect(() => {
+    if (readyToasts.length === 0) return;
+    const t = window.setTimeout(() => setReadyToasts(list => list.filter(x => Date.now() - x.at < 10000)), 10200);
+    return () => window.clearTimeout(t);
+  }, [readyToasts]);
 
   // Count on the PR Reviews pill: drafts waiting to be read and posted. Quiet on failure.
   useEffect(() => {
@@ -108,6 +141,7 @@ export default function ReleasePrReports() {
           <button key={t.id} onClick={() => setTab(t.id)} aria-current={tab === t.id ? 'page' : undefined}
             className={`inline-flex items-center gap-2 px-4 py-1.5 text-sm font-medium rounded-full border transition-colors ${tab === t.id ? 'bg-blue-600 border-blue-600 text-white shadow-sm' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-100 hover:border-gray-400'}`}>
             {t.label}{t.count !== undefined && <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${tab === t.id ? 'bg-white/25 text-white' : 'bg-gray-200 text-gray-700'}`}>{t.count}</span>}
+            {t.id === 'reviews' && busyReviews > 0 && <span title="Code reviews waiting or running" className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">⏳ {busyReviews}</span>}
           </button>
         ))}
         {tab !== 'reviews' && <div className="ml-auto flex items-center gap-3">
@@ -137,6 +171,18 @@ export default function ReleasePrReports() {
         </div>
       )}
       {tab !== 'reviews' && error && !meta && <div className="m-4 px-3 py-2 text-sm bg-red-50 text-red-700 border border-red-200 rounded">❌ {error} — click “Run latest report” to build it now.</div>}
+
+      {readyToasts.length > 0 && (
+        <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2">
+          {readyToasts.filter(x => Date.now() - x.at < 10000).map(x => (
+            <div key={`${x.id}-${x.at}`} className="flex items-center gap-3 px-4 py-2.5 bg-white border border-green-300 rounded-lg shadow-lg text-sm">
+              <span>📝 Code review ready: <b>{x.id}</b></span>
+              <button onClick={() => { setTab('reviews'); setReadyToasts(l => l.filter(y => y !== x)); }} className="px-2 py-0.5 rounded-full bg-green-600 text-white text-xs hover:bg-green-700">Open</button>
+              <button onClick={() => setReadyToasts(l => l.filter(y => y !== x))} aria-label="Dismiss" className="text-gray-400 hover:text-gray-700">✕</button>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="flex-1 overflow-hidden">
         {meta && tab === 'released' && <ReleasedTab meta={meta} refreshKey={refreshKey} />}

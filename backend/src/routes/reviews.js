@@ -250,10 +250,9 @@ export const createReviewsRouter = ({ gh = realGh, now = () => Date.now(), claud
 
   // GET /api/reviews/generate/status — state per PR: waiting | running | done | exists | queued | failed
   router.get('/reviews/generate/status', (req, res) => {
-    const data = runner.status();
-    // a PR whose draft now exists is no longer in the open-PR cache's "needs review" list
-    if (Object.values(data).some((j) => j.state === 'done')) openCache.at = 0;
-    res.json({ success: true, data });
+    // A PR whose draft now exists drops out of /reviews/queue by itself (it is checked against the saved drafts each time),
+    // so a finished job does not need to clear the open-PR cache.
+    res.json({ success: true, data: runner.status() });
   });
 
   // POST /api/reviews/drafts — Claude saves a draft. The server validates it, checks every inline comment sits on a line that is
