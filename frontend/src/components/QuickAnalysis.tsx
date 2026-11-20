@@ -15,6 +15,10 @@ const dayTime = (iso: string) => {
   const same = d.toDateString() === new Date().toDateString();
   return same ? timeOf(iso) : `${d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} ${timeOf(iso)}`;
 };
+const shortTime = (iso: string) => {
+  const d = new Date(iso);
+  return d.toDateString() === new Date().toDateString() ? timeOf(iso) : `${d.toLocaleDateString('en-US', { weekday: 'short' })} ${timeOf(iso)}`;
+};
 const hour = (h: number) => `${h % 12 === 0 ? 12 : h % 12} ${h < 12 ? 'AM' : 'PM'}`;
 const shortDate = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
@@ -63,10 +67,10 @@ const CountPill = ({ n, label }: { n: number; label: string }) => (
   <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700 ring-1 ring-gray-200 whitespace-nowrap">{n} {label}{n === 1 ? '' : 's'}</span>
 );
 
-function QuickList<T>({ items, unit, groups, summary, alert, textOf, placeholder, extra, before, table, empty }: {
+function QuickList<T>({ items, unit, groups, summary, alert, textOf, placeholder, extra, belowControls, before, table, empty }: {
   items: T[]; unit: string; groups: GroupSpec<T>[];
   summary: (items: T[], group: string) => React.ReactNode; alert?: (items: T[], group: string) => boolean;
-  textOf: (item: T) => string; placeholder: string; extra?: React.ReactNode; before?: (group: string, items: T[]) => React.ReactNode;
+  textOf: (item: T) => string; placeholder: string; extra?: React.ReactNode; belowControls?: React.ReactNode; before?: (group: string, items: T[]) => React.ReactNode;
   table: (items: T[]) => React.ReactNode; empty: string;
 }) {
   const [groupBy, setGroupBy] = useState(groups[0].id);
@@ -97,6 +101,7 @@ function QuickList<T>({ items, unit, groups, summary, alert, textOf, placeholder
       <ListControls groups={groups.map(g => ({ id: g.id, label: g.label, hint: g.hint }))} groupBy={spec.id} onGroupBy={setGroupBy} query={query} onQuery={setQuery}
         shown={shown.length} total={items.length} unit={unit} allOpen={allOpen} onToggleAll={tenantsOf ? () => setCmd(c => ({ open: !allOpen, n: c.n + 1 })) : undefined} placeholder={placeholder}
         extra={<>{extra}<CountPill n={shown.length} label={unit} />{tenantsOf && <CountPill n={groupCount} label={spec.label.toLowerCase()} />}</>} />
+      {belowControls}
       {items.length === 0 ? <Empty>{empty}</Empty> : shown.length === 0 ? <Empty>Nothing matches &ldquo;{query.trim()}&rdquo;.</Empty> : !tenantsOf ? (
         <div className="rounded-lg border border-gray-200 bg-white overflow-clip">{table(shown)}</div>
       ) : (
@@ -226,14 +231,14 @@ const FeTeam = ({ team }: { team: QuickReport['feTeam'] }) => (
 
 const FeAssignment = ({ report, showTeam, onToggleTeam }: { report: QuickReport; showTeam: boolean; onToggleTeam: () => void }) => (
   <>
-    {showTeam && report.feTeam.length > 0 && (
-      <div className="mb-3 p-3 rounded-lg bg-white border border-gray-200">
-        <FeTeam team={report.feTeam} />
-        <p className="text-xs text-gray-500 mt-2">Aligned means in progress and not blocked.</p>
-      </div>
-    )}
     <QuickList items={report.feCandidates} unit="ticket" groups={FE_GROUPS} textOf={feTextOf} placeholder="Search key, summary, client, area or person…"
       empty="No FE tickets to place right now."
+      belowControls={showTeam && report.feTeam.length > 0 ? (
+        <div className="mb-3 p-3 rounded-lg bg-white border border-gray-200">
+          <FeTeam team={report.feTeam} />
+          <p className="text-xs text-gray-500 mt-2">Aligned means in progress and not blocked.</p>
+        </div>
+      ) : undefined}
       extra={report.feTeam.length > 0 ? <button onClick={onToggleTeam} className="px-3 py-1 rounded-lg text-sm font-medium bg-white ring-1 ring-gray-300 text-gray-700 hover:bg-gray-100 whitespace-nowrap">{showTeam ? 'Hide' : 'Show'} who has what</button> : undefined}
       summary={(rows) => {
         const n = rows.filter(c => c.origin === 'new').length; const m = rows.length - n;
@@ -354,11 +359,11 @@ export const QuickAnalysisView: React.FC<QuickViewProps> = ({ report, status, er
         <div className="ml-auto flex items-center gap-3">
           <span className="text-xs text-gray-500">
             {status?.running ? '⏳ Running now…'
-              : status?.lastRunAt ? `Last run ${dayTime(status.lastRunAt)}${status.lastDurationMs ? ` (${Math.round(status.lastDurationMs / 1000)}s)` : ''}` : 'Not run yet'}
-            {!status?.running && !status?.disabled && status?.nextRunAt && ` · next about ${dayTime(status.nextRunAt)}`}
+              : status?.lastRunAt ? `Last ${shortTime(status.lastRunAt)}` : 'Not run yet'}
+            {!status?.running && !status?.disabled && status?.nextRunAt && ` · next ${shortTime(status.nextRunAt)}`}
             {status?.disabled && ' · automatic runs are off'}
           </span>
-          {sched && <span className="text-xs text-gray-400" title="Set in backend/delivery/config.json, quickAnalysis">Every {sched.intervalMinutes} min, {hour(sched.startHour)} to {hour(sched.endHour)}{sched.weekdaysOnly ? ', Mon to Fri' : ''}</span>}
+          {sched && <span className="text-xs text-gray-400" title="Set in backend/delivery/config.json, quickAnalysis">{sched.intervalMinutes}m · {hour(sched.startHour)}-{hour(sched.endHour)}{sched.weekdaysOnly ? ' · Mon-Fri' : ''}</span>}
           <button onClick={onRun} disabled={!!status?.running}
             className="px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-60 disabled:cursor-not-allowed">
             {status?.running ? '⏳ Running…' : '🔄 Run now'}
