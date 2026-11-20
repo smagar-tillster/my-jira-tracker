@@ -19,6 +19,7 @@ const takeRequestedTab = (): SubTab | null => {
 export default function ReleasePrReports() {
   const [tab, setTab] = useState<SubTab>(() => takeRequestedTab() ?? 'released');
   const [reviewDrafts, setReviewDrafts] = useState<number | undefined>(undefined);
+  const [reviewsSeen, setReviewsSeen] = useState(false); // once opened, PR Reviews stays mounted (hidden) so its list and its cache survive switching pills
   const [meta, setMeta] = useState<DeliveryMeta | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [job, setJob] = useState<RefreshJob | null>(null);
@@ -86,6 +87,8 @@ export default function ReleasePrReports() {
     }
   };
 
+  useEffect(() => { if (tab === 'reviews') setReviewsSeen(true); }, [tab]);
+
   const running = job?.state === 'running';
   const prsAt = meta?.prsGeneratedAt || meta?.generatedAt || null;
   const tabs: { id: SubTab; label: string; count?: number }[] = [
@@ -140,7 +143,7 @@ export default function ReleasePrReports() {
         {meta && tab === 'toRelease' && <ToReleaseTab meta={meta} refreshKey={refreshKey} />}
         {meta && tab === 'prs' && <MergedPrsTab meta={meta} refreshKey={refreshKey} />}
         {meta && tab === 'open' && <OpenPrsTab meta={meta} refreshKey={refreshKey} />}
-        {tab === 'reviews' && <PrReviews />}
+        {(tab === 'reviews' || reviewsSeen) && <div className={tab === 'reviews' ? 'h-full' : 'hidden'}><PrReviews /></div>}
       </div>
     </div>
     </RefreshContext.Provider>

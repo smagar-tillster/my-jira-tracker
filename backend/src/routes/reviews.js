@@ -67,9 +67,10 @@ export const createReviewsRouter = ({ gh = realGh, now = () => Date.now(), claud
   const router = express.Router();
 
   // Open PRs per configured repo, cached for a minute (the list view and the bell both ask often).
+  // `anyAge` serves whatever was fetched last, however old, and only reads GitHub when nothing was fetched yet (the PR Reviews page opens from this cache).
   let openCache = { at: 0, byKey: new Map(), error: null };
-  const openPrs = async (force = false) => {
-    if (!force && Date.now() - openCache.at < 60000) return openCache;
+  const openPrs = async (force = false, anyAge = false) => {
+    if (!force && (anyAge ? openCache.at > 0 : Date.now() - openCache.at < 60000)) return openCache;
     const byKey = new Map(); let error = null;
     for (const [repo, slug] of Object.entries(reviewConfig().repos)) {
       try {
@@ -118,9 +119,12 @@ export const createReviewsRouter = ({ gh = realGh, now = () => Date.now(), claud
 
   // GET /api/reviews/queue — PRs that need a review: open, not draft, not a bot, no review saved for the current head commit, and worth
   // reading (tier not in review.skipTiers). Skipped PRs come back under `skipped` with the reason. ?all=1 returns everything in `data`.
+  // Always fresh from GitHub (the scheduled review run relies on that), except ?cached=1: the PR Reviews page uses the last fetch and
+  // asks for a fresh one with its refresh button. `fetchedAt` says when the PR list was read from GitHub.
   router.get('/reviews/queue', async (req, res) => {
     const { skipAuthors, skipTiers, minAgeMinutes } = reviewConfig();
-    const { byKey, error } = await openPrs(true);
+    const cached = req.query.cached === '1';
+    const { byKey, error, at } = await openPrs(!cached, cached);
     const have = new Set(listReviews().map((r) => reviewId(r.repo, r.number, r.headSha)));
     const candidates = [...byKey.values()]
       .filter((p) => !p.isDraft)
@@ -140,6 +144,7 @@ export const createReviewsRouter = ({ gh = realGh, now = () => Date.now(), claud
       data: keep,
       skipped: skipped.map((i) => ({ repo: i.repo, number: i.number, title: i.title, url: i.url, why: i.tierWhy })),
       settling: settling.map((p) => ({ repo: p.repo, number: p.number, title: p.title, url: p.url, updatedAt: p.updatedAt })),
+      fetchedAt: new Date(at).toISOString(),
       ...(error ? { warning: error } : {}),
     });
   });

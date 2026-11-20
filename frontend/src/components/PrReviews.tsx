@@ -88,12 +88,14 @@ const InitiatePanel: React.FC<{ onDone: () => void }> = ({ onDone }) => {
   const [open, setOpen] = useState(true);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [find, setFind] = useState('');
+  const [fetchedAt, setFetchedAt] = useState<string | null>(null);
 
-  const loadQueue = useCallback(async () => {
+  // Opening the page and finishing a review use the last GitHub read; the refresh button reads GitHub again.
+  const loadQueue = useCallback(async (refresh = false) => {
     setLoading(true); setErr(null);
     try {
-      const q = await reviewsApi.queue();
-      setItems(q);
+      const { items: q, fetchedAt: at } = await reviewsApi.queue({ cached: !refresh });
+      setItems(q); setFetchedAt(at);
       setPicked(prev => new Set([...prev].filter(id => q.some(i => prId(i) === id))));
     } catch (e: any) {
       setErr(e?.response?.data?.error || e?.message || 'Could not load open PRs');
@@ -141,7 +143,8 @@ const InitiatePanel: React.FC<{ onDone: () => void }> = ({ onDone }) => {
                     className="w-full pl-2 pr-6 py-1 border border-gray-300 rounded bg-white text-xs focus:outline-none focus:ring-1 focus:ring-blue-300" />
                   {find && <button onClick={() => setFind('')} aria-label="Clear" title="Clear" className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700">✕</button>}
                 </div>
-                <button onClick={loadQueue} disabled={loading} className="ml-auto text-gray-500 hover:text-gray-800 disabled:opacity-50">↻</button>
+                {fetchedAt && <span className="ml-auto text-gray-400 whitespace-nowrap" title="When the open PRs were last read from GitHub">as of {new Date(fetchedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>}
+                <button onClick={() => loadQueue(true)} disabled={loading} title="Read the open PRs from GitHub again" className={`${fetchedAt ? '' : 'ml-auto '}text-gray-500 hover:text-gray-800 disabled:opacity-50`}>{loading ? '⏳' : '↻'}</button>
               </div>
               <div className="max-h-64 overflow-y-auto bg-white border border-gray-200 rounded-md divide-y divide-gray-100">
                 {shown.length === 0 && <p className="px-2 py-3 text-xs text-gray-400">No open PR without a review matches &ldquo;{find.trim()}&rdquo;.</p>}

@@ -150,3 +150,35 @@ test('GET /reviews/queue holds back PRs touched in the last 30 minutes, and ?all
 });
 
 test.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
+
+test('GET /reviews/queue?cached=1 reuses the last GitHub read; without it GitHub is read again; the answer says when it was read', async () => {
+  const { default: express } = await import('express');
+  const { createReviewsRouter } = await import('../../src/routes/reviews.js');
+  let lists = 0;
+  const gh = async (args) => {
+    if (args[1] === 'list') { if (args.includes('Tillster/kiosk-ui')) lists++; return args.includes('Tillster/kiosk-ui') ? [{ number: 7, title: 'PR 7', url: 'u7', author: { login: 'a' }, isDraft: false, headRefOid: 'h7', updatedAt: '2026-10-01T00:00:00Z', baseRefName: 'main' }] : []; }
+    return { title: 'x', body: '', files: [{ path: 'src/common/services/a.js', additions: 60, deletions: 10 }, { path: 'src/common/services/b.js', additions: 30, deletions: 2 }] };
+  };
+  const app = express();
+  app.use('/api', createReviewsRouter({ gh }));
+  const server = http.createServer(app);
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const base = `http://127.0.0.1:${server.address().port}/api/reviews/queue?all=1`;
+  try {
+    const first = await (await fetch(`${base}&cached=1`)).json(); // nothing cached yet: reads GitHub once
+    assert.equal(lists, 1);
+    assert.ok(Date.parse(first.fetchedAt) > 0);
+    const second = await (await fetch(`${base}&cached=1`)).json(); // cached
+    assert.equal(lists, 1);
+    assert.equal(second.fetchedAt, first.fetchedAt);
+    assert.deepEqual(second.data.map((i) => i.number), [7]);
+    await new Promise((r) => setTimeout(r, 5));
+    const fresh = await (await fetch(base)).json(); // the scheduled review run and the refresh button: fresh
+    assert.equal(lists, 2);
+    assert.ok(Date.parse(fresh.fetchedAt) >= Date.parse(first.fetchedAt));
+    await fetch(`${base}&cached=1`); // cached again, from the newer read
+    assert.equal(lists, 2);
+  } finally {
+    server.close();
+  }
+});
