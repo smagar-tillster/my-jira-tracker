@@ -9,7 +9,7 @@
 // Outputs: .cache/daily.html (open this), .cache/daily.md, .cache/daily.json.
 // Needs Jira creds (backend/.env) and the user's gh login, so run it from the user's terminal.
 // PRs are strictly those merged since the last run (state/run.json). Options for that: --rerender, --since "YYYY-MM-DD HH:MM", --no-save.
-// Usage: node daily.mjs [--date YYYY-MM-DD] [--backfill N] [--component any|NAME] [--rag-dir PATH] [--prs-only]
+// Usage: node daily.mjs [--date YYYY-MM-DD] [--backfill N] [--component any|NAME] [--rag-dir PATH] [--prs-only | --releases-only]
 //   --prs-only    refresh only the PR lists (open PRs, and PRs merged since the last full run): skips the Jira sprint and release sync, leaves the
 //                 releases in the data file as they were and does not move the 'since last run' marker, so the next full run still covers the same PRs
 //   --backfill N  also records release tickets dated in the last N days into the ledger (one-time catch-up for "ask about any release")
@@ -36,6 +36,8 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const cfg = JSON.parse(fs.readFileSync(path.join(HERE, '..', 'config.json'), 'utf8'));
 const a = parseArgs(process.argv.slice(2));
 const PRS_ONLY = !!a['prs-only'];
+const RELEASES_ONLY = !!a['releases-only']; // the mirror of --prs-only: Jira releases and To Release Today only; PR lists, PR ledger and the 'since last run' marker stay as they are
+if (PRS_ONLY && RELEASES_ONLY) { console.error('Use either --prs-only or --releases-only, not both.'); process.exit(2); }
 const DAY = a.date || today();
 const BACKFILL = Number(a.backfill || 0);
 const root = String(cfg.root).replace(/^~/, os.homedir());
@@ -62,7 +64,8 @@ else if (a.since && a.since !== true) { winSince = new Date(a.since).toISOString
 else if (prevState?.until) { winSince = prevState.until; winUntil = nowIso; windowNote = 'since the last run'; }
 if (PRS_ONLY) windowNote = `PRs only, ${windowNote}`;
 else { winSince = new Date(`${prevBizDay(DAY)}T00:00:00`).toISOString(); winUntil = nowIso; windowNote = `first run: since ${prevBizDay(DAY)} 00:00`; }
-if (a['no-save'] || PRS_ONLY) saveState = false;
+if (RELEASES_ONLY) windowNote = 'releases only';
+if (a['no-save'] || PRS_ONLY || RELEASES_ONLY) saveState = false;
 const fmtTime = (iso) => new Date(iso).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 const pretty = (day) => new Date(`${day}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 const normTenant = (t) => aliases[t] || t;
@@ -93,7 +96,7 @@ const dayBefore = shift(localDate(winSince), -1); // search is date-granular; th
 const gh = async (args) => JSON.parse((await run('gh', args, { maxBuffer: 64 * 1024 * 1024 })).stdout || '[]');
 
 const mergedRaw = []; const prErrors = [];
-await Promise.all(cfg.repos.map(async (repo) => {
+if (!RELEASES_ONLY) await Promise.all(cfg.repos.map(async (repo) => {
   const slug = slugOf(repo);
   if (!slug) { prErrors.push(`${repo}: no git remote found under ${root}`); return; }
   try {
@@ -215,7 +218,7 @@ for (const r of mergedByRepo) for (const p of r.prs) { p.ticketDeps = p.keys.map
 const OPEN_CACHE = path.join(CACHE_DIR, 'open-prs.json');
 const openCache = (() => { try { return JSON.parse(fs.readFileSync(OPEN_CACHE, 'utf8')); } catch { return {}; } })();
 const openRaw = [];
-await Promise.all(cfg.repos.map(async (repo) => {
+if (!RELEASES_ONLY) await Promise.all(cfg.repos.map(async (repo) => {
   const slug = slugOf(repo);
   if (!slug) return;
   try { for (const p of await gh(['pr', 'list', '--repo', slug, '--state', 'open', '--limit', '100', '--json', 'number,title,body,author,url,headRefName,baseRefName,createdAt,updatedAt,isDraft,reviewDecision'])) openRaw.push({ repo, slug, p }); }
@@ -240,7 +243,7 @@ for (const p of openPrs) {
   openCacheNew[id] = { updatedAt: p.updatedAt, savedAt: openFresh.get(id) ? nowIso : (openCache[id]?.savedAt || nowIso), bumps: e.bumps, refs: e.refs, files: e.files };
   delete p.body;
 }
-fs.writeFileSync(OPEN_CACHE, JSON.stringify(openCacheNew));
+if (!RELEASES_ONLY) fs.writeFileSync(OPEN_CACHE, JSON.stringify(openCacheNew)); // a releases-only run fetched no PRs: keep the cache
 for (const p of openPrs) for (const k of p.keys) for (const o of openPrs) if (o.repo !== p.repo && o.keys.includes(k) && !p.deps.siblings.some((s) => s.repo === o.repo && s.number === o.number)) p.deps.siblings.push({ repo: o.repo, number: o.number, url: o.url, key: k });
 const openLinkMap = await jiraLinks({ search, keys: openPrs.flatMap((p) => p.keys) });
 const knownTen = [...new Set(Object.values(ledgerNow.releases || {}).flatMap((r) => r.tenants))];
@@ -260,7 +263,7 @@ lap('GitHub: open PRs + Jira');
 const prLedger = loadPrLedger();
 // Ledger entries from before ticket types were kept have none: look those tickets up once, so defect fixes can be told apart.
 // A ticket Jira no longer returns gets an empty type, so it is not asked for again. If Jira cannot be read the entries stay as they are.
-try {
+if (!RELEASES_ONLY) try {
   const untyped = [...new Set(Object.values(prLedger.prs).flatMap((r) => (r.tickets || []).filter((t) => t.type === undefined).map((t) => t.key)))];
   const typeOf = new Map();
   for (const c of chunk(untyped, 80)) for (const t of (await search(`key in (${c.join(',')})`)).map(mapIssue)) typeOf.set(t.key, t.type || '');
@@ -273,7 +276,7 @@ for (const r of mergedByRepo) for (const p of r.prs) {
     files: p.deps.files, bumps: p.deps.bumps, refs: p.deps.refs, siblings: p.deps.siblings, links: td.flatMap((t) => t.blockers), declared: td.flatMap((t) => t.declared), needsOther: td.flatMap((t) => t.needsOther), analysis: p.analysis, tier: p.tier, tierWhy: p.tierWhy }, DAY);
 }
 const knownTenants = [...new Set(Object.values(ledgerNow.releases || {}).flatMap((r) => r.tenants))];
-const prLedgerInfo = savePrLedger(prLedger, DAY, knownTenants, ledgerNow);
+const prLedgerInfo = RELEASES_ONLY ? { count: Object.keys(prLedger.prs).length, analyzed: 0, dir: '' } : savePrLedger(prLedger, DAY, knownTenants, ledgerNow);
 const prRag = a['rag-dir'] ? copyPrsToRag(String(a['rag-dir']).replace(/^~/, os.homedir())) : null;
 
 // ---------------------------------------------------------------- outputs
@@ -313,11 +316,11 @@ mdOut.push(deps.length ? md(deps.map((t) => [`[${t.key}](${jiraUrl(t.key)}) ${tr
 if (prErrors.length) mdOut.push(`\n_PR scan problems: ${prErrors.join('; ')}_`);
 
 fs.mkdirSync(CACHE_DIR, { recursive: true });
-if (!PRS_ONLY) { // a PRs-only run has no releases to report, so the written report is left as the last full run made it
+if (!PRS_ONLY && !RELEASES_ONLY) { // a PRs-only run has no releases to report (and a releases-only run no PRs), so the written report is left as the last full run made it
   fs.writeFileSync(path.join(CACHE_DIR, 'daily.md'), mdOut.join('\n') + '\n');
   fs.writeFileSync(path.join(CACHE_DIR, 'daily.json'), JSON.stringify(d, null, 2));
 }
-if (a.html && !PRS_ONLY) fs.writeFileSync(path.join(CACHE_DIR, 'daily.html'), renderHtml(d)); // the HTML report is opt-in now; My Tracker reads the data file below
+if (a.html && !PRS_ONLY && !RELEASES_ONLY) fs.writeFileSync(path.join(CACHE_DIR, 'daily.html'), renderHtml(d)); // the HTML report is opt-in now; My Tracker reads the data file below
 
 // Data for the My Tracker "Release & PRs" tabs (releases, to release today, merged PRs). No HTML.
 const OUT_DIR = path.join(CACHE_DIR, 'data');
@@ -332,19 +335,26 @@ if (PRS_ONLY) {
   try { prev = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')); } catch { /* no data file yet */ }
   if (!prev) { console.error('No delivery data yet: run the full report once first.'); process.exit(1); }
   fs.writeFileSync(DATA_FILE, JSON.stringify({ ...prev, prs: delivery.prs, openPrs: delivery.openPrs, pendingAi: delivery.pendingAi, prsGeneratedAt: delivery.generatedAt, prsTiming: delivery.timing }));
+} else if (RELEASES_ONLY) {
+  // Mirror image: take the releases and To Release Today from this run, keep every PR list from the last run.
+  let prev = null;
+  try { prev = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')); } catch { /* no data file yet */ }
+  if (!prev) { console.error('No delivery data yet: run the full report once first.'); process.exit(1); }
+  fs.writeFileSync(DATA_FILE, JSON.stringify({ ...delivery, prs: prev.prs, openPrs: prev.openPrs, pendingAi: prev.pendingAi, prsGeneratedAt: prev.prsGeneratedAt || prev.generatedAt, prsTiming: prev.prsTiming ?? prev.timing ?? null }));
 } else {
   fs.writeFileSync(DATA_FILE, JSON.stringify(delivery));
 }
 
 console.log(`Daily summary for ${DAY} (releases dated ${YDAY}; PRs ${windowNote}: ${fmtTime(winSince)} to ${fmtTime(winUntil)})`);
 if (!PRS_ONLY) console.log(`  completed releases: ${completed.length} (${completed.filter((g) => g.allDone).length} released) · need release today: ${needs.reduce((n, g) => n + g.tickets.length, 0)} tickets in ${needs.length} fix versions`);
+if (RELEASES_ONLY) console.log('  releases only: PR lists and the PR ledger were left as the last run made them');
 const prTotal = mergedByRepo.reduce((n, r) => n + r.prs.length, 0);
 const prAnalyzed = mergedByRepo.reduce((n, r) => n + r.prs.filter((p) => p.analysis).length, 0);
-console.log(`  merged PRs in this window: ${prTotal} in ${mergedByRepo.length} repos · ${prAnalyzed} have a change understanding`);
-if (prTotal > prAnalyzed) console.log(`  ${prTotal - prAnalyzed} PRs still need analysis: run pr-packet.mjs --missing, have Claude write pr-analysis/*.json, then re-run with --rerender`);
-console.log(`  PR ledger: ${prLedgerInfo.count} PRs tracked (${prLedgerInfo.analyzed} analyzed) in ${prLedgerInfo.dir}${prRag ? ` · copied ${prRag.files} files to ${prRag.dest}` : ''}`);
+if (!RELEASES_ONLY) console.log(`  merged PRs in this window: ${prTotal} in ${mergedByRepo.length} repos · ${prAnalyzed} have a change understanding`);
+if (!RELEASES_ONLY && prTotal > prAnalyzed) console.log(`  ${prTotal - prAnalyzed} PRs still need analysis: run pr-packet.mjs --missing, have Claude write pr-analysis/*.json, then re-run with --rerender`);
+if (!RELEASES_ONLY) console.log(`  PR ledger: ${prLedgerInfo.count} PRs tracked (${prLedgerInfo.analyzed} analyzed) in ${prLedgerInfo.dir}${prRag ? ` · copied ${prRag.files} files to ${prRag.dest}` : ''}`);
 if (!PRS_ONLY) console.log(`  release ledger: ${ledgerInfo.count} releases tracked in ${ledgerInfo.dir}${rag ? ` · copied ${rag.files} files to ${rag.dest}` : ''}`);
-console.log(`  open PRs: ${openRecords.length} · took ${delivery.timing.totalSec}s (${Object.entries(laps).map(([k, v]) => `${k} ${v}s`).join(', ')})`);
+console.log(`  ${RELEASES_ONLY ? '' : `open PRs: ${openRecords.length} · `}took ${delivery.timing.totalSec}s (${Object.entries(laps).map(([k, v]) => `${k} ${v}s`).join(', ')})`);
 console.log(`  data for My Tracker: ${path.join(OUT_DIR, 'delivery.json')} (${delivery.releases.length} releases, ${delivery.toRelease.length} to release today, ${delivery.prs.length} PRs) | daily.md | daily.json${a.html ? ' | daily.html' : ''}`);
 if (prErrors.length) console.log(`  PR scan problems: ${prErrors.join('; ')}`);
 if (saveState) { fs.mkdirSync(STATE_DIR, { recursive: true }); fs.writeFileSync(STATE, JSON.stringify({ since: winSince, until: winUntil, day: DAY, savedAt: nowIso }, null, 2)); console.log(`  next run will cover PRs merged after ${fmtTime(winUntil)}`); }

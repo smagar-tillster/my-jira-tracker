@@ -297,7 +297,7 @@ export interface DeliveryMeta {
   prsGeneratedAt?: string | null;
   prsTiming?: { totalSec: number } | null;
 }
-export interface RefreshJob { state: 'idle' | 'running' | 'done' | 'failed'; kind?: 'full' | 'prs' | null; startedAt: string | null; finishedAt: string | null; log: string[] }
+export interface RefreshJob { state: 'idle' | 'running' | 'done' | 'failed'; kind?: 'full' | 'prs' | 'releases' | null; startedAt: string | null; finishedAt: string | null; log: string[] }
 
 const csv = (a?: string[]) => (a && a.length ? a.join(',') : undefined);
 
@@ -314,6 +314,7 @@ export const deliveryApi = {
   analyzeStatus: async (): Promise<Record<string, AnalyzeJob>> => (await apiClient.get('/delivery/prs/analyze/status')).data.data,
   refresh: async (): Promise<RefreshJob> => (await apiClient.post('/delivery/refresh')).data.data,
   refreshPrs: async (): Promise<RefreshJob> => (await apiClient.post('/delivery/refresh-prs')).data.data,
+  refreshReleases: async (): Promise<RefreshJob> => (await apiClient.post('/delivery/refresh-releases')).data.data,
   refreshStatus: async (): Promise<RefreshJob> => (await apiClient.get('/delivery/refresh/status')).data.data,
 };
 

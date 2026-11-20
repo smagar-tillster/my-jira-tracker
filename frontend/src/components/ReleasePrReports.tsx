@@ -54,6 +54,14 @@ export default function ReleasePrReports() {
     }
   };
 
+  const refreshReleases = async () => {
+    try { setJob(await deliveryApi.refreshReleases()); watch(); }
+    catch (e: unknown) {
+      if ((e as { response?: { status?: number } })?.response?.status === 409) { setJob(await deliveryApi.refreshStatus()); watch(); }
+      else setJob({ state: 'failed', kind: 'releases', startedAt: null, finishedAt: null, log: [e instanceof Error ? e.message : 'Could not start the releases refresh'] });
+    }
+  };
+
   const running = job?.state === 'running';
   const prsAt = meta?.prsGeneratedAt || meta?.generatedAt || null;
   const tabs: { id: SubTab; label: string; count?: number }[] = [
@@ -81,6 +89,11 @@ export default function ReleasePrReports() {
               {meta.timing && <> · last run took {Math.round(meta.timing.totalSec)}s</>}
             </span>
           )}
+          <button onClick={refreshReleases} disabled={running}
+            title="Re-reads Jira only (about half the time of the full report): refreshes Released and To Release Today. PR lists are left as they are."
+            className="px-3 py-1.5 bg-white text-blue-700 border border-blue-300 rounded-lg text-sm hover:bg-blue-50 disabled:opacity-60 disabled:cursor-not-allowed">
+            {running && job?.kind === 'releases' ? '⏳ Refreshing releases…' : '↻ Refresh releases'}
+          </button>
           <button onClick={refresh} disabled={running}
             title="Re-reads Jira and GitHub and rebuilds the data on these tabs, then moves the 'since last run' marker for merged PRs."
             className="px-3 py-1.5 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 disabled:opacity-60 disabled:cursor-not-allowed">
@@ -91,7 +104,9 @@ export default function ReleasePrReports() {
 
       {job && job.state !== 'idle' && job.state !== 'running' && (
         <div className={`px-4 py-2 text-sm border-b flex items-start gap-3 ${job.state === 'failed' ? 'bg-red-50 text-red-800 border-red-200' : 'bg-green-50 text-green-800 border-green-200'}`}>
-          <span className="font-medium">{job.state === 'failed' ? (job.kind === 'prs' ? 'Fetching PRs failed.' : 'The report run failed.') : (job.kind === 'prs' ? 'Latest PRs fetched.' : 'Latest report is ready.')}</span>
+          <span className="font-medium">{job.state === 'failed'
+            ? (job.kind === 'prs' ? 'Fetching PRs failed.' : job.kind === 'releases' ? 'Refreshing releases failed.' : 'The report run failed.')
+            : (job.kind === 'prs' ? 'Latest PRs fetched.' : job.kind === 'releases' ? 'Releases refreshed.' : 'Latest report is ready.')}</span>
           {job.state === 'failed' && job.log.length > 0 && (
             <details className="flex-1"><summary className="cursor-pointer">Run log</summary><pre className="mt-1 text-xs whitespace-pre-wrap max-h-40 overflow-auto">{job.log.join('\n')}</pre></details>
           )}

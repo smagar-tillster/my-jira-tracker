@@ -98,6 +98,8 @@ function launch(kind, extraArgs) {
 
 router.post('/delivery/refresh', (req, res) => startJob(res, 'full'));
 router.post('/delivery/refresh-prs', (req, res) => startJob(res, 'prs', ['--prs-only']));
+// "Refresh releases" (--releases-only) re-reads Jira only: releases and To Release Today. PR lists, the PR ledger and the marker are left alone.
+router.post('/delivery/refresh-releases', (req, res) => startJob(res, 'releases', ['--releases-only']));
 
 router.get('/delivery/refresh/status', (req, res) => res.json({ success: true, data: job }));
 
