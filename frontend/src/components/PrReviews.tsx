@@ -212,7 +212,6 @@ const PrReviews: React.FC = () => {
     <div className="h-full flex flex-col bg-gray-50">
       {/* Top bar */}
       <div className="flex items-center gap-3 px-4 py-2 bg-white border-b border-gray-200 text-sm flex-wrap">
-        <span className="font-semibold text-gray-700">PR Reviews</span>
         {([
           ['queued', `Queued (${counts.queued})`],
           ['todo', `To review (${counts.todo})`],
