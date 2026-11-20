@@ -48,7 +48,7 @@ export default function ReleasedTab({ meta, refreshKey }: { meta: DeliveryMeta; 
         {filtered && (
           <button onClick={() => { setFrom(''); setTo(''); setTenants([]); setEnvs([]); setTypes([]); }}
             title={`Back to the last released day${meta.lastReleasedDay ? ` (${meta.lastReleasedDay})` : ''} with no tenant, env or type filter`}
-            className="px-3 py-1.5 rounded-lg text-sm bg-gray-100 text-gray-700 ring-1 ring-gray-300 hover:bg-gray-200 whitespace-nowrap">✕ Clear filters</button>
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-red-500 text-white hover:bg-red-600 transition-colors whitespace-nowrap">🧹 Clear Filters</button>
         )}
         <button onClick={() => setSummaryOpen(true)} disabled={rows.length === 0}
           className="px-3 py-1.5 rounded-lg text-sm bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">Release summary</button>
