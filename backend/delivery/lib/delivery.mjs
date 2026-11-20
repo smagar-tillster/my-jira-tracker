@@ -8,7 +8,7 @@ import { normTier } from './triage.mjs';
 import { isDefectFix, meaningOf, shippedFor } from './prmeaning.mjs';
 
 const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-export const isReadyTicket = (t) => t.statusCategory === 'Done' || t.status === 'Ready for QA'; // repo rule: Ready for QA counts as done
+export const isReadyTicket = (t) => t.statusCategory === 'Done' || t.status === 'Ready for QA' || t.status === 'In QA'; // repo rule: Ready for QA and In QA count as done (same as the Tasks list)
 
 /** "UAT/LAB", "PROD - Pilot Stores", "UAT/PROD" ... -> which of the two filter values it matches */
 export const envFlags = (env) => {

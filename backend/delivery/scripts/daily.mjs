@@ -70,7 +70,7 @@ const fmtTime = (iso) => new Date(iso).toLocaleString('en-US', { weekday: 'short
 const pretty = (day) => new Date(`${day}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 const normTenant = (t) => aliases[t] || t;
 const isDone = (t) => t.statusCategory === 'Done';
-const isReady = (t) => isDone(t) || t.status === 'Ready for QA'; // repo rule: Ready for QA counts as done
+const isReady = (t) => isDone(t) || t.status === 'Ready for QA' || t.status === 'In QA'; // repo rule: Ready for QA and In QA count as done (same as the Tasks list)
 const isRelease = (t) => t.type.toLowerCase() === 'release';
 const isTestTicket = (t) => /regression testing/i.test(t.summary);
 const chunk = (arr, n) => Array.from({ length: Math.ceil(arr.length / n) }, (_, i) => arr.slice(i * n, i * n + n));
