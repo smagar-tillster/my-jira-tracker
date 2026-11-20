@@ -74,15 +74,15 @@ export default function ReleasePrReports() {
   return (
     <RefreshContext.Provider value={{ fetchPrs: refreshPrs, refreshReleases, releasesAt: meta?.generatedAt || null, job, running, prsAt }}>
     <div className="h-full flex flex-col bg-gray-50 overflow-hidden">
-      <div className="bg-white border-b border-gray-200 px-4 pt-3 flex items-end gap-2">
-        <span className="text-lg font-semibold text-gray-800 mr-3 pb-2">📦 Release &amp; PRs</span>
+      <div className="bg-white border-b border-gray-200 px-4 py-2.5 flex items-center gap-2">
+        <span className="text-lg font-semibold text-gray-800 mr-3">📦 Release &amp; PRs</span>
         {tabs.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            className={`px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 ${tab === t.id ? 'border-blue-600 text-blue-700 bg-blue-50' : 'border-transparent text-gray-600 hover:bg-gray-100'}`}>
-            {t.label}{t.count !== undefined && <span className="ml-1.5 text-xs bg-gray-200 text-gray-700 px-1.5 py-0.5 rounded-full">{t.count}</span>}
+          <button key={t.id} onClick={() => setTab(t.id)} aria-current={tab === t.id ? 'page' : undefined}
+            className={`inline-flex items-center gap-2 px-4 py-1.5 text-sm font-medium rounded-full border transition-colors ${tab === t.id ? 'bg-blue-600 border-blue-600 text-white shadow-sm' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-100 hover:border-gray-400'}`}>
+            {t.label}{t.count !== undefined && <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${tab === t.id ? 'bg-white/25 text-white' : 'bg-gray-200 text-gray-700'}`}>{t.count}</span>}
           </button>
         ))}
-        <div className="ml-auto pb-2 flex items-center gap-3">
+        <div className="ml-auto flex items-center gap-3">
           {meta && (
             <span className="text-xs text-gray-500" title={meta.timing ? Object.entries(meta.timing.stages).map(([k, v]) => `${k}: ${v}s`).join('\n') : undefined}>
               Data as of {new Date(meta.generatedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
