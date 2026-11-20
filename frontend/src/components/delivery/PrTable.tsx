@@ -203,7 +203,7 @@ const prSummary = (prs: DeliveryPr[], open?: boolean) => {
 // The tenant with the most PRs first.
 const mostFirst = byCount<DeliveryPr>();
 
-export default function PrTable({ rows, open, empty, onChanged, controls }: { rows: DeliveryPr[]; open?: boolean; empty: string; onChanged: () => void; controls?: React.ReactNode }) {
+export default function PrTable({ rows, open, empty, onChanged, controls, revealComplex = 0 }: { rows: DeliveryPr[]; open?: boolean; empty: string; onChanged: () => void; controls?: React.ReactNode; revealComplex?: number }) {
   const [shown, setShown] = useState<DeliveryPr | null>(null);
   const { jobs, start } = useAnalyze(onChanged);
   const review = useCodeReview(onChanged);
@@ -226,6 +226,17 @@ export default function PrTable({ rows, open, empty, onChanged, controls }: { ro
   const visible = useMemo(() => filterRows(rows, query, prSearchText), [rows, query]);
   const byClient = groupBy === 'client';
 
+  // "N complex PRs" on the page header: open the groups that hold them and bring the first one into view
+  const reveal = useMemo(() => {
+    const t = groupByTenant(visible.filter(p => p.aiRecommended), byClient ? prTenants : prRepo, undefined, undefined).groups.map(g => g.tenant);
+    return { n: revealComplex, tenants: t };
+  }, [revealComplex]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (revealComplex === 0) return;
+    const t = window.setTimeout(() => document.querySelector('[data-complex="1"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
+    return () => window.clearTimeout(t);
+  }, [revealComplex]);
+
   // keep the open modal in sync with refreshed rows
   const current = shown ? rows.find(r => r.id === shown.id) || shown : null;
 
@@ -243,7 +254,7 @@ export default function PrTable({ rows, open, empty, onChanged, controls }: { ro
       <ListControls groups={GROUPS} groupBy={groupBy} onGroupBy={setGroupBy} query={query} onQuery={setQuery} shown={visible.length} total={rows.length} unit="PR" extra={<>{controls}<FetchPrsButton counts={counts} /></>} allOpen={allOpen} onToggleAll={toggleAll} placeholder="Search PR #, ticket or title…" />
       {visible.length === 0 ? <div className="p-8 text-center text-gray-400">Nothing matches &ldquo;{query.trim()}&rdquo;.</div> : (
       <TenantGroupList command={cmd} onAllOpenChange={setAllOpen} items={visible} tenantsOf={byClient ? prTenants : prRepo} unit="PR" summary={prs => byClient ? prSummary(prs, open) : repoSummary(prs, open)}
-        groupLabel={groupLabel} expandAll={!!query.trim()} order={mostFirst} orderLabel="most PRs first" hideIntro>
+        reveal={reveal} groupLabel={groupLabel} expandAll={!!query.trim()} order={mostFirst} orderLabel="most PRs first" hideIntro>
         {prs => (
             <table className="w-full table-fixed text-[14px] leading-[22px] [overflow-wrap:anywhere]">
               <thead className="bg-gray-50 text-left text-[13px] font-semibold text-gray-600 border-b border-gray-200">
@@ -251,7 +262,7 @@ export default function PrTable({ rows, open, empty, onChanged, controls }: { ro
               </thead>
               <tbody>
                 {prs.map(p => (
-                  <tr key={p.id} className="border-t border-gray-100 align-top hover:bg-gray-50">
+                  <tr key={p.id} data-complex={p.aiRecommended ? 1 : undefined} className={`border-t border-gray-100 align-top ${p.aiRecommended ? 'bg-amber-50/60 hover:bg-amber-50' : 'hover:bg-gray-50'}`}>
                     <td className="px-2 py-2 whitespace-nowrap">
                       <a href={p.url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline font-medium">{p.repo} #{p.number}</a>
                       {open && p.isDraft && <span className="ml-1.5 text-[11px] px-1.5 py-0.5 rounded bg-gray-200 text-gray-700">draft</span>}

@@ -9,7 +9,7 @@ import { FALLBACK_TENANT, GroupOrder, groupByTenant } from './tenantGrouping';
  * with something not ready). `groupLabel` names what the groups are ("tenant" by default, or "repo", "component"); `fallback` is the group for
  * an item with none. `expandAll` opens every group (and keeps them open as the list changes), used while searching.
  */
-export default function TenantGroupList<T>({ items, tenantsOf, summary, unit, children, order, orderLabel = 'alphabetical', alert, groupLabel = 'tenant', fallback = FALLBACK_TENANT, expandAll = false, hideIntro = false, command, onAllOpenChange }: {
+export default function TenantGroupList<T>({ items, tenantsOf, summary, unit, children, order, orderLabel = 'alphabetical', alert, groupLabel = 'tenant', fallback = FALLBACK_TENANT, expandAll = false, hideIntro = false, command, onAllOpenChange, reveal }: {
   items: T[];
   tenantsOf: (item: T) => readonly string[] | null | undefined;
   summary: (items: T[], tenant: string) => ReactNode;
@@ -27,6 +27,8 @@ export default function TenantGroupList<T>({ items, tenantsOf, summary, unit, ch
   command?: { open: boolean; n: number };
   /** Tells the page whether every group is open, so its button can say Collapse all or Expand all. */
   onAllOpenChange?: (allOpen: boolean) => void;
+  /** Opens the named groups (and leaves the others as they are) each time `n` changes. */
+  reveal?: { n: number; tenants: string[] };
 }) {
   const { groups } = useMemo(() => groupByTenant(items, tenantsOf, order, fallback), [items, tenantsOf, order, fallback]);
   const [open, setOpen] = useState<Set<string>>(new Set());
@@ -35,6 +37,9 @@ export default function TenantGroupList<T>({ items, tenantsOf, summary, unit, ch
   const groupsRef = useRef(groups);
   groupsRef.current = groups;
   useEffect(() => { if (command && command.n > 0) setOpen(command.open ? new Set(groupsRef.current.map(g => g.tenant)) : new Set()); }, [command?.n]); // eslint-disable-line react-hooks/exhaustive-deps
+  const revealRef = useRef(reveal);
+  revealRef.current = reveal;
+  useEffect(() => { const r = revealRef.current; if (r && r.n > 0) setOpen(prev => new Set([...prev, ...r.tenants])); }, [reveal?.n]); // eslint-disable-line react-hooks/exhaustive-deps
   const toggle = (t: string) => setOpen(prev => { const n = new Set(prev); if (n.has(t)) n.delete(t); else n.add(t); return n; });
   const allOpen = groups.length > 0 && groups.every(g => open.has(g.tenant));
   useEffect(() => { onAllOpenChange?.(allOpen); }, [allOpen, onAllOpenChange]);
