@@ -31,7 +31,6 @@ export default function OpenPrsTab({ refreshKey }: { meta: DeliveryMeta; refresh
           <input type="checkbox" checked={hideDrafts} onChange={e => setHideDrafts(e.target.checked)} className="w-4 h-4" />
           Hide drafts ({drafts})
         </label>
-        <span className="text-sm text-gray-500 ml-auto">{shown.length} open PR{shown.length === 1 ? '' : 's'} · as of the last report run</span>
       </div>
       <div className="flex-1 overflow-auto p-4">
         {error && <div className="mb-3 px-3 py-2 text-sm bg-red-50 text-red-700 border border-red-200 rounded">❌ {error}</div>}

@@ -6,7 +6,7 @@ import { useRefresh } from './RefreshContext';
 import DefectRowButton from './DefectRow';
 import { jobText, openPrReviews, prId, useCodeReview } from './useCodeReview';
 import TenantGroupList from './TenantGroupList';
-import { byCount } from './tenantGrouping';
+import { byCount, groupByTenant } from './tenantGrouping';
 
 const RISK: Record<string, string> = { low: 'bg-green-100 text-green-800', medium: 'bg-yellow-100 text-yellow-800', high: 'bg-red-100 text-red-800' };
 const TONE: Record<string, string> = { ok: 'bg-green-100 text-green-800', warn: 'bg-red-100 text-red-800', info: 'bg-blue-100 text-blue-800' };
@@ -136,7 +136,7 @@ function Understanding({ p }: { p: DeliveryPr }) {
 }
 
 /** "Fetch latest PRs": re-reads GitHub for the PR lists only (no Jira sprint or release sync), so it is much quicker than the full report. */
-function FetchPrsButton() {
+function FetchPrsButton({ counts }: { counts?: string }) {
   const r = useRefresh();
   if (!r) return null;
   const mine = r.running && r.job?.kind === 'prs';
@@ -148,7 +148,7 @@ function FetchPrsButton() {
         className="px-3 py-1 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap">
         {mine ? '⏳ Fetching PRs…' : '⟳ Fetch latest PRs'}
       </button>
-      {at && <span className="text-xs text-gray-500">PRs as of {at}</span>}
+      {counts && <span className="text-sm text-gray-500" title={at ? `PRs as of ${at}` : undefined}>{counts}</span>}
     </>
   );
 }
@@ -235,12 +235,15 @@ export default function PrTable({ rows, open, empty, onChanged }: { rows: Delive
       <div className="p-8 text-center text-gray-400">{empty}</div>
     </>
   );
+  const groupLabel = byClient ? 'tenant' : 'repo';
+  const groupCount = groupByTenant(visible, byClient ? prTenants : prRepo, undefined, undefined).groups.length;
+  const counts = `${groupCount} ${groupLabel}${groupCount === 1 ? '' : 's'} · ${visible.length} PR${visible.length === 1 ? '' : 's'}`;
   return (
     <>
-      <ListControls groups={GROUPS} groupBy={groupBy} onGroupBy={setGroupBy} query={query} onQuery={setQuery} shown={visible.length} total={rows.length} unit="PR" extra={<FetchPrsButton />} allOpen={allOpen} onToggleAll={toggleAll} placeholder="Search PR #, ticket or title…" />
+      <ListControls groups={GROUPS} groupBy={groupBy} onGroupBy={setGroupBy} query={query} onQuery={setQuery} shown={visible.length} total={rows.length} unit="PR" extra={<FetchPrsButton counts={counts} />} allOpen={allOpen} onToggleAll={toggleAll} placeholder="Search PR #, ticket or title…" />
       {visible.length === 0 ? <div className="p-8 text-center text-gray-400">Nothing matches &ldquo;{query.trim()}&rdquo;.</div> : (
       <TenantGroupList command={cmd} onAllOpenChange={setAllOpen} items={visible} tenantsOf={byClient ? prTenants : prRepo} unit="PR" summary={prs => byClient ? prSummary(prs, open) : repoSummary(prs, open)}
-        groupLabel={byClient ? 'tenant' : 'repo'} expandAll={!!query.trim()} order={mostFirst} orderLabel="most PRs first">
+        groupLabel={groupLabel} expandAll={!!query.trim()} order={mostFirst} orderLabel="most PRs first" hideIntro>
         {prs => (
             <table className="w-full table-fixed text-[14px] leading-[22px] [overflow-wrap:anywhere]">
               <thead className="bg-gray-50 text-left text-[13px] font-semibold text-gray-600 border-b border-gray-200">

@@ -24,7 +24,6 @@ export default function MergedPrsTab({ refreshKey }: { meta: DeliveryMeta; refre
     return () => { cancelled = true; };
   }, [from, to, refreshKey, tick]);
 
-  const repos = new Set(rows.map(r => r.repo)).size;
   const pending = rows.filter(r => r.aiRecommended).length;
   const custom = !!(from || to);
 
@@ -39,7 +38,6 @@ export default function MergedPrsTab({ refreshKey }: { meta: DeliveryMeta; refre
         </label>
         {custom && <button onClick={() => { setFrom(''); setTo(''); }} className="px-3 py-1.5 rounded-lg text-sm bg-gray-100 text-gray-700 hover:bg-gray-200">Today</button>}
         {pending > 0 && <span className="text-xs bg-amber-50 text-amber-800 border border-amber-200 rounded px-2 py-1">{pending} complex PR{pending === 1 ? '' : 's'}: analysis recommended</span>}
-        <span className="text-sm text-gray-500 ml-auto">{rows.length} PR{rows.length === 1 ? '' : 's'} in {repos} repo{repos === 1 ? '' : 's'} · merged by date; each run adds PRs since the previous run</span>
       </div>
       <div className="flex-1 overflow-auto p-4">
         {error && <div className="mb-3 px-3 py-2 text-sm bg-red-50 text-red-700 border border-red-200 rounded">❌ {error}</div>}
