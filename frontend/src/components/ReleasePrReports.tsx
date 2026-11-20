@@ -76,9 +76,17 @@ export default function ReleasePrReports() {
   }, [busyReviews, pollReviewJobs]);
   useEffect(() => {
     if (readyToasts.length === 0) return;
-    const t = window.setTimeout(() => setReadyToasts(list => list.filter(x => Date.now() - x.at < 10000)), 10200);
+    const t = window.setTimeout(() => setReadyToasts(list => list.filter(x => Date.now() - x.at < 5000)), 5200);
     return () => window.clearTimeout(t);
   }, [readyToasts]);
+
+  // the "done" pill for a finished run goes away after 5 seconds (a failed run stays until it is closed)
+  const doneState = job && job.state !== 'idle' && job.state !== 'running' && job.state !== 'failed' ? job.state : null;
+  useEffect(() => {
+    if (!doneState) return;
+    const t = window.setTimeout(() => setJob(null), 5000);
+    return () => window.clearTimeout(t);
+  }, [doneState, job?.kind]);
 
   // Count on the PR Reviews pill: drafts waiting to be read and posted. Quiet on failure.
   useEffect(() => {
@@ -165,12 +173,10 @@ export default function ReleasePrReports() {
         </div>}
       </div>
 
-      {tab !== 'reviews' && job && job.state !== 'idle' && job.state !== 'running' && (
-        <div className={`px-4 py-2 text-sm border-b flex items-start gap-3 ${job.state === 'failed' ? 'bg-red-50 text-red-800 border-red-200' : 'bg-green-50 text-green-800 border-green-200'}`}>
-          <span className="font-medium">{job.state === 'failed'
-            ? (job.kind === 'prs' ? 'Fetching PRs failed.' : job.kind === 'releases' ? 'Refreshing releases failed.' : 'The report run failed.')
-            : (job.kind === 'prs' ? 'Latest PRs fetched.' : job.kind === 'releases' ? 'Releases refreshed.' : 'Latest report is ready.')}</span>
-          {job.state === 'failed' && job.log.length > 0 && (
+      {tab !== 'reviews' && job && job.state === 'failed' && (
+        <div className="px-4 py-2 text-sm border-b flex items-start gap-3 bg-red-50 text-red-800 border-red-200">
+          <span className="font-medium">{job.kind === 'prs' ? 'Fetching PRs failed.' : job.kind === 'releases' ? 'Refreshing releases failed.' : 'The report run failed.'}</span>
+          {job.log.length > 0 && (
             <details className="flex-1"><summary className="cursor-pointer">Run log</summary><pre className="mt-1 text-xs whitespace-pre-wrap max-h-40 overflow-auto">{job.log.join('\n')}</pre></details>
           )}
           <button onClick={() => setJob(null)} className="ml-auto text-gray-500 hover:text-gray-700">✕</button>
@@ -178,13 +184,18 @@ export default function ReleasePrReports() {
       )}
       {tab !== 'reviews' && error && !meta && <div className="m-4 px-3 py-2 text-sm bg-red-50 text-red-700 border border-red-200 rounded">❌ {error} — click “Run latest report” to build it now.</div>}
 
-      {readyToasts.length > 0 && (
-        <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2">
-          {readyToasts.filter(x => Date.now() - x.at < 10000).map(x => (
-            <div key={`${x.id}-${x.at}`} className="flex items-center gap-3 px-4 py-2.5 bg-white border border-green-300 rounded-lg shadow-lg text-sm">
-              <span>📝 Code review ready: <b>{x.id}</b></span>
-              <button onClick={() => { setTab('reviews'); setReadyToasts(l => l.filter(y => y !== x)); }} className="px-2 py-0.5 rounded-full bg-green-600 text-white text-xs hover:bg-green-700">Open</button>
-              <button onClick={() => setReadyToasts(l => l.filter(y => y !== x))} aria-label="Dismiss" className="text-gray-400 hover:text-gray-700">✕</button>
+      {/* A finished run or review shows as a small pill at the top and goes away by itself after 5 seconds */}
+      {((job && job.state !== 'idle' && job.state !== 'running' && job.state !== 'failed') || readyToasts.length > 0) && (
+        <div className="fixed top-3 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2 pointer-events-none">
+          {job && job.state !== 'idle' && job.state !== 'running' && job.state !== 'failed' && (
+            <div className="pointer-events-auto px-4 py-1.5 bg-green-600 text-white rounded-full shadow-lg text-sm font-medium">
+              ✓ {job.kind === 'prs' ? 'Latest PRs fetched' : job.kind === 'releases' ? 'Releases refreshed' : 'Latest report is ready'}
+            </div>
+          )}
+          {readyToasts.filter(x => Date.now() - x.at < 5000).map(x => (
+            <div key={`${x.id}-${x.at}`} className="pointer-events-auto flex items-center gap-2 pl-4 pr-2 py-1.5 bg-green-600 text-white rounded-full shadow-lg text-sm font-medium">
+              <span>📝 Code review ready: {x.id}</span>
+              <button onClick={() => { setTab('reviews'); setReadyToasts(l => l.filter(y => y !== x)); }} className="px-2 py-0.5 rounded-full bg-white text-green-700 text-xs hover:bg-green-50">Open</button>
             </div>
           ))}
         </div>
