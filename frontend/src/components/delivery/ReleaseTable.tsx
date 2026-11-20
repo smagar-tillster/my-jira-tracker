@@ -3,7 +3,7 @@ import { DeliveryRelease } from '../../services/api';
 import { ListControls, Modal, Section, StatusDot, TicketLink, dayLabel } from './shared';
 import { filterRows } from './search';
 import TenantGroupList from './TenantGroupList';
-import { byCount, byNotReady } from './tenantGrouping';
+import { byCount, byNotReady, groupByTenant } from './tenantGrouping';
 import { useRefresh } from './RefreshContext';
 
 const envBadge = (env: string) => (
@@ -68,7 +68,7 @@ const mostFirst = byCount<DeliveryRelease>();
 const hasNotReady = (items: DeliveryRelease[]) => notReadyCount(items) > 0;
 
 /** "Refresh releases": re-reads Jira only (no GitHub), so it is quicker than the full report; the PR lists are left as they are. */
-function RefreshReleasesButton() {
+function RefreshReleasesButton({ counts }: { counts: string }) {
   const r = useRefresh();
   if (!r) return null;
   const mine = r.running && r.job?.kind === 'releases';
@@ -80,7 +80,7 @@ function RefreshReleasesButton() {
         className="px-3 py-1 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap">
         {mine ? '⏳ Refreshing releases…' : '⟳ Refresh releases'}
       </button>
-      {at && <span className="text-xs text-gray-500">Releases as of {at}</span>}
+      <span className="text-sm text-gray-500" title={at ? `Releases as of ${at}` : undefined}>{counts}</span>
     </>
   );
 }
@@ -104,12 +104,15 @@ export default function ReleaseTable({ rows, showStatus, empty }: { rows: Delive
   const shown = useMemo(() => filterRows(rows, query), [rows, query]);
   if (rows.length === 0) return <div className="p-8 text-center text-gray-400">{empty}</div>;
   const byClient = groupBy === 'client';
+  const groupLabel = byClient ? 'tenant' : 'component';
+  const groupCount = groupByTenant(shown, byClient ? releaseTenants : releaseComponents, undefined, byClient ? undefined : '(no component)').groups.length;
+  const counts = `${groupCount} ${groupLabel}${groupCount === 1 ? '' : 's'} · ${shown.length} release ticket${shown.length === 1 ? '' : 's'}`;
   return (
     <>
-      <ListControls groups={GROUPS} groupBy={groupBy} onGroupBy={setGroupBy} query={query} onQuery={setQuery} shown={shown.length} total={rows.length} unit="release ticket" allOpen={allOpen} onToggleAll={toggleAll} extra={<RefreshReleasesButton />} />
+      <ListControls groups={GROUPS} groupBy={groupBy} onGroupBy={setGroupBy} query={query} onQuery={setQuery} shown={shown.length} total={rows.length} unit="release ticket" allOpen={allOpen} onToggleAll={toggleAll} extra={<RefreshReleasesButton counts={counts} />} />
       {shown.length === 0 ? <div className="p-8 text-center text-gray-400">Nothing matches &ldquo;{query.trim()}&rdquo;.</div> : (
-        <TenantGroupList command={cmd} onAllOpenChange={setAllOpen} items={shown} tenantsOf={byClient ? releaseTenants : releaseComponents} unit="release ticket" summary={items => groupSummary(items, showStatus)}
-          groupLabel={byClient ? 'tenant' : 'component'} fallback={byClient ? undefined : '(no component)'} expandAll={!!query.trim()}
+        <TenantGroupList command={cmd} onAllOpenChange={setAllOpen} items={shown} tenantsOf={byClient ? releaseTenants : releaseComponents} unit="release ticket" summary={items => groupSummary(items, showStatus)} hideIntro
+          groupLabel={groupLabel} fallback={byClient ? undefined : '(no component)'} expandAll={!!query.trim()}
           order={byClient ? (showStatus ? notReadyFirst : mostFirst) : mostFirst}
           orderLabel={byClient && showStatus ? 'tenants with tickets not ready first' : 'most release tickets first'}
           alert={showStatus ? hasNotReady : undefined}>
