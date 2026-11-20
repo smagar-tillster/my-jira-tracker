@@ -7,7 +7,7 @@ import { parseLocalDate } from '../utils/dateUtils';
 import { ListControls } from './delivery/shared';
 import { filterRows } from './delivery/search';
 import TenantGroupList from './delivery/TenantGroupList';
-import { GroupOrder, cleanTenants } from './delivery/tenantGrouping';
+import { GroupOrder, cleanTenants, groupByTenant } from './delivery/tenantGrouping';
 
 const timeOf = (iso: string) => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 const dayTime = (iso: string) => {
@@ -80,6 +80,21 @@ function QuickList<T>({ items, unit, groups, summary, alert, textOf, placeholder
   const spec = groups.find(g => g.id === groupBy) || groups[0];
   const shown = useMemo(() => filterRows(items, query, textOf), [items, query, textOf]);
   const tenantsOf = spec.tenantsOf;
+  // The group order is worked out when a Group by is picked (or the tab is opened) and then held: marking tickets read, a new run or a search
+  // never moves a group while you are looking at it. Switching away and back sorts again. A group that appears later goes to the end.
+  const seenBy = useRef(spec.id);
+  const frozen = useRef<{ names: string[] } | null>(null);
+  if (seenBy.current !== spec.id) { seenBy.current = spec.id; frozen.current = null; }
+  if (tenantsOf && (!frozen.current || (frozen.current.names.length === 0 && items.length > 0))) {
+    frozen.current = { names: groupByTenant(items, tenantsOf, spec.order, spec.fallback).groups.map(g => g.tenant) };
+  }
+  const names = tenantsOf ? frozen.current?.names : undefined;
+  const heldOrder = useMemo<GroupOrder<T> | undefined>(() => {
+    if (!names) return spec.order;
+    const rank = new Map(names.map((n, i) => [n.toLowerCase(), i] as const));
+    return (a, b) => (rank.get(a.tenant.toLowerCase()) ?? names.length) - (rank.get(b.tenant.toLowerCase()) ?? names.length)
+      || b.items.length - a.items.length || a.tenant.localeCompare(b.tenant, 'en', { sensitivity: 'base' });
+  }, [names, spec.order]);
   const groupCount = tenantsOf ? new Set(shown.flatMap(i => cleanTenants(tenantsOf(i), spec.fallback))).size : 0;
   return (
     <>
@@ -90,7 +105,7 @@ function QuickList<T>({ items, unit, groups, summary, alert, textOf, placeholder
         <div className="rounded-lg border border-gray-200 bg-white overflow-clip">{table(shown)}</div>
       ) : (
         <TenantGroupList command={cmd} onAllOpenChange={setAllOpen} items={shown} tenantsOf={tenantsOf} unit={unit} summary={summary} alert={alert} hideIntro
-          groupLabel={spec.label.toLowerCase()} fallback={spec.fallback} order={spec.order} orderLabel="most first" expandAll={!!query.trim()}>
+          groupLabel={spec.label.toLowerCase()} fallback={spec.fallback} order={heldOrder} orderLabel="most first" expandAll={!!query.trim()}>
           {(rows, group) => <>{before?.(group, rows)}{table(rows)}</>}
         </TenantGroupList>
       )}
