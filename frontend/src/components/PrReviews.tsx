@@ -1,10 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { PrReview, PrReviewComment, ReviewApiError, ReviewQueueItem, generateBusy, reviewsApi } from '../services/api';
-import { jobText, prId, useCodeReview } from './delivery/useCodeReview';
-import { quickFindPrs } from './delivery/search';
+import { PrReview, PrReviewComment, ReviewApiError, generateBusy, reviewsApi } from '../services/api';
+import { useCodeReview } from './delivery/useCodeReview';
 
-type Filter = 'todo' | 'posted' | 'closed' | 'all';
+type Filter = 'queued' | 'todo' | 'posted' | 'closed' | 'all';
 
 const rid = (r: PrReview) => `${r.repo}#${r.number}@${r.headSha.slice(0, 7)}`;
 const ago = (iso: string) => {
@@ -73,113 +72,6 @@ const DiffSnippet: React.FC<{ c: PrReviewComment }> = ({ c }) => {
   );
 };
 
-const TIER_BADGE: Record<string, { label: string; cls: string; title: string }> = {
-  deep: { label: 'deep', cls: 'bg-purple-100 text-purple-700', title: 'Larger or riskier change: a thorough review with the surrounding code' },
-  light: { label: 'light', cls: 'bg-blue-100 text-blue-700', title: 'Ordinary change: a short review' },
-  skip: { label: 'small', cls: 'bg-gray-100 text-gray-500', title: 'The rules would normally skip this (docs, tests, styles, translations or tiny)' },
-};
-const JOB_TONE: Record<string, string> = { info: 'text-blue-700', ok: 'text-green-700', warn: 'text-amber-700', err: 'text-red-600' };
-
-/** Open PRs with no review yet. Tick several and press Initiate Code Review: each becomes a draft below; nothing is posted. */
-const InitiatePanel: React.FC<{ onDone: () => void }> = ({ onDone }) => {
-  const [items, setItems] = useState<ReviewQueueItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
-  const [open, setOpen] = useState(true);
-  const [picked, setPicked] = useState<Set<string>>(new Set());
-  const [find, setFind] = useState('');
-  const [fetchedAt, setFetchedAt] = useState<string | null>(null);
-
-  // Opening the page and finishing a review use the last GitHub read; the refresh button reads GitHub again.
-  const loadQueue = useCallback(async (refresh = false) => {
-    setLoading(true); setErr(null);
-    try {
-      const { items: q, fetchedAt: at } = await reviewsApi.queue({ cached: !refresh });
-      setItems(q); setFetchedAt(at);
-      setPicked(prev => new Set([...prev].filter(id => q.some(i => prId(i) === id))));
-    } catch (e: any) {
-      setErr(e?.response?.data?.error || e?.message || 'Could not load open PRs');
-    } finally { setLoading(false); }
-  }, []);
-  useEffect(() => { loadQueue(); }, [loadQueue]);
-
-  const { jobs, start, error, busy } = useCodeReview(() => { onDone(); loadQueue(); });
-
-  // The search narrows the list; Select all and Initiate Code Review only ever act on what is shown.
-  const shown = useMemo(() => quickFindPrs(items, find), [items, find]);
-  const free = shown.filter(i => !generateBusy(jobs[prId(i)]));
-  const chosen = shown.filter(i => picked.has(prId(i)) && !generateBusy(jobs[prId(i)]));
-  const toggle = (id: string) => setPicked(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  const allTicked = free.length > 0 && free.every(i => picked.has(prId(i)));
-  const run = async () => { await start(chosen.map(i => ({ repo: i.repo, number: i.number }))); setPicked(new Set()); };
-  // Enter on a search that finds exactly one PR ticks it, so "#419, Enter" is enough to pull it in
-  const onFindKey = (e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') setFind('');
-    if (e.key === 'Enter' && free.length === 1) setPicked(prev => new Set(prev).add(prId(free[0])));
-  };
-
-  return (
-    <div className="border-b border-gray-200 bg-gray-50">
-      <button onClick={() => setOpen(o => !o)} className="w-full flex items-center gap-2 px-4 py-2 text-left hover:bg-gray-100">
-        <span className="text-gray-400 text-xs">{open ? '▼' : '▶'}</span>
-        <span className="text-sm font-semibold text-gray-700">Open PRs without a review ({find.trim() ? `${shown.length} of ${items.length}` : items.length})</span>
-        {busy && <span className="ml-auto text-xs text-blue-700">⏳ working…</span>}
-      </button>
-      {open && (
-        <div className="px-4 pb-3">
-          {err && <p className="text-xs text-red-600 mb-2">{err}</p>}
-          {loading && items.length === 0 && <p className="text-xs text-gray-400">Loading…</p>}
-          {!loading && !err && items.length === 0 && <p className="text-xs text-gray-400">Every open PR already has a review.</p>}
-          {items.length > 0 && (
-            <>
-              <div className="flex items-center gap-2 mb-2 text-xs">
-                <label className="flex items-center gap-1.5 text-gray-600">
-                  <input type="checkbox" checked={allTicked} disabled={free.length === 0}
-                    onChange={() => setPicked(allTicked ? new Set() : new Set(free.map(prId)))} />
-                  Select all
-                </label>
-                <div className="relative flex-1 min-w-0">
-                  <input value={find} onChange={e => setFind(e.target.value)} onKeyDown={onFindKey} placeholder="Find #number…" aria-label="Find a PR by number"
-                    className="w-full pl-2 pr-6 py-1 border border-gray-300 rounded bg-white text-xs focus:outline-none focus:ring-1 focus:ring-blue-300" />
-                  {find && <button onClick={() => setFind('')} aria-label="Clear" title="Clear" className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700">✕</button>}
-                </div>
-                {fetchedAt && <span className="ml-auto text-gray-400 whitespace-nowrap" title="When the open PRs were last read from GitHub">as of {new Date(fetchedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>}
-                <button onClick={() => loadQueue(true)} disabled={loading} title="Read the open PRs from GitHub again" className={`${fetchedAt ? '' : 'ml-auto '}text-gray-500 hover:text-gray-800 disabled:opacity-50`}>{loading ? '⏳' : '↻'}</button>
-              </div>
-              <div className="max-h-64 overflow-y-auto bg-white border border-gray-200 rounded-md divide-y divide-gray-100">
-                {shown.length === 0 && <p className="px-2 py-3 text-xs text-gray-400">No open PR without a review matches &ldquo;{find.trim()}&rdquo;.</p>}
-                {shown.map(i => {
-                  const id = prId(i); const j = jobs[id]; const t = jobText(j); const tier = TIER_BADGE[i.tier] || TIER_BADGE.light;
-                  return (
-                    <label key={id} className={`flex items-start gap-2 px-2 py-1.5 text-xs ${generateBusy(j) ? 'opacity-70' : 'cursor-pointer hover:bg-blue-50'}`}>
-                      <input type="checkbox" className="mt-0.5" checked={picked.has(id)} disabled={generateBusy(j)} onChange={() => toggle(id)} />
-                      <span className="min-w-0 flex-1">
-                        <span className="flex items-center gap-1.5">
-                          <a href={i.url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="font-semibold text-blue-700 hover:underline">{id}</a>
-                          <Badge className={tier.cls} title={`${tier.title} (${i.tierWhy})`}>{tier.label}</Badge>
-                          <span className="text-gray-400 ml-auto whitespace-nowrap">{ago(i.updatedAt)}</span>
-                        </span>
-                        <span className="block text-gray-800 truncate" title={i.title}>{i.title}</span>
-                        {t && <span className={`block ${JOB_TONE[t.tone]}`} title={j?.message}>{t.text.slice(0, 110)}</span>}
-                      </span>
-                    </label>
-                  );
-                })}
-              </div>
-              <button onClick={run} disabled={chosen.length === 0}
-                className="mt-2 w-full px-3 py-1.5 rounded bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed">
-                Initiate Code Review ({chosen.length})
-              </button>
-              <p className="mt-1.5 text-[11px] text-gray-400">A few reviews run at a time. Each saves a draft here for you to read and post; nothing goes to GitHub until you post it.</p>
-              {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
-            </>
-          )}
-        </div>
-      )}
-    </div>
-  );
-};
-
 const PrReviews: React.FC = () => {
   const [reviews, setReviews] = useState<PrReview[]>([]);
   const [loading, setLoading] = useState(true);
@@ -215,18 +107,20 @@ const PrReviews: React.FC = () => {
 
   useEffect(() => { load(); }, [load]);
 
-  // Reviews started from Open PRs (or here) that are not finished: shown at the top of the list until they become drafts.
+  // Reviews started from Open PRs that are not finished: listed under Queued until they become drafts in To review.
   const { jobs: reviewJobs } = useCodeReview(() => { load(); });
   const inProgress = Object.values(reviewJobs).filter(generateBusy);
 
   const counts = useMemo(() => ({
+    queued: inProgress.length,
     todo: reviews.filter(r => r.status === 'draft').length,
     posted: reviews.filter(r => r.status === 'posted').length,
     closed: reviews.filter(r => r.status === 'skipped' || r.status === 'stale').length,
-  }), [reviews]);
+  }), [reviews, inProgress.length]);
 
   const shown = useMemo(() => reviews.filter(r =>
-    filter === 'all' ? true
+    filter === 'queued' ? false
+      : filter === 'all' ? true
       : filter === 'todo' ? r.status === 'draft'
       : filter === 'posted' ? r.status === 'posted'
       : r.status === 'skipped' || r.status === 'stale'), [reviews, filter]);
@@ -320,6 +214,7 @@ const PrReviews: React.FC = () => {
       <div className="flex items-center gap-3 px-4 py-2 bg-white border-b border-gray-200 text-sm flex-wrap">
         <span className="font-semibold text-gray-700">PR Reviews</span>
         {([
+          ['queued', `Queued (${counts.queued})`],
           ['todo', `To review (${counts.todo})`],
           ['posted', `Posted (${counts.posted})`],
           ['closed', `Skipped / outdated (${counts.closed})`],
@@ -346,23 +241,22 @@ const PrReviews: React.FC = () => {
       <div className="flex-1 flex min-h-0">
         {/* List */}
         <div className="w-96 max-w-[40%] border-r border-gray-200 overflow-y-auto bg-white">
-          <InitiatePanel onDone={load} />
-          {inProgress.length > 0 && (
-            <div className="px-4 py-2 border-b border-amber-200 bg-amber-50">
-              <div className="text-xs font-semibold text-amber-800 mb-1">In the queue ({inProgress.length}) · you will be told when each one is ready</div>
-              {inProgress.map(j => (
-                <div key={j.id} className="flex items-center gap-2 text-xs py-0.5">
-                  <span className="font-semibold text-blue-700">{j.id}</span>
-                  <Badge className={j.state === 'running' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-800'}>{j.state === 'running' ? 'reviewing' : 'queued'}</Badge>
-                </div>
-              ))}
+          {(filter === 'queued' || filter === 'all') && inProgress.map(j => (
+            <div key={j.id} className="px-4 py-3 border-b border-gray-100 bg-amber-50/60">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-blue-700">{j.id}</span>
+                <Badge className={j.state === 'running' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-800'}>{j.state === 'running' ? 'reviewing' : 'queued'}</Badge>
+                <span className="ml-auto text-xs text-gray-400">{ago(j.queuedAt)}</span>
+              </div>
+              <div className="text-xs text-gray-500 mt-1">{j.state === 'running' ? 'Reviewing now' : 'Waiting for a free slot'} · you will be told when it is ready</div>
             </div>
-          )}
+          ))}
           {loading && reviews.length === 0 && <p className="p-4 text-sm text-gray-400">Loading…</p>}
-          {!loading && shown.length === 0 && (
+          {!loading && shown.length === 0 && !(inProgress.length > 0 && (filter === 'queued' || filter === 'all')) && (
             <div className="p-6 text-center text-sm text-gray-400">
               <div className="text-3xl mb-2">📝</div>
-              {filter === 'todo' ? 'No drafts waiting. Tick open PRs above and press Initiate Code Review.' : 'Nothing here yet.'}
+              {filter === 'queued' ? 'Nothing is queued.' : filter === 'todo' ? 'No drafts waiting.' : 'Nothing here yet.'}
+              {(filter === 'queued' || filter === 'todo') && <div className="mt-1">Start one from Open PRs: Initiate Code Review on a PR.</div>}
             </div>
           )}
           {shown.map(r => (

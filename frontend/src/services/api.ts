@@ -360,11 +360,6 @@ const reviewErr = (e: any): never => {
 };
 const rvPath = (r: Pick<PrReview, 'repo' | 'number' | 'headSha'>) => `/reviews/${r.repo}/${r.number}/${r.headSha.slice(0, 7)}`;
 
-/** An open PR that has no review saved for its current head commit. */
-export interface ReviewQueueItem {
-  repo: string; number: number; title: string; url: string; headSha: string; baseRef: string; author: string; updatedAt: string;
-  tier: 'skip' | 'light' | 'deep'; tierWhy: string;
-}
 /** One "Initiate Code Review" job. exists = a review for this commit is already saved; queued = the claude CLI is unusable, run /pr-review in Claude. */
 export interface GenerateJob {
   id: string; state: 'waiting' | 'running' | 'done' | 'exists' | 'queued' | 'failed'; message: string;
@@ -384,12 +379,6 @@ export interface DefectRowProposal {
 export interface DefectRowResult { state: 'done' | 'exists'; message: string; data: DefectRowProposal }
 
 export const reviewsApi = {
-  /** Open PRs without a review for their current commit, including ones the rules would skip (their tier says so). */
-  queue: async (opts: { cached?: boolean } = {}): Promise<{ items: ReviewQueueItem[]; fetchedAt: string | null }> => {
-    // cached: the last GitHub read (the page's first load); otherwise GitHub is read now (its refresh button)
-    const r = (await apiClient.get('/reviews/queue', { params: { all: 1, ...(opts.cached ? { cached: 1 } : {}) } })).data;
-    return { items: r.data, fetchedAt: r.fetchedAt ?? null };
-  },
   /** Initiate Code Review for several PRs at once; the backend runs a few at a time and keeps the rest waiting. */
   generate: async (prs: { repo: string; number: number }[]): Promise<Record<string, GenerateJob>> => {
     try { return (await apiClient.post('/reviews/generate', { prs })).data.data; } catch (e) { return reviewErr(e); }
