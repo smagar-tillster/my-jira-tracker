@@ -98,8 +98,8 @@ test('with no split there is one line, All tickets, which is the month totals', 
 
 test('the tile numbers: stories, defects and the top client, over the tickets in view only', () => {
   const a = A.aggregate({ rows: rows(), months: 6, now: NOW });
-  assert.deepEqual(a.summary, { stories: 2, defects: 2, topClient: { name: 'BK', count: 3 } });   // A-1, A-2 (Story), A-3, A-4 (Defect); A-6, A-8 are not in view
-  assert.deepEqual(A.aggregate({ rows: rows(), months: 6, filters: { assignee: 'Ann' }, now: NOW }).summary, { stories: 1, defects: 1, topClient: { name: 'BK', count: 1 } });   // PLK ties and sorts after BK
+  assert.deepEqual(a.summary, { stories: 2, defects: 2, topClient: { name: 'BK', count: 3 }, timeSpent: 0 });   // A-1, A-2 (Story), A-3, A-4 (Defect); A-6, A-8 are not in view
+  assert.deepEqual(A.aggregate({ rows: rows(), months: 6, filters: { assignee: 'Ann' }, now: NOW }).summary, { stories: 1, defects: 1, topClient: { name: 'BK', count: 1 }, timeSpent: 0 });   // PLK ties and sorts after BK
   assert.equal(A.aggregate({ rows: [], now: NOW }).summary.topClient, null);
 });
 
@@ -160,7 +160,7 @@ test('the search asks only for done NGK Sprint tickets resolved in the last 6 mo
   assert.equal(S.buildJql({ project: 'NGK' }), 'project = NGK AND sprint in ("NGK Sprint") AND type NOT IN (Release, "Test Case Execution-Smoke/Sanity/Regression", Epic) AND issuetype not in subTaskIssueTypes() AND statusCategory = Done AND resolved >= startOfMonth(-6) ORDER BY created ASC');   // 6 months shown, read one month further
   assert.match(S.buildJql({ project: 'NGK', months: 3 }), /resolved >= startOfMonth\(-3\)/);
   assert.ok(!/openSprints/i.test(S.buildJql()));                    // past sprints count too
-  assert.deepEqual(S.FIELDS, ['issuetype', 'created', 'resolutiondate', 'status', 'updated', 'assignee', 'customfield_16047', 'customfield_10007', 'summary', 'description', 'components', 'labels', 'priority']);
+  assert.deepEqual(S.FIELDS, ['issuetype', 'created', 'resolutiondate', 'status', 'updated', 'assignee', 'customfield_16047', 'customfield_10007', 'summary', 'description', 'components', 'labels', 'priority', 'aggregatetimespent', 'timespent']);
 });
 
 test('a read replaces the copy with what Jira returned, assignee and clients included', async () => {

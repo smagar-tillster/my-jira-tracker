@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AnalyzeJob, DeliveryPr, GenerateJob, deliveryApi, generateBusy } from '../../services/api';
+import { AnalyzeJob, DeliveryPr, GenerateJob, deliveryApi, generateBusy, reviewsApi } from '../../services/api';
 import { ListControls, Modal, Section } from './shared';
 import { filterRows, prSearchText } from './search';
 import { useRefresh } from './RefreshContext';
 import DefectRowButton from './DefectRow';
-import { jobText, prId, useCodeReview } from './useCodeReview';
+import { jobText, openPrReviews, prId, useCodeReview } from './useCodeReview';
 import TenantGroupList from './TenantGroupList';
-import { byCount } from './tenantGrouping';
+import { byCount, groupByTenant } from './tenantGrouping';
 
 const RISK: Record<string, string> = { low: 'bg-green-100 text-green-800', medium: 'bg-yellow-100 text-yellow-800', high: 'bg-red-100 text-red-800' };
 const TONE: Record<string, string> = { ok: 'bg-green-100 text-green-800', warn: 'bg-red-100 text-red-800', info: 'bg-blue-100 text-blue-800' };
@@ -53,36 +53,43 @@ export function useAnalyze(onDone: () => void) {
   return { jobs, start };
 }
 
-function AnalyzeButton({ p, job, onStart }: { p: DeliveryPr; job?: AnalyzeJob; onStart: (p: DeliveryPr) => void }) {
-  if (job?.state === 'running') return <span className="text-xs text-blue-700">⏳ Analyzing…</span>;
-  if (job?.state === 'queued') return <span className="text-xs text-amber-700" title={job.message}>Queued for a manual run</span>;
-  const label = p.analysis && !p.rulesOnly ? '↻ Re-analyze' : 'Analyze';
+/** Merged PRs: "Analyze" is a link in the Details window; the analysis then shows right there. */
+function AnalyzeLink({ p, job, onStart }: { p: DeliveryPr; job?: AnalyzeJob; onStart: (p: DeliveryPr) => void }) {
+  if (job?.state === 'running') return <span className="text-sm text-blue-700">⏳ Analyzing… the analysis will appear here</span>;
+  if (job?.state === 'queued') return <span className="text-sm text-amber-700" title={job.message}>Queued for a manual run</span>;
+  const label = p.analysis && !p.rulesOnly ? '↻ Re-analyze' : 'Analyze this PR';
   return (
     <span className="inline-flex flex-col">
-      <button onClick={() => onStart(p)} className="text-xs px-2 py-1 rounded bg-indigo-100 text-indigo-800 hover:bg-indigo-200 whitespace-nowrap">{label}</button>
-      {job?.state === 'failed' && <span className="text-[11px] text-red-600 max-w-[160px]" title={job.message}>failed: {job.message.slice(0, 60)}</span>}
+      <button onClick={() => onStart(p)} className="text-sm text-blue-600 hover:underline text-left">{label}</button>
+      {job?.state === 'failed' && <span className="text-xs text-red-600" title={job.message}>failed: {job.message.slice(0, 100)}</span>}
     </span>
   );
 }
 
 const JOB_TONE: Record<string, string> = { info: 'text-blue-700', ok: 'text-green-700', warn: 'text-amber-700', err: 'text-red-600' };
 
-/** Open PRs: the review is written as a draft in the PR Reviews tab, which the user reads and posts by hand. */
-function CodeReviewButton({ p, job, onStart }: { p: DeliveryPr; job?: GenerateJob; onStart: (p: DeliveryPr) => void }) {
+const PILL = 'inline-block px-3 py-0.5 rounded-full text-xs font-medium border whitespace-nowrap';
+const PILL_BLUE = `${PILL} bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100`;
+const PILL_INDIGO = `${PILL} bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100`;
+const PILL_GREEN = `${PILL} bg-green-50 text-green-700 border-green-200 hover:bg-green-100`;
+
+/** Open PRs: the review is written as a draft in the PR Reviews pill, which the user reads and posts by hand.
+ *  Queued or running: a progress pill. Done (or a review already exists): "See PR review", which opens PR Reviews. */
+function CodeReviewPill({ p, job, reviewed, onStart }: { p: DeliveryPr; job?: GenerateJob; reviewed: boolean; onStart: (p: DeliveryPr) => void }) {
+  if (generateBusy(job)) return <span className={`${PILL} bg-amber-50 text-amber-800 border-amber-200`}>⏳ {job?.state === 'running' ? 'Reviewing…' : 'Queued'}</span>;
+  if (job?.state === 'done' || job?.state === 'exists' || reviewed) return <button onClick={openPrReviews} className={PILL_GREEN} title="Opens PR Reviews">See PR review →</button>;
   const t = jobText(job);
   return (
-    <span className="inline-flex flex-col">
-      {generateBusy(job)
-        ? <span className="text-xs text-blue-700">⏳ {t?.text}</span>
-        : <button onClick={() => onStart(p)} className="text-xs px-2 py-1 rounded bg-indigo-100 text-indigo-800 hover:bg-indigo-200 whitespace-nowrap">Initiate Code Review</button>}
-      {t && !generateBusy(job) && <span className={`text-[11px] max-w-[170px] ${JOB_TONE[t.tone]}`} title={job?.message}>{t.text.slice(0, 80)}</span>}
+    <span className="inline-flex flex-col gap-0.5">
+      <button onClick={() => onStart(p)} className={PILL_INDIGO}>Initiate Code Review</button>
+      {t && <span className={`text-[11px] max-w-[220px] ${JOB_TONE[t.tone]}`} title={job?.message}>{t.text.slice(0, 80)}</span>}
     </span>
   );
 }
 
 const List = ({ items }: { items?: string[] }) => <ul className="list-disc pl-5 space-y-1">{(items || []).map((s, i) => <li key={i}>{s}</li>)}</ul>;
 
-function PrModal({ p, job, onStart, reviewJob, onReview, onClose }: { p: DeliveryPr; job?: AnalyzeJob; onStart: (p: DeliveryPr) => void; reviewJob?: GenerateJob; onReview: (p: DeliveryPr) => void; onClose: () => void }) {
+function PrModal({ p, job, onStart, reviewJob, reviewed, onReview, onClose }: { p: DeliveryPr; job?: AnalyzeJob; onStart: (p: DeliveryPr) => void; reviewJob?: GenerateJob; reviewed: boolean; onReview: (p: DeliveryPr) => void; onClose: () => void }) {
   const a = p.analysis;
   const adds = p.files.reduce((s, f) => s + f.add, 0);
   const dels = p.files.reduce((s, f) => s + f.del, 0);
@@ -113,7 +120,7 @@ function PrModal({ p, job, onStart, reviewJob, onReview, onClose }: { p: Deliver
           </div>
         ) : <p className="text-gray-500">No analysis yet.</p>}
         <div className="mt-2">
-          {p.open ? <CodeReviewButton p={p} job={reviewJob} onStart={onReview} /> : <AnalyzeButton p={p} job={job} onStart={onStart} />}
+          {p.open ? (!p.isDraft && <CodeReviewPill p={p} job={reviewJob} reviewed={reviewed} onStart={onReview} />) : <AnalyzeLink p={p} job={job} onStart={onStart} />}
         </div>
       </Section>
       {a?.confirm?.length ? <Section title="Please confirm"><List items={a.confirm} /></Section> : null}
@@ -129,7 +136,7 @@ function Understanding({ p }: { p: DeliveryPr }) {
 }
 
 /** "Fetch latest PRs": re-reads GitHub for the PR lists only (no Jira sprint or release sync), so it is much quicker than the full report. */
-function FetchPrsButton() {
+function FetchPrsButton({ counts }: { counts?: string }) {
   const r = useRefresh();
   if (!r) return null;
   const mine = r.running && r.job?.kind === 'prs';
@@ -141,7 +148,7 @@ function FetchPrsButton() {
         className="px-3 py-1 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap">
         {mine ? '⏳ Fetching PRs…' : '⟳ Fetch latest PRs'}
       </button>
-      {at && <span className="text-xs text-gray-500">PRs as of {at}</span>}
+      {counts && <span className="text-sm text-gray-500" title={at ? `PRs as of ${at}` : undefined}>{counts}</span>}
     </>
   );
 }
@@ -152,9 +159,9 @@ const SHIP_TONE: Record<string, string> = { prod: 'bg-green-100 text-green-800',
 function Shipped({ p }: { p: DeliveryPr }) {
   if (p.open) return null;
   const rows = p.shipped || [];
-  if (!rows.length) return <div className="text-[11px] text-gray-400 mt-0.5" title="No release ticket dated on or after the merge lists this PR's ticket">not in a release yet</div>;
+  if (!rows.length) return <div className="text-[11px] text-gray-400 mt-0.5 whitespace-normal" title="No release ticket dated on or after the merge lists this PR's ticket">not in a release yet</div>;
   return (
-    <div className="flex flex-wrap gap-1 mt-0.5">
+    <div className="flex flex-wrap gap-1 mt-0.5 whitespace-normal">
       {rows.slice(0, 3).map(r => (
         <span key={r.key} className={`text-[11px] px-1.5 py-px rounded ${SHIP_TONE[r.released ? (/PROD/i.test(r.env) ? 'prod' : 'uat') : 'planned']}`}
           title={`${r.key} · ${r.tenant} · ${r.env} · ${r.date} · ${r.released ? 'released' : r.status}${p.shippedApprox ? ' · by ticket: it also has PRs in other repos, so this PR may not be in this release' : ''}`}>
@@ -196,11 +203,21 @@ const prSummary = (prs: DeliveryPr[], open?: boolean) => {
 // The tenant with the most PRs first.
 const mostFirst = byCount<DeliveryPr>();
 
-export default function PrTable({ rows, open, empty, onChanged }: { rows: DeliveryPr[]; open?: boolean; empty: string; onChanged: () => void }) {
+export default function PrTable({ rows, open, empty, onChanged, controls, revealComplex = 0 }: { rows: DeliveryPr[]; open?: boolean; empty: string; onChanged: () => void; controls?: React.ReactNode; revealComplex?: number }) {
   const [shown, setShown] = useState<DeliveryPr | null>(null);
   const { jobs, start } = useAnalyze(onChanged);
   const review = useCodeReview(onChanged);
   const startReview = (p: DeliveryPr) => review.start([{ repo: p.repo, number: p.number }]);
+  // PRs that already have a review in PR Reviews (any status): their pill reads "See PR review". Open PRs only.
+  const [reviewedIds, setReviewedIds] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    const load = () => reviewsApi.list().then(l => { if (alive) setReviewedIds(new Set(l.filter(r => r.status === 'draft' || r.status === 'posted').map(r => prId(r)))); }).catch(() => { /* the pill just offers to initiate */ });
+    load();
+    window.addEventListener('reviews-changed', load);
+    return () => { alive = false; window.removeEventListener('reviews-changed', load); };
+  }, [open]);
   const [groupBy, setGroupBy] = useState<GroupBy>('client');
   const [query, setQuery] = useState('');
   const [cmd, setCmd] = useState({ open: false, n: 0 });
@@ -209,30 +226,44 @@ export default function PrTable({ rows, open, empty, onChanged }: { rows: Delive
   const visible = useMemo(() => filterRows(rows, query, prSearchText), [rows, query]);
   const byClient = groupBy === 'client';
 
+  // "N complex PRs" on the page header: open the groups that hold them and bring the first one into view
+  const reveal = useMemo(() => {
+    const t = groupByTenant(visible.filter(p => p.aiRecommended), byClient ? prTenants : prRepo, undefined, undefined).groups.map(g => g.tenant);
+    return { n: revealComplex, tenants: t };
+  }, [revealComplex]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (revealComplex === 0) return;
+    const t = window.setTimeout(() => document.querySelector('[data-complex="1"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
+    return () => window.clearTimeout(t);
+  }, [revealComplex]);
+
   // keep the open modal in sync with refreshed rows
   const current = shown ? rows.find(r => r.id === shown.id) || shown : null;
 
   if (rows.length === 0) return (
     <>
-      <div className="flex items-center gap-3 mb-2"><FetchPrsButton /></div>
+      <div className="flex items-center gap-3 mb-2">{controls}<FetchPrsButton /></div>
       <div className="p-8 text-center text-gray-400">{empty}</div>
     </>
   );
+  const groupLabel = byClient ? 'tenant' : 'repo';
+  const groupCount = groupByTenant(visible, byClient ? prTenants : prRepo, undefined, undefined).groups.length;
+  const counts = `${groupCount} ${groupLabel}${groupCount === 1 ? '' : 's'} · ${visible.length} PR${visible.length === 1 ? '' : 's'}`;
   return (
     <>
-      <ListControls groups={GROUPS} groupBy={groupBy} onGroupBy={setGroupBy} query={query} onQuery={setQuery} shown={visible.length} total={rows.length} unit="PR" extra={<FetchPrsButton />} allOpen={allOpen} onToggleAll={toggleAll} placeholder="Search PR #, ticket or title…" />
+      <ListControls groups={GROUPS} groupBy={groupBy} onGroupBy={setGroupBy} query={query} onQuery={setQuery} shown={visible.length} total={rows.length} unit="PR" extra={<>{controls}<FetchPrsButton counts={counts} /></>} allOpen={allOpen} onToggleAll={toggleAll} placeholder="Search PR #, ticket or title…" />
       {visible.length === 0 ? <div className="p-8 text-center text-gray-400">Nothing matches &ldquo;{query.trim()}&rdquo;.</div> : (
       <TenantGroupList command={cmd} onAllOpenChange={setAllOpen} items={visible} tenantsOf={byClient ? prTenants : prRepo} unit="PR" summary={prs => byClient ? prSummary(prs, open) : repoSummary(prs, open)}
-        groupLabel={byClient ? 'tenant' : 'repo'} expandAll={!!query.trim()} order={mostFirst} orderLabel="most PRs first">
+        reveal={reveal} groupLabel={groupLabel} expandAll={!!query.trim()} order={mostFirst} orderLabel="most PRs first" hideIntro>
         {prs => (
             <table className="w-full table-fixed text-[14px] leading-[22px] [overflow-wrap:anywhere]">
               <thead className="bg-gray-50 text-left text-[13px] font-semibold text-gray-600 border-b border-gray-200">
-                <tr><th className="px-2 py-[7px] w-[170px]">PR</th><th className="px-2 py-[7px] w-[170px]">Ticket</th><th className="px-2 py-[7px]">What it builds</th><th className="px-2 py-[7px] w-[30%]">Understanding</th><th className="px-2 py-[7px] w-[160px]"></th></tr>
+                <tr><th className="px-2 py-[7px] w-[220px]">PR</th><th className="px-2 py-[7px] w-[250px]">Ticket</th><th className="px-2 py-[7px]">What it builds</th><th className="px-2 py-[7px] w-[30%]">Understanding</th></tr>
               </thead>
               <tbody>
                 {prs.map(p => (
-                  <tr key={p.id} className="border-t border-gray-100 align-middle hover:bg-gray-50">
-                    <td className="px-2 py-[5.5px] whitespace-nowrap">
+                  <tr key={p.id} data-complex={p.aiRecommended ? 1 : undefined} className={`border-t border-gray-100 align-top ${p.aiRecommended ? 'bg-amber-50/60 hover:bg-amber-50' : 'hover:bg-gray-50'}`}>
+                    <td className="px-2 py-2 whitespace-nowrap">
                       <a href={p.url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline font-medium">{p.repo} #{p.number}</a>
                       {open && p.isDraft && <span className="ml-1.5 text-[11px] px-1.5 py-0.5 rounded bg-gray-200 text-gray-700">draft</span>}
                       {p.defectFix && <span className="ml-1.5 text-[11px] px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 font-medium" title="The Jira ticket is a Defect, Bug or Incident">defect fix</span>}
@@ -241,13 +272,13 @@ export default function PrTable({ rows, open, empty, onChanged }: { rows: Delive
                       </div>
                       {open && p.reviewDecision && REVIEW[p.reviewDecision] && <span className={`text-[11px] px-1.5 py-0.5 rounded ${REVIEW[p.reviewDecision][1]}`}>{REVIEW[p.reviewDecision][0]}</span>}
                     </td>
-                    <td className="px-2 py-[5.5px] whitespace-nowrap">
+                    <td className="px-2 py-2 whitespace-nowrap">
                       {p.tickets.map(t => <div key={t.key}><a href={t.url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">{t.key}</a></div>)}
                       {p.tickets.length === 0 && <span className="text-gray-400">—</span>}
-                      {p.tenants.length > 0 && <div className="text-xs text-gray-500">{p.tenants.join(', ')}</div>}
+                      {p.tenants.length > 0 && <div className="text-xs text-gray-500 whitespace-normal break-words">{p.tenants.join(', ')}</div>}
                       <Shipped p={p} />
                     </td>
-                    <td className="px-2 py-[5.5px]">
+                    <td className="px-2 py-2">
                       <div className="font-medium text-gray-800" title={p.meaning ? `${p.meaning}${p.meaningSource && p.meaningSource !== 'title' ? ` (from the ${p.meaningSource.replace('-', ' ')})` : ''}` : p.line1}>{p.line1}</div>
                       {p.line2 && <div className="text-xs text-gray-500 mt-0.5">{p.line2}</div>}
                       {p.dependsOn.length > 0 && (
@@ -261,14 +292,11 @@ export default function PrTable({ rows, open, empty, onChanged }: { rows: Delive
                         </div>
                       )}
                     </td>
-                    <td className="px-2 py-[5.5px] text-xs text-gray-700"><Understanding p={p} /></td>
-                    <td className="px-2 py-[5.5px] whitespace-nowrap">
-                      <div className="flex flex-col items-start gap-1.5">
-                        <button onClick={() => setShown(p)} className="text-blue-600 hover:underline text-sm">Details</button>
-                        {p.open
-                          ? !p.isDraft && <CodeReviewButton p={p} job={review.jobs[prId(p)]} onStart={startReview} />
-                          : (!p.analysis || p.rulesOnly) && <AnalyzeButton p={p} job={jobs[p.id]} onStart={start} />}
-                        {!p.open && p.analysis && !p.rulesOnly && jobs[p.id]?.state === 'running' && <span className="text-xs text-blue-700">⏳ Analyzing…</span>}
+                    <td className="px-2 py-2 text-xs text-gray-700">
+                      <Understanding p={p} />
+                      <div className="flex flex-wrap items-start gap-2 mt-2">
+                        <button onClick={() => setShown(p)} className={PILL_BLUE}>Details</button>
+                        {p.open && !p.isDraft && <CodeReviewPill p={p} job={review.jobs[prId(p)]} reviewed={reviewedIds.has(prId(p))} onStart={startReview} />}
                         <DefectRowButton p={p} />
                       </div>
                     </td>
@@ -279,7 +307,7 @@ export default function PrTable({ rows, open, empty, onChanged }: { rows: Delive
         )}
       </TenantGroupList>
       )}
-      {current && <PrModal p={current} job={jobs[current.id]} onStart={start} reviewJob={review.jobs[prId(current)]} onReview={startReview} onClose={() => setShown(null)} />}
+      {current && <PrModal p={current} job={jobs[current.id]} onStart={start} reviewJob={review.jobs[prId(current)]} reviewed={reviewedIds.has(prId(current))} onReview={startReview} onClose={() => setShown(null)} />}
     </>
   );
 }

@@ -318,7 +318,7 @@ const ListView: React.FC<ListViewProps> = ({
             {/* Group line: arrow, group name (total), then the Blocked and Aligned counts */}
             <div
               onClick={() => toggleGroupExpansion(groupKey)}
-              className={`bg-gray-100 border-l-4 cursor-pointer hover:bg-gray-200 transition-colors sticky z-10 ${expandedGroups.has(groupKey) ? 'border-indigo-500' : 'border-gray-300'}`}
+              className={`border-l-4 cursor-pointer transition-colors sticky z-10 bg-gradient-to-r ${expandedGroups.has(groupKey) ? 'from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 border-indigo-500' : 'from-white to-gray-100 hover:from-gray-50 hover:to-gray-200 border-gray-300'}`}
               style={{ top: groupStickyTop }}
             >
               <div className="sticky left-0 flex items-center gap-3 px-3 py-[5px] w-max">

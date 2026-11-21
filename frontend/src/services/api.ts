@@ -297,7 +297,7 @@ export interface DeliveryMeta {
   prsGeneratedAt?: string | null;
   prsTiming?: { totalSec: number } | null;
 }
-export interface RefreshJob { state: 'idle' | 'running' | 'done' | 'failed'; kind?: 'full' | 'prs' | null; startedAt: string | null; finishedAt: string | null; log: string[] }
+export interface RefreshJob { state: 'idle' | 'running' | 'done' | 'failed'; kind?: 'full' | 'prs' | 'releases' | null; startedAt: string | null; finishedAt: string | null; log: string[] }
 
 const csv = (a?: string[]) => (a && a.length ? a.join(',') : undefined);
 
@@ -314,6 +314,7 @@ export const deliveryApi = {
   analyzeStatus: async (): Promise<Record<string, AnalyzeJob>> => (await apiClient.get('/delivery/prs/analyze/status')).data.data,
   refresh: async (): Promise<RefreshJob> => (await apiClient.post('/delivery/refresh')).data.data,
   refreshPrs: async (): Promise<RefreshJob> => (await apiClient.post('/delivery/refresh-prs')).data.data,
+  refreshReleases: async (): Promise<RefreshJob> => (await apiClient.post('/delivery/refresh-releases')).data.data,
   refreshStatus: async (): Promise<RefreshJob> => (await apiClient.get('/delivery/refresh/status')).data.data,
 };
 
@@ -359,11 +360,6 @@ const reviewErr = (e: any): never => {
 };
 const rvPath = (r: Pick<PrReview, 'repo' | 'number' | 'headSha'>) => `/reviews/${r.repo}/${r.number}/${r.headSha.slice(0, 7)}`;
 
-/** An open PR that has no review saved for its current head commit. */
-export interface ReviewQueueItem {
-  repo: string; number: number; title: string; url: string; headSha: string; baseRef: string; author: string; updatedAt: string;
-  tier: 'skip' | 'light' | 'deep'; tierWhy: string;
-}
 /** One "Initiate Code Review" job. exists = a review for this commit is already saved; queued = the claude CLI is unusable, run /pr-review in Claude. */
 export interface GenerateJob {
   id: string; state: 'waiting' | 'running' | 'done' | 'exists' | 'queued' | 'failed'; message: string;
@@ -383,8 +379,6 @@ export interface DefectRowProposal {
 export interface DefectRowResult { state: 'done' | 'exists'; message: string; data: DefectRowProposal }
 
 export const reviewsApi = {
-  /** Open PRs without a review for their current commit, including ones the rules would skip (their tier says so). */
-  queue: async (): Promise<ReviewQueueItem[]> => (await apiClient.get('/reviews/queue', { params: { all: 1 } })).data.data,
   /** Initiate Code Review for several PRs at once; the backend runs a few at a time and keeps the rest waiting. */
   generate: async (prs: { repo: string; number: number }[]): Promise<Record<string, GenerateJob>> => {
     try { return (await apiClient.post('/reviews/generate', { prs })).data.data; } catch (e) { return reviewErr(e); }
@@ -459,7 +453,9 @@ export const quickApi = {
 // ---------------------------------------------------------------- Trends
 export type TrendBasis = 'sprint' | 'created' | 'resolved';
 export type TrendGroup = 'all' | 'type' | 'client' | 'component' | 'assignee';
-export type TrendMonths = 3 | 6;
+/** 3 or 6 months, or 'ytd': this year so far (January up to the current month). */
+export type TrendMonths = 3 | 6 | 'ytd';
+export interface TrendTicket { key: string; summary: string; type: string; assignee: string; clients: string[]; components: string[]; date: string; month: string; url: string; /** Time logged on the ticket, in seconds (null when none or not read yet). */ timeSpent: number | null }
 export interface TrendsStatus {
   running: boolean; lastSyncAt: string | null; lastStatus: 'running' | 'ok' | 'failed' | null; lastError: string | null;
   lastDurationMs: number | null; tickets: number; firstLoad: boolean;
@@ -470,7 +466,7 @@ export interface TrendFilters { type?: string[]; client?: string[]; assignee?: s
 export interface SprintTrend {
   basis: TrendBasis; group: TrendGroup; months: string[]; series: TrendSeries[]; counts: Record<string, number[]>;
   /** For the tiles, over the tickets counted in the months shown. */
-  summary: { stories: number; defects: number; topClient: { name: string; count: number } | null };
+  summary: { stories: number; defects: number; topClient: { name: string; count: number } | null; /** Time logged on the tickets counted, in seconds. */ timeSpent: number };
   /** Distinct tickets per month (a ticket with two clients is one here although it is under both clients in `counts`). */
   totals: number[];
   options: { types: string[]; clients: string[]; components: string[]; assignees: string[] };
@@ -524,6 +520,9 @@ export const trendsApi = {
   status: async (): Promise<TrendsStatus> => (await apiClient.get('/trends/status')).data.data,
   sprintTickets: async (basis: TrendBasis, months: TrendMonths, group: TrendGroup, filters: TrendFilters): Promise<SprintTrend> =>
     (await apiClient.get('/trends/sprint-tickets', { params: trendQuery(basis, months, group, filters) })).data.data,
+  /** The tickets behind the chart (the ones counted in the months shown, after the filters), newest first. */
+  ticketList: async (basis: TrendBasis, months: TrendMonths, filters: TrendFilters): Promise<TrendTicket[]> =>
+    (await apiClient.get('/trends/sprint-tickets/list', { params: trendQuery(basis, months, 'all', filters) })).data.data,
   /** The defect analysis for the page's months and filters. Never asks the model; the saved guidance comes with it when there is one. */
   defects: async (months: TrendMonths, filters: TrendFilters): Promise<DefectAnalysis> =>
     (await apiClient.get('/trends/defects', { params: defectQuery(months, filters) })).data.data,

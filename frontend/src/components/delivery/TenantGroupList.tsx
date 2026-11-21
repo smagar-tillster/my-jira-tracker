@@ -9,7 +9,7 @@ import { FALLBACK_TENANT, GroupOrder, groupByTenant } from './tenantGrouping';
  * with something not ready). `groupLabel` names what the groups are ("tenant" by default, or "repo", "component"); `fallback` is the group for
  * an item with none. `expandAll` opens every group (and keeps them open as the list changes), used while searching.
  */
-export default function TenantGroupList<T>({ items, tenantsOf, summary, unit, children, order, orderLabel = 'alphabetical', alert, groupLabel = 'tenant', fallback = FALLBACK_TENANT, expandAll = false, command, onAllOpenChange }: {
+export default function TenantGroupList<T>({ items, tenantsOf, summary, unit, children, order, orderLabel = 'alphabetical', alert, groupLabel = 'tenant', fallback = FALLBACK_TENANT, expandAll = false, hideIntro = false, command, onAllOpenChange, reveal }: {
   items: T[];
   tenantsOf: (item: T) => readonly string[] | null | undefined;
   summary: (items: T[], tenant: string) => ReactNode;
@@ -21,10 +21,14 @@ export default function TenantGroupList<T>({ items, tenantsOf, summary, unit, ch
   groupLabel?: string;
   fallback?: string;
   expandAll?: boolean;
+  /** Leave out the sentence above the list that says how it is grouped (the page shows the counts itself). */
+  hideIntro?: boolean;
   /** Opens or closes every group each time `n` changes (the Expand all / Collapse all button lives with the page's other controls). */
   command?: { open: boolean; n: number };
   /** Tells the page whether every group is open, so its button can say Collapse all or Expand all. */
   onAllOpenChange?: (allOpen: boolean) => void;
+  /** Opens the named groups (and leaves the others as they are) each time `n` changes. */
+  reveal?: { n: number; tenants: string[] };
 }) {
   const { groups } = useMemo(() => groupByTenant(items, tenantsOf, order, fallback), [items, tenantsOf, order, fallback]);
   const [open, setOpen] = useState<Set<string>>(new Set());
@@ -33,6 +37,9 @@ export default function TenantGroupList<T>({ items, tenantsOf, summary, unit, ch
   const groupsRef = useRef(groups);
   groupsRef.current = groups;
   useEffect(() => { if (command && command.n > 0) setOpen(command.open ? new Set(groupsRef.current.map(g => g.tenant)) : new Set()); }, [command?.n]); // eslint-disable-line react-hooks/exhaustive-deps
+  const revealRef = useRef(reveal);
+  revealRef.current = reveal;
+  useEffect(() => { const r = revealRef.current; if (r && r.n > 0) setOpen(prev => new Set([...prev, ...r.tenants])); }, [reveal?.n]); // eslint-disable-line react-hooks/exhaustive-deps
   const toggle = (t: string) => setOpen(prev => { const n = new Set(prev); if (n.has(t)) n.delete(t); else n.add(t); return n; });
   const allOpen = groups.length > 0 && groups.every(g => open.has(g.tenant));
   useEffect(() => { onAllOpenChange?.(allOpen); }, [allOpen, onAllOpenChange]);
@@ -40,23 +47,23 @@ export default function TenantGroupList<T>({ items, tenantsOf, summary, unit, ch
 
   return (
     <div>
-      <div className="flex items-center gap-3 text-xs text-gray-500 pb-2">
+      {!hideIntro && <div className="flex items-center gap-3 text-xs text-gray-500 pb-2">
         <span>
           {groups.length} {groupLabel}{groups.length === 1 ? '' : 's'} · {items.length} {unit}{items.length === 1 ? '' : 's'}.
           Grouped by {groupLabel}, {orderLabel}{several > 0 ? `; ${several} ${several === 1 ? 'names' : 'name'} more than one ${groupLabel} and ${several === 1 ? 'is' : 'are'} listed under each` : ''}.
           {groupLabel !== 'repo' && <>Anything without a clear {groupLabel} is under {fallback}.</>}
         </span>
-      </div>
+      </div>}
       {/* Same look as the Tasks list: gray strip with one card per tenant (overflow-clip keeps the card corners round) */}
-      <div className="bg-gray-200 rounded-lg px-2 pb-2">
+      <div className="bg-gray-200 rounded-lg px-2 pt-2 pb-2">
         {groups.map(g => {
           const red = !!alert?.(g.items, g.tenant);
           const isOpen = open.has(g.tenant);
           const text = summary(g.items, g.tenant);
           return (
-            <div key={g.tenant} className={`mt-2 rounded-lg overflow-clip bg-white shadow-sm ${red ? 'ring-1 ring-red-300' : ''}`}>
+            <div key={g.tenant} className={`mb-2 last:mb-0 rounded-lg overflow-clip bg-white shadow-sm ${red ? 'ring-1 ring-red-300' : ''}`}>
               <button onClick={() => toggle(g.tenant)} data-alert={red || undefined}
-                className={`w-full flex items-center gap-3 px-3 py-[5px] text-left border-l-4 ${red ? 'bg-red-50 hover:bg-red-100 border-red-500' : `bg-gray-100 hover:bg-gray-200/70 ${isOpen ? 'border-indigo-500' : 'border-gray-300'}`}`}>
+                className={`w-full flex items-center gap-3 px-3 py-[5px] text-left border-l-4 ${red ? 'bg-gradient-to-r from-red-50 via-red-100 to-red-50 hover:from-red-100 hover:via-red-100 hover:to-red-100 border-red-500' : isOpen ? 'bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 border-indigo-500' : 'bg-gradient-to-r from-white to-gray-100 hover:from-gray-50 hover:to-gray-200 border-gray-300'}`}>
                 <span className={`text-xs ${red ? 'text-red-400' : 'text-gray-400'}`}>{isOpen ? '▼' : '▶'}</span>
                 <span className={`text-[13.4px] font-semibold ${red ? 'text-red-700' : 'text-gray-800'}`}>{g.tenant}</span>
                 <span className={`text-[11.5px] px-2 py-px rounded-full ${red ? 'bg-red-100 text-red-700' : 'bg-white text-gray-700 ring-1 ring-gray-300'}`}>{g.items.length}</span>

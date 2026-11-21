@@ -6,7 +6,6 @@ import ReleasePrReports from './components/ReleasePrReports';
 import AppDrawer from './components/shell/AppDrawer';
 import TabStrip from './components/shell/TabStrip';
 import NotificationBell, { BellItem } from './components/shell/NotificationBell';
-import PrReviews from './components/PrReviews';
 import MonitoringApp from './components/apps/MonitoringApp';
 import ReportViewer from './components/apps/ReportViewer';
 import ComingSoon from './components/apps/ComingSoon';
@@ -107,7 +106,7 @@ function App() {
       ? [{ id: 'quick-analysis', icon: '🔍', text: `Quick analysis: ${quickNew} new ticket${quickNew === 1 ? '' : 's'}`, detail: 'See the new tickets, FE suggestions and my priorities', onClick: () => openApp('quickAnalysis') }]
       : []),
     ...(reviewDrafts > 0
-      ? [{ id: 'review-drafts', icon: '📝', text: `${reviewDrafts} PR review draft${reviewDrafts === 1 ? '' : 's'} ready`, detail: 'Read them and post from PR Reviews', onClick: () => openApp('prReviews') }]
+      ? [{ id: 'review-drafts', icon: '📝', text: `${reviewDrafts} PR review draft${reviewDrafts === 1 ? '' : 's'} ready`, detail: 'Read them and post from PR Reviews', onClick: () => { try { sessionStorage.setItem('mytracker.releases.subtab', 'reviews'); } catch { /* the page just opens on its default tab */ } openApp('releases'); window.dispatchEvent(new Event('releases-subtab')); } }]
       : []),
   ];
 
@@ -260,8 +259,6 @@ function App() {
         return <Trends />;
       case 'releases':
         return <ReleasePrReports />;
-      case 'prReviews':
-        return <PrReviews />;
       case 'monitoring':
         return <MonitoringApp />;
       case 'mytester':

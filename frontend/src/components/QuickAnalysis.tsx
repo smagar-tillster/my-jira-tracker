@@ -1,9 +1,13 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  quickApi, jiraIcon, QuickReport, QuickStatus, QuickTicket, QuickNewTicket, QuickFeCandidate, QuickGroup, QuickSize,
+  quickApi, jiraApi, jiraIcon, QuickReport, QuickStatus, QuickTicket, QuickNewTicket, QuickFeCandidate, QuickGroup,
 } from '../services/api';
 import { BUCKET_PILL } from '../utils/statusBuckets';
 import { parseLocalDate } from '../utils/dateUtils';
+import { ListControls } from './delivery/shared';
+import { filterRows } from './delivery/search';
+import TenantGroupList from './delivery/TenantGroupList';
+import { GroupOrder, cleanTenants, groupByTenant } from './delivery/tenantGrouping';
 
 const timeOf = (iso: string) => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 const dayTime = (iso: string) => {
@@ -11,18 +15,17 @@ const dayTime = (iso: string) => {
   const same = d.toDateString() === new Date().toDateString();
   return same ? timeOf(iso) : `${d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} ${timeOf(iso)}`;
 };
-const hour = (h: number) => `${h % 12 === 0 ? 12 : h % 12} ${h < 12 ? 'AM' : 'PM'}`;
+const clock = (iso: string) => {
+  const d = new Date(iso);
+  const t = timeOf(iso).replace(' ', '').toLowerCase();
+  return d.toDateString() === new Date().toDateString() ? t : `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${t}`;
+};
+const shortTime = (iso: string) => {
+  const d = new Date(iso);
+  return d.toDateString() === new Date().toDateString() ? timeOf(iso) : `${d.toLocaleDateString('en-US', { weekday: 'short' })} ${timeOf(iso)}`;
+};
+const hour = (h: number) => `${h % 12 === 0 ? 12 : h % 12}${h < 12 ? 'am' : 'pm'}`;
 const shortDate = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-
-const SIZE_PILL: Record<QuickSize, string> = {
-  S: 'bg-green-100 text-green-800', M: 'bg-sky-100 text-sky-800', L: 'bg-amber-100 text-amber-800', XL: 'bg-red-100 text-red-800',
-};
-const SIZE_HINT: Record<QuickSize, string> = { S: 'About a day or less', M: 'Two to three days', L: 'About a week', XL: 'More than a week, or split it first' };
-const PRIORITY: Record<QuickGroup['priority'], { label: string; head: string; dot: string }> = {
-  high: { label: 'High', head: 'border-red-400 bg-red-50', dot: 'bg-red-500' },
-  medium: { label: 'Medium', head: 'border-amber-400 bg-amber-50', dot: 'bg-amber-500' },
-  low: { label: 'Low', head: 'border-gray-300 bg-gray-50', dot: 'bg-gray-400' },
-};
 
 const TicketLink = ({ t }: { t: Pick<QuickTicket, 'key' | 'url'> }) => (
   <a href={t.url} target="_blank" rel="noopener noreferrer" title={`Open ${t.key} in Jira`} className="font-semibold text-blue-700 hover:underline whitespace-nowrap">{t.key}</a>
@@ -56,94 +59,151 @@ const DateChip = ({ t }: { t: QuickTicket }) => {
   return <span className={`px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap ${late ? 'bg-red-100 text-red-800 ring-1 ring-red-300' : 'bg-gray-100 text-gray-700'}`}>{pick.l} {shortDate(pick.d)}</span>;
 };
 
-const Card: React.FC<{
-  icon: string; title: string; count?: number | string; hint?: string; right?: React.ReactNode; open: boolean; onToggle: () => void; children: React.ReactNode;
-}> = ({ icon, title, count, hint, right, open, onToggle, children }) => (
-  <section className="bg-white rounded-lg shadow-sm border border-gray-200">
-    <div className={`flex items-center gap-3 px-4 py-3 ${open ? 'border-b border-gray-100' : ''}`}>
-      <button onClick={onToggle} aria-expanded={open} title={open ? 'Collapse' : 'Expand'} className="flex items-center gap-3 min-w-0 flex-1 text-left">
-        <span className="text-gray-400 text-xs w-3">{open ? '▼' : '▶'}</span>
-        <h2 className="text-[15px] font-semibold text-gray-800 whitespace-nowrap">{icon} {title}</h2>
-        {count !== undefined && <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{count}</span>}
-        {hint && <span className="text-xs text-gray-500 truncate">{hint}</span>}
-      </button>
-      {open && <div className="ml-auto flex items-center gap-3">{right}</div>}
-    </div>
-    {open && <div className="p-4">{children}</div>}
-  </section>
+const Empty = ({ children }: { children: React.ReactNode }) => <div className="p-8 text-center text-sm text-gray-400">{children}</div>;
+
+// ---------------------------------------------------------------- one grouped, searchable list (the same look as the Release & PRs lists)
+/** One way to group a list. A spec without `tenantsOf` is "None": the rows are shown as one flat table. */
+interface GroupSpec<T> { id: string; label: string; hint?: string; tenantsOf?: (item: T) => string[]; order?: GroupOrder<T>; fallback?: string }
+
+/** Largest group first (ties A to Z). Every grouping on these pages sorts like this. */
+const mostFirst = <T,>(): GroupOrder<T> => (a, b) => b.items.length - a.items.length || a.tenant.localeCompare(b.tenant, 'en', { sensitivity: 'base' });
+
+const CountPill = ({ n, label }: { n: number; label: string }) => (
+  <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700 ring-1 ring-gray-200 whitespace-nowrap">{n} {label}{n === 1 ? '' : 's'}</span>
 );
 
-const Empty = ({ children }: { children: React.ReactNode }) => <p className="text-sm text-gray-400 py-2">{children}</p>;
+function QuickList<T>({ items, unit, groups, summary, alert, textOf, placeholder, extra, belowControls, before, table, empty }: {
+  items: T[]; unit: string; groups: GroupSpec<T>[];
+  summary: (items: T[], group: string) => React.ReactNode; alert?: (items: T[], group: string) => boolean;
+  textOf: (item: T) => string; placeholder: string; extra?: React.ReactNode; belowControls?: React.ReactNode; before?: (group: string, items: T[]) => React.ReactNode;
+  table: (items: T[]) => React.ReactNode; empty: string;
+}) {
+  const [groupBy, setGroupBy] = useState(groups[0].id);
+  const [query, setQuery] = useState('');
+  const [cmd, setCmd] = useState({ open: false, n: 0 });
+  const [allOpen, setAllOpen] = useState(false);
+  const spec = groups.find(g => g.id === groupBy) || groups[0];
+  const shown = useMemo(() => filterRows(items, query, textOf), [items, query, textOf]);
+  const tenantsOf = spec.tenantsOf;
+  // The group order is worked out when a Group by is picked (or the tab is opened) and then held: marking tickets read, a new run or a search
+  // never moves a group while you are looking at it. Switching away and back sorts again. A group that appears later goes to the end.
+  const seenBy = useRef(spec.id);
+  const frozen = useRef<{ names: string[] } | null>(null);
+  if (seenBy.current !== spec.id) { seenBy.current = spec.id; frozen.current = null; }
+  if (tenantsOf && (!frozen.current || (frozen.current.names.length === 0 && items.length > 0))) {
+    frozen.current = { names: groupByTenant(items, tenantsOf, spec.order, spec.fallback).groups.map(g => g.tenant) };
+  }
+  const names = tenantsOf ? frozen.current?.names : undefined;
+  const heldOrder = useMemo<GroupOrder<T> | undefined>(() => {
+    if (!names) return spec.order;
+    const rank = new Map(names.map((n, i) => [n.toLowerCase(), i] as const));
+    return (a, b) => (rank.get(a.tenant.toLowerCase()) ?? names.length) - (rank.get(b.tenant.toLowerCase()) ?? names.length)
+      || b.items.length - a.items.length || a.tenant.localeCompare(b.tenant, 'en', { sensitivity: 'base' });
+  }, [names, spec.order]);
+  const groupCount = tenantsOf ? new Set(shown.flatMap(i => cleanTenants(tenantsOf(i), spec.fallback))).size : 0;
+  return (
+    <>
+      <ListControls groups={groups.map(g => ({ id: g.id, label: g.label, hint: g.hint }))} groupBy={spec.id} onGroupBy={setGroupBy} query={query} onQuery={setQuery}
+        shown={shown.length} total={items.length} unit={unit} allOpen={allOpen} onToggleAll={tenantsOf ? () => setCmd(c => ({ open: !allOpen, n: c.n + 1 })) : undefined} placeholder={placeholder}
+        extra={<>{extra}<CountPill n={shown.length} label={unit} />{tenantsOf && <CountPill n={groupCount} label={spec.label.toLowerCase()} />}</>} />
+      {belowControls}
+      {items.length === 0 ? <Empty>{empty}</Empty> : shown.length === 0 ? <Empty>Nothing matches &ldquo;{query.trim()}&rdquo;.</Empty> : !tenantsOf ? (
+        <div className="rounded-lg border border-gray-200 bg-white overflow-clip">{table(shown)}</div>
+      ) : (
+        <TenantGroupList command={cmd} onAllOpenChange={setAllOpen} items={shown} tenantsOf={tenantsOf} unit={unit} summary={summary} alert={alert} hideIntro
+          groupLabel={spec.label.toLowerCase()} fallback={spec.fallback} order={heldOrder} orderLabel="most first" expandAll={!!query.trim()}>
+          {(rows, group) => <>{before?.(group, rows)}{table(rows)}</>}
+        </TenantGroupList>
+      )}
+    </>
+  );
+}
 
-// ---------------------------------------------------------------- shared by the new tickets and the FE tickets
-// Both lists are rows of three columns: a narrow lead column (the read button, or New / Mine), the ticket with its tags, and the text about it.
-const COLS = 'md:grid-cols-[3rem_minmax(0,5fr)_minmax(0,6fr)]';
-const rowCls = `py-3 grid grid-cols-1 ${COLS} gap-x-4 gap-y-2`;
+const TABLE = 'w-full table-fixed text-[14px] leading-[22px] [overflow-wrap:anywhere]';
+const THEAD = 'bg-gray-50 text-left text-[13px] font-semibold text-gray-600 border-b border-gray-200';
+const TH = 'px-2 py-[7px]';
+const TD = 'px-2 py-2 align-top';
+const ROW = 'border-t border-gray-100 hover:bg-gray-50';
 
-const ListHead = ({ right }: { right: string }) => (
-  <div className={`hidden md:grid ${COLS} gap-x-4 pb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500 border-b border-gray-200`}>
-    <div /><div>Ticket</div><div>{right}</div>
-  </div>
-);
-
-/** The ticket column: the type icon, the key as a link and the summary, with the given tags underneath. */
-const TicketCell = ({ t, tags }: { t: QuickTicket; tags: React.ReactNode }) => (
+/** The ticket cell: the type icon, the key as a link and the summary, with the given tags underneath. */
+const TicketCell = ({ t, tags }: { t: QuickTicket; tags?: React.ReactNode }) => (
   <div className="min-w-0">
-    <div className="text-[14px] leading-5 text-gray-800"><TypeIcon type={t.type} icon={t.typeIcon} /> <TicketLink t={t} /> {t.summary}</div>
-    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">{tags}</div>
+    <div className="text-gray-800"><TypeIcon type={t.type} icon={t.typeIcon} /> <TicketLink t={t} /> {t.summary}</div>
+    {tags && <div className="mt-1.5 flex flex-wrap items-center gap-1.5">{tags}</div>}
   </div>
 );
 
 // ---------------------------------------------------------------- 1. new tickets
-const NewTicketRow = ({ t, onRead }: { t: QuickNewTicket; onRead: (key: string, read: boolean) => void }) => (
-  <li className={`${rowCls} ${t.read ? 'opacity-60' : ''}`}>
-    <div>
-      <button onClick={() => onRead(t.key, !t.read)} aria-pressed={t.read}
-        title={t.read ? 'Read. Click to mark unread' : 'Mark as read: it is skipped from the next run on'}
-        className={`w-8 h-8 rounded-full ring-1 flex items-center justify-center text-sm ${t.read ? 'bg-green-100 ring-green-300 text-green-700' : 'bg-white ring-gray-300 text-gray-500 hover:bg-blue-50 hover:text-blue-700'}`}>
-        {t.read ? '✓' : '👁'}
-      </button>
-    </div>
-    <TicketCell t={t} tags={<>
-      <StatusPill t={t} />
-      <Pills items={t.clients} />
-      {t.fe && <span className="px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">FE</span>}
-      <span className="text-xs text-gray-500">{t.assignee || 'Unassigned'} · added {dayTime(t.firstSeenAt)}</span>
-    </>} />
-    <div className="min-w-0">
-      {t.description ? <p className="text-sm text-gray-700 line-clamp-4">{t.description}</p> : <p className="text-sm text-gray-400">No description on the ticket.</p>}
-    </div>
-  </li>
-);
+const newTextOf = (t: QuickNewTicket) => [t.key, t.summary, t.assignee, t.status, t.description, ...t.clients].join(' ');
+const NEW_GROUPS: GroupSpec<QuickNewTicket>[] = [
+  { id: 'none', label: 'None', hint: 'One list, no groups' },
+  { id: 'client', label: 'Client', hint: 'One group per client (a ticket for several clients appears under each)', tenantsOf: t => t.clients, order: mostFirst<QuickNewTicket>() },
+  { id: 'assignee', label: 'Assignee', hint: 'One group per person', tenantsOf: t => [t.assignee || 'Unassigned'], order: mostFirst<QuickNewTicket>(), fallback: 'Unassigned' },
+];
 
-// ---------------------------------------------------------------- 2. FE candidates
-const FeRow = ({ c }: { c: QuickFeCandidate }) => (
-  <li className={rowCls}>
-    <div>
-      <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${c.origin === 'new' ? 'bg-sky-100 text-sky-800' : 'bg-gray-100 text-gray-700'}`}>{c.origin === 'new' ? 'New' : 'Mine'}</span>
+export type QuickFlag = 'important' | 'myDay';
+export type QuickFlags = Record<QuickFlag, Record<string, boolean>>;
+
+/** The same two marks as the Tasks list: ⭐ Imp and ☀️ My Day (the follow-up list). Marking here shows there, and the other way round. */
+const FlagButtons = ({ k, flags, onFlag }: { k: string; flags: QuickFlags; onFlag: (flag: QuickFlag, key: string) => void }) => {
+  const imp = !!flags.important[k]; const day = !!flags.myDay[k];
+  const cls = (on: boolean) => `w-6 text-center text-[16px] leading-none cursor-pointer hover:scale-110 transition-all ${on ? 'opacity-100 grayscale-0' : 'opacity-30 grayscale hover:opacity-60'}`;
+  return (
+    <div className="flex gap-2 items-center">
+      <button onClick={() => onFlag('important', k)} className={cls(imp)} title={imp ? 'Remove Imp' : 'Mark Imp'} aria-pressed={imp}>⭐</button>
+      <button onClick={() => onFlag('myDay', k)} className={cls(day)} title={day ? 'Remove from My Day (follow up)' : 'Add to My Day (follow up)'} aria-pressed={day}>☀️</button>
     </div>
-    <TicketCell t={c} tags={<>
-      {c.size
-        ? <span title={`${SIZE_HINT[c.size]}${c.sizeWhy ? `\n${c.sizeWhy}` : ''}`} className={`px-2 py-0.5 rounded text-xs font-bold ${SIZE_PILL[c.size]}`}>Size {c.size}</span>
-        : <span className="px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-500" title="No size could be written for this ticket">No size</span>}
-      <StatusPill t={c} />
-      <Pills items={c.clients} />
-      <DateChip t={c} />
-      {c.areas.map(a => <span key={a} className="px-1.5 py-0.5 rounded text-xs text-gray-600 bg-white ring-1 ring-gray-200">{a}</span>)}
-      <span className="text-xs text-gray-500">{c.assignee ? `now with ${c.assignee}` : 'unassigned'}</span>
-    </>} />
-    <div className="min-w-0">
-      <p className="text-sm text-gray-700">{c.analysis}</p>
-      {c.sizeWhy && <p className="text-xs text-gray-500 mt-0.5">Size: {c.sizeWhy}</p>}
-      {c.suggestion ? (
-        <div className="mt-2 inline-block rounded-md bg-indigo-50 border border-indigo-100 px-3 py-1.5 text-sm text-indigo-900">
-          <span className="font-semibold">Suggest {c.suggestion.name}.</span> <span className="text-indigo-800">{c.suggestion.why.replace(`${c.suggestion.name}: `, '')}</span>
-          {c.suggestion.alternatives.length > 0 && <span className="text-indigo-700"> Also: {c.suggestion.alternatives.map(a => `${a.name} (${a.aligned})`).join(', ')}.</span>}
-        </div>
-      ) : <p className="text-xs text-gray-400 mt-2">No suggestion: no one else on the FE team to offer it to.</p>}
-    </div>
-  </li>
-);
+  );
+};
+
+const NewTickets = ({ all, showRead, onToggleRead, onRead, flags, onFlag }: {
+  all: QuickNewTicket[]; showRead: boolean; onToggleRead: () => void; onRead: (key: string, read: boolean) => void; flags: QuickFlags; onFlag: (flag: QuickFlag, key: string) => void;
+}) => {
+  const readCount = all.filter(t => t.read).length;
+  const items = showRead ? all : all.filter(t => !t.read);
+  return (
+    <QuickList items={items} unit="ticket" groups={NEW_GROUPS} textOf={newTextOf} placeholder="Search key, summary, assignee or description…"
+      empty={'Nothing new since you last read. New tickets added to the sprint show up here.'}
+      extra={<>
+        {readCount > 0 && <button onClick={onToggleRead} className="px-3 py-1 rounded-lg text-sm font-medium bg-white ring-1 ring-gray-300 text-gray-700 hover:bg-gray-100 whitespace-nowrap">{showRead ? 'Hide' : 'Show'} read ({readCount})</button>}
+      </>}
+      summary={(rows) => { const unread = rows.filter(t => !t.read).length; const fe = rows.filter(t => t.fe).length; return `${rows.length} ticket${rows.length === 1 ? '' : 's'} · ${unread} unread${fe ? ` · ${fe} FE` : ''}`; }}
+      table={(rows) => (
+        <table className={TABLE}>
+          <thead className={THEAD}><tr>
+            <th className={`${TH} w-[64px]`}>Read</th><th className={`${TH} w-[84px]`}>Mark</th><th className={`${TH} w-[32%]`}>Ticket</th><th className={`${TH} w-[150px]`}>Status</th>
+            <th className={`${TH} w-[160px]`}>Assignee</th><th className={`${TH} w-[130px]`}>Added</th><th className={TH}>Description</th>
+          </tr></thead>
+          <tbody>
+            {rows.map(t => (
+              <tr key={t.key} className={`${ROW} ${t.read ? 'opacity-60' : ''}`}>
+                <td className={TD}>
+                  <button onClick={() => onRead(t.key, !t.read)} aria-pressed={t.read}
+                    title={t.read ? 'Read. Click to mark unread' : 'Mark as read: it is skipped from the next run on'}
+                    className={`w-8 h-8 rounded-full ring-1 flex items-center justify-center text-sm ${t.read ? 'bg-green-100 ring-green-300 text-green-700' : 'bg-white ring-gray-300 text-gray-500 hover:bg-blue-50 hover:text-blue-700'}`}>
+                    {t.read ? '✓' : '👁'}
+                  </button>
+                </td>
+                <td className={`${TD} pt-[11px]`}><FlagButtons k={t.key} flags={flags} onFlag={onFlag} /></td>
+                <td className={TD}><TicketCell t={t} tags={<><Pills items={t.clients} />{t.fe && <span className="px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">FE</span>}</>} /></td>
+                <td className={TD}><StatusPill t={t} /></td>
+                <td className={`${TD} text-gray-700`}>{t.assignee || <span className="text-gray-400">Unassigned</span>}</td>
+                <td className={`${TD} text-xs text-gray-500`}>{dayTime(t.firstSeenAt)}</td>
+                <td className={TD}>{t.description ? <p className="text-sm text-gray-700 line-clamp-4">{t.description}</p> : <p className="text-sm text-gray-400">No description on the ticket.</p>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )} />
+  );
+};
+
+// ---------------------------------------------------------------- 2. FE ticket assignment
+const feTextOf = (c: QuickFeCandidate) => [c.key, c.summary, c.assignee, c.status, c.analysis, c.suggestion?.name, ...c.clients, ...c.areas].join(' ');
+const FE_GROUPS: GroupSpec<QuickFeCandidate>[] = [
+  { id: 'none', label: 'None', hint: 'One list, no groups' },
+  { id: 'client', label: 'Client', hint: 'One group per client', tenantsOf: c => c.clients, order: mostFirst<QuickFeCandidate>() },
+];
 
 const FeTeam = ({ team }: { team: QuickReport['feTeam'] }) => (
   <table className="w-full text-sm">
@@ -161,84 +221,155 @@ const FeTeam = ({ team }: { team: QuickReport['feTeam'] }) => (
   </table>
 );
 
-// ---------------------------------------------------------------- 3. my tickets
-const GroupCard = ({ g }: { g: QuickGroup }) => {
-  const p = PRIORITY[g.priority];
-  return (
-    <div className={`rounded-lg border-l-4 ${p.head} border border-gray-200`}>
-      <div className="px-4 py-2.5">
-        <div className="flex items-center gap-2">
-          <span className={`w-2.5 h-2.5 rounded-full ${p.dot}`} />
-          <h3 className="font-semibold text-gray-800 text-[14px]">{g.title}</h3>
-          <span className="text-xs px-2 py-0.5 rounded-full bg-white text-gray-600 ring-1 ring-gray-200">{p.label} · {g.tickets.length}</span>
+const FeAssignment = ({ report, showTeam, onToggleTeam }: { report: QuickReport; showTeam: boolean; onToggleTeam: () => void }) => (
+  <>
+    <QuickList items={report.feCandidates} unit="ticket" groups={FE_GROUPS} textOf={feTextOf} placeholder="Search key, summary, client, area or person…"
+      empty="No FE tickets to place right now."
+      belowControls={showTeam && report.feTeam.length > 0 ? (
+        <div className="mb-3 p-3 rounded-lg bg-white border border-gray-200">
+          <FeTeam team={report.feTeam} />
+          <p className="text-xs text-gray-500 mt-2">Aligned means in progress and not blocked.</p>
         </div>
-        {g.why && <p className="text-sm text-gray-600 mt-1">{g.why}</p>}
-        {g.action && <p className="text-sm text-gray-900 mt-1"><span className="font-semibold">Next:</span> {g.action}</p>}
-      </div>
-      <ul className="bg-white rounded-b-lg divide-y divide-gray-100 border-t border-gray-100">
-        {g.tickets.map(t => (
-          <li key={t.key} className="px-4 py-2 flex flex-wrap items-center gap-2">
-            <span className="text-[14px] text-gray-800 min-w-0 flex-1"><TypeIcon type={t.type} icon={t.typeIcon} /> <TicketLink t={t} /> {t.summary}</span>
-            <StatusPill t={t} /><DateChip t={t} />
-          </li>
-        ))}
-      </ul>
-    </div>
+      ) : undefined}
+      extra={report.feTeam.length > 0 ? <button onClick={onToggleTeam} className="px-3 py-1 rounded-lg text-sm font-medium bg-white ring-1 ring-gray-300 text-gray-700 hover:bg-gray-100 whitespace-nowrap">{showTeam ? 'Hide' : 'Show'} who has what</button> : undefined}
+      summary={(rows) => {
+        const n = rows.filter(c => c.origin === 'new').length; const m = rows.length - n;
+        return `${rows.length} ticket${rows.length === 1 ? '' : 's'} · ${n} new · ${m} mine`;
+      }}
+      table={(rows) => (
+        <table className={TABLE}>
+          <thead className={THEAD}><tr>
+            <th className={`${TH} w-[72px]`}>From</th><th className={`${TH} w-[28%]`}>Ticket</th><th className={`${TH} w-[140px]`}>Status</th>
+            <th className={`${TH} w-[130px]`}>Date</th><th className={`${TH} w-[130px]`}>Now with</th><th className={TH}>Analysis</th>
+          </tr></thead>
+          <tbody>
+            {rows.map(c => (
+              <tr key={`${c.origin}-${c.key}`} className={ROW}>
+                <td className={TD}><span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${c.origin === 'new' ? 'bg-sky-100 text-sky-800' : 'bg-gray-100 text-gray-700'}`}>{c.origin === 'new' ? 'New' : 'Mine'}</span></td>
+                <td className={TD}><TicketCell t={c} tags={<><Pills items={c.clients} />{c.areas.map(a => <span key={a} className="px-1.5 py-0.5 rounded text-xs text-gray-600 bg-white ring-1 ring-gray-200">{a}</span>)}</>} /></td>
+                <td className={TD}><StatusPill t={c} /></td>
+                <td className={TD}><DateChip t={c} /></td>
+                <td className={`${TD} text-gray-700`}>{c.assignee || <span className="text-gray-400">unassigned</span>}</td>
+                <td className={TD}><p title={c.analysis} className="text-sm text-gray-700 break-words" style={{ display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 5, overflow: 'hidden' }}>{c.analysis}</p></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )} />
+  </>
+);
+
+// ---------------------------------------------------------------- 3. my tickets
+type MineRow = QuickGroup['tickets'][number] & { groupTitle: string };
+const PRIORITY_LABEL: Record<QuickGroup['priority'], string> = { high: 'High', medium: 'Medium', low: 'Low' };
+const PRIORITY_CHIP: Record<QuickGroup['priority'], string> = { high: 'bg-red-100 text-red-800', medium: 'bg-amber-100 text-amber-800', low: 'bg-gray-100 text-gray-700' };
+const mineTextOf = (t: MineRow) => [t.key, t.summary, t.status, t.groupTitle, ...t.clients].join(' ');
+
+const MyTickets = ({ mine, source }: { mine: QuickGroup[]; source: 'ai' | 'rules' }) => {
+  const rows = useMemo<MineRow[]>(() => mine.flatMap(g => g.tickets.map(t => ({ ...t, groupTitle: g.title }))), [mine]);
+  const byTitle = useMemo(() => new Map(mine.map((g, i) => [g.title, { g, i }])), [mine]);
+  const groups = useMemo<GroupSpec<MineRow>[]>(() => [{
+    id: 'meaning', label: source === 'ai' ? 'Meaning' : 'Client and date', hint: source === 'ai' ? 'Grouped by meaning (AI-assisted); priority is never lower than the dates say' : 'Grouped by client and date',
+    tenantsOf: t => [t.groupTitle], order: (a, b) => (byTitle.get(a.tenant)?.i ?? 0) - (byTitle.get(b.tenant)?.i ?? 0),
+  }], [byTitle, source]);
+  return (
+    <QuickList items={rows} unit="ticket" groups={groups} textOf={mineTextOf} placeholder="Search key, summary, client or group…" empty="Nothing open on your list."
+      alert={(_, title) => byTitle.get(title)?.g.priority === 'high'}
+      summary={(items, title) => { const g = byTitle.get(title)?.g; return `${g ? `${PRIORITY_LABEL[g.priority]} priority · ` : ''}${items.length} ticket${items.length === 1 ? '' : 's'}`; }}
+      before={(title) => {
+        const g = byTitle.get(title)?.g;
+        if (!g || (!g.why && !g.action)) return null;
+        return (
+          <div className="px-4 py-2 bg-gray-50 border-b border-gray-100 text-sm">
+            <span className={`mr-2 px-2 py-0.5 rounded-full text-xs font-medium ${PRIORITY_CHIP[g.priority]}`}>{PRIORITY_LABEL[g.priority]}</span>
+            {g.why && <span className="text-gray-600">{g.why}</span>}
+            {g.action && <p className="mt-1 text-gray-900"><span className="font-semibold">Next:</span> {g.action}</p>}
+          </div>
+        );
+      }}
+      table={(items) => (
+        <table className={TABLE}>
+          <thead className={THEAD}><tr>
+            <th className={`${TH} w-[46%]`}>Ticket</th><th className={`${TH} w-[160px]`}>Status</th><th className={TH}>Client</th><th className={`${TH} w-[160px]`}>Date</th>
+          </tr></thead>
+          <tbody>
+            {items.map(t => (
+              <tr key={t.key} className={ROW}>
+                <td className={TD}><TicketCell t={t} /></td>
+                <td className={TD}><StatusPill t={t} /></td>
+                <td className={TD}><div className="flex flex-wrap gap-1.5"><Pills items={t.clients} /></div></td>
+                <td className={TD}><DateChip t={t} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )} />
   );
 };
 
 // ---------------------------------------------------------------- the page
-const SECTIONS = ['new', 'fe', 'mine'];
+/** Notes about a failed model call (sign-in expired, no size or grouping written) say nothing the person can act on here, so they are not shown. */
+const isUsefulNote = (n: string) => !/Failed to authenticate|OAuth|model could not be used|could not be written/i.test(n);
+/** The note about FE team members with no sprint ticket, said briefly. Any other note is shown as it is. */
+const tidyNote = (n: string) => {
+  const m = n.match(/^(\d+) FE [Tt]eam members? (?:have|has) no ticket in this sprint and (?:are|is) not offered work \((.+)\)\.?$/);
+  return m ? `${m[1]} FE team member${m[1] === '1' ? '' : 's'} with no sprint ticket (not offered work): ${m[2]}` : n;
+};
+
+export type QuickTab = 'new' | 'fe' | 'mine';
 
 export interface QuickViewProps {
   report: QuickReport | null; status: QuickStatus | null; error: string | null; loading: boolean;
+  tab: QuickTab; onTab: (t: QuickTab) => void;
   showRead: boolean; showTeam: boolean;
-  /** The sections that are collapsed: 'new', 'fe', 'mine'. */
-  collapsed: ReadonlySet<string>; onToggleSection: (id: string) => void; onToggleAll: () => void;
+  flags: QuickFlags; onFlag: (flag: QuickFlag, key: string) => void;
   onToggleRead: () => void; onToggleTeam: () => void; onRun: () => void; onSetRead: (key: string, read: boolean) => void;
 }
 
 /** What the page looks like for a given report and state. No data loading here, so it can be rendered on its own. */
-export const QuickAnalysisView: React.FC<QuickViewProps> = ({ report, status, error, loading, showRead, showTeam, collapsed, onToggleSection, onToggleAll, onToggleRead, onToggleTeam, onRun, onSetRead }) => {
+export const QuickAnalysisView: React.FC<QuickViewProps> = ({ report, status, error, loading, tab, onTab, showRead, showTeam, flags, onFlag, onToggleRead, onToggleTeam, onRun, onSetRead }) => {
   const sched = status?.schedule;
   const unread = report?.newTickets.filter(t => !t.read) ?? [];
   const read = report?.newTickets.filter(t => t.read) ?? [];
-  const allCollapsed = SECTIONS.every(id => collapsed.has(id));
+  const notes = (report?.notes ?? []).filter(isUsefulNote).map(tidyNote);
+  const tabs: { id: QuickTab; label: string; count?: number }[] = [
+    { id: 'new', label: '🆕 New tickets', count: report ? unread.length : undefined },
+    { id: 'fe', label: '🧩 FE ticket assignment', count: report?.feCandidates.length },
+    { id: 'mine', label: '🎯 My tickets', count: report?.counts.myOpen },
+  ];
 
   return (
-    <div className="h-full overflow-auto bg-gray-100">
-      <div className="max-w-6xl mx-auto p-4 space-y-4">
-        {/* Header: when it last ran, when it runs next, Run now */}
-        <div className="flex items-center gap-3 flex-wrap">
-          <h1 className="text-lg font-semibold text-gray-800">🔍 Quick Analysis</h1>
-          <span className="text-sm text-gray-500">
-            {status?.running ? '⏳ Running now…'
-              : status?.lastRunAt ? `Last run ${dayTime(status.lastRunAt)}${status.lastDurationMs ? ` (${Math.round(status.lastDurationMs / 1000)}s)` : ''}` : 'Not run yet'}
-            {!status?.running && !status?.disabled && status?.nextRunAt && ` · next about ${dayTime(status.nextRunAt)}`}
-            {status?.disabled && ' · automatic runs are off'}
-          </span>
-          {sched && <span className="text-xs text-gray-400" title="Set in backend/delivery/config.json, quickAnalysis">Every {sched.intervalMinutes} min, {hour(sched.startHour)} to {hour(sched.endHour)}{sched.weekdaysOnly ? ', Mon to Fri' : ''}</span>}
-          {report && (
-            <button onClick={onToggleAll} title={allCollapsed ? 'Open every section' : 'Fold every section to its title'}
-              className="ml-auto px-3 py-1.5 rounded-lg text-sm font-medium bg-white ring-1 ring-gray-300 text-gray-700 hover:bg-gray-100 whitespace-nowrap">
-              {allCollapsed ? '▼ Expand all' : '▲ Collapse all'}
-            </button>
-          )}
+    <div className="h-full flex flex-col bg-gray-50 overflow-hidden">
+      <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-2">
+        {tabs.map(t => (
+          <button key={t.id} onClick={() => onTab(t.id)} aria-current={tab === t.id ? 'page' : undefined}
+            className={`inline-flex items-center gap-2 whitespace-nowrap shrink-0 px-4 py-1.5 text-sm font-medium rounded-full border transition-colors ${tab === t.id ? 'bg-blue-600 border-blue-600 text-white shadow-sm' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-100 hover:border-gray-400'}`}>
+            {t.label}{t.count !== undefined && <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${tab === t.id ? 'bg-white/25 text-white' : 'bg-gray-200 text-gray-700'}`}>{t.count}</span>}
+          </button>
+        ))}
+        <div className="ml-auto flex flex-col items-end gap-0.5 whitespace-nowrap">
           <button onClick={onRun} disabled={!!status?.running}
-            className={`${report ? '' : 'ml-auto '}px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-60 disabled:cursor-not-allowed`}>
+            className="px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-60 disabled:cursor-not-allowed">
             {status?.running ? '⏳ Running…' : '🔄 Run now'}
           </button>
+          <span className="text-[11px] leading-tight text-gray-500" title={status?.nextRunAt ? `Next run about ${shortTime(status.nextRunAt)}. Set in backend/delivery/config.json, quickAnalysis` : undefined}>
+            {status?.running ? '⏳ Running now…'
+              : status?.lastRunAt ? `Last run ${clock(status.lastRunAt)}${status.lastDurationMs ? ` (${Math.round(status.lastDurationMs / 1000)}s)` : ''}` : 'Not run yet'}
+            {status?.disabled ? ' · automatic runs are off' : sched ? ` · ${sched.weekdaysOnly ? 'M-F ' : ''}${hour(sched.startHour)}-${hour(sched.endHour)} · ${sched.intervalMinutes}m` : ''}
+          </span>
         </div>
+      </div>
 
-        {(error || status?.lastStatus === 'failed') && (
-          <div className="px-3 py-2 text-sm bg-red-50 text-red-800 border border-red-200 rounded">
-            ❌ {error || `The last run failed: ${status?.lastError || 'unknown error'}`}{report ? ' The report below is from the last good run.' : ''}
-          </div>
-        )}
-        {report && report.notes.length > 0 && (
-          <ul className="text-xs text-gray-600 bg-white border border-gray-200 rounded px-4 py-2 list-disc pl-8 space-y-0.5">{report.notes.map(n => <li key={n}>{n}</li>)}</ul>
-        )}
+      {(error || status?.lastStatus === 'failed') && (
+        <div className="px-4 py-2 text-sm bg-red-50 text-red-800 border-b border-red-200">
+          ❌ {error || `The last run failed: ${status?.lastError || 'unknown error'}`}{report ? ' The report below is from the last good run.' : ''}
+        </div>
+      )}
+      {notes.length > 0 && (
+        <ul className="text-[15px] font-semibold text-gray-800 bg-white border-b border-gray-200 px-4 py-2.5 list-disc pl-9 space-y-1">{notes.map(n => <li key={n}>{n}</li>)}</ul>
+      )}
 
+      <div className="flex-1 overflow-auto p-4">
         {loading && !report && <p className="text-sm text-gray-500">Loading…</p>}
         {!loading && !report && !error && (
           <div className="bg-white rounded-lg border border-gray-200 p-8 text-center text-gray-500">
@@ -246,45 +377,9 @@ export const QuickAnalysisView: React.FC<QuickViewProps> = ({ report, status, er
             No report yet. It builds by itself during working hours, or press <b>Run now</b> to build the first one.
           </div>
         )}
-
-        {report && (
-          <>
-            {/* 1. New tickets */}
-            <Card icon="🆕" title="New tickets in the sprint" count={unread.length} open={!collapsed.has('new')} onToggle={() => onToggleSection('new')} hint="Mark one as read and it is skipped from the next run on"
-              right={read.length > 0 && <button onClick={onToggleRead} className="text-xs text-blue-600 hover:underline">{showRead ? 'Hide' : 'Show'} read ({read.length})</button>}>
-              {unread.length === 0 && !showRead ? <Empty>Nothing new since you last read. New tickets added to the sprint show up here.</Empty> : (
-                <>
-                  <ListHead right="Description" />
-                  <ul className="divide-y divide-gray-100">
-                    {unread.map(t => <NewTicketRow key={t.key} t={t} onRead={onSetRead} />)}
-                    {showRead && read.map(t => <NewTicketRow key={t.key} t={t} onRead={onSetRead} />)}
-                  </ul>
-                </>
-              )}
-            </Card>
-
-            {/* 2. FE tickets: size and who could take them */}
-            <Card icon="🧩" title="FE tickets: size and who could take them" count={report.feCandidates.length} open={!collapsed.has('fe')} onToggle={() => onToggleSection('fe')}
-              hint="New FE tickets, and FE tickets assigned to me"
-              right={report.feTeam.length > 0 && <button onClick={onToggleTeam} className="text-xs text-blue-600 hover:underline">{showTeam ? 'Hide' : 'Show'} who has what</button>}>
-              {showTeam && <div className="mb-3 p-3 rounded-md bg-gray-50 border border-gray-100"><FeTeam team={report.feTeam} /><p className="text-xs text-gray-500 mt-2">Aligned means in progress and not blocked. Suggestions go by this load and by related work, and each one counts the suggestions above it so one person is not offered everything. They are a starting point, you decide.</p></div>}
-              {report.feCandidates.length === 0 ? <Empty>No FE tickets to place right now.</Empty> : (
-                <>
-                  <ListHead right="Analysis" />
-                  <ul className="divide-y divide-gray-100">{report.feCandidates.map(c => <FeRow key={c.key} c={c} />)}</ul>
-                </>
-              )}
-            </Card>
-
-            {/* 3. My tickets */}
-            <Card icon="🎯" title="My tickets: what to do first" count={report.counts.myOpen} open={!collapsed.has('mine')} onToggle={() => onToggleSection('mine')}
-              hint={report.myTickets.source === 'ai' ? 'Grouped by meaning (AI-assisted); priority is never lower than the dates say' : 'Grouped by client and date'}>
-              {report.myTickets.groups.length === 0 ? <Empty>Nothing open on your list.</Empty> : (
-                <div className="space-y-3">{report.myTickets.groups.map(g => <GroupCard key={g.title} g={g} />)}</div>
-              )}
-            </Card>
-          </>
-        )}
+        {report && tab === 'new' && <NewTickets all={[...unread, ...read]} showRead={showRead} onToggleRead={onToggleRead} onRead={onSetRead} flags={flags} onFlag={onFlag} />}
+        {report && tab === 'fe' && <FeAssignment report={report} showTeam={showTeam} onToggleTeam={onToggleTeam} />}
+        {report && tab === 'mine' && <MyTickets mine={report.myTickets.groups} source={report.myTickets.source} />}
       </div>
     </div>
   );
@@ -298,7 +393,8 @@ const QuickAnalysis: React.FC<{ active?: boolean }> = ({ active = true }) => {
   const [loading, setLoading] = useState(true);
   const [showRead, setShowRead] = useState(false);
   const [showTeam, setShowTeam] = useState(false);
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [tab, setTab] = useState<QuickTab>('new');
+  const [flags, setFlags] = useState<QuickFlags>({ important: {}, myDay: {} });
   const seen = useRef<string | null>(null);
 
   const load = useCallback(async () => {
@@ -314,6 +410,24 @@ const QuickAnalysis: React.FC<{ active?: boolean }> = ({ active = true }) => {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // the Imp and My Day marks are the Tasks list's own, so they are read from the same place
+  useEffect(() => {
+    let alive = true;
+    const loadFlags = () => Promise.all([jiraApi.getAllImportantFlags(), jiraApi.getAllMyDayFlags()])
+      .then(([important, myDay]) => { if (alive) setFlags({ important, myDay }); }).catch(() => { /* the icons just show unmarked */ });
+    loadFlags();
+    window.addEventListener('focus', loadFlags); // marks changed on the Tasks page show up when you come back
+    return () => { alive = false; window.removeEventListener('focus', loadFlags); };
+  }, []);
+
+  const toggleFlag = async (flag: QuickFlag, key: string) => {
+    const next = !flags[flag][key];
+    setFlags(f => ({ ...f, [flag]: { ...f[flag], [key]: next } }));
+    try { await (flag === 'important' ? jiraApi.setIssueImportant(key, next) : jiraApi.setIssueMyDay(key, next)); }
+    catch { setFlags(f => ({ ...f, [flag]: { ...f[flag], [key]: !next } })); } // not saved: put the icon back
+  };
+
   // opening the page clears the bell
   useEffect(() => { if (active) markViewed(); }, [active, markViewed]);
 
@@ -347,13 +461,8 @@ const QuickAnalysis: React.FC<{ active?: boolean }> = ({ active = true }) => {
     load();
   };
 
-  const toggleSection = (id: string) => setCollapsed(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
-  // one button: if every section is folded open them all, otherwise fold them all
-  const toggleAll = () => setCollapsed(prev => (SECTIONS.every(id => prev.has(id)) ? new Set() : new Set(SECTIONS)));
-
   return (
-    <QuickAnalysisView report={report} status={status} error={error} loading={loading} showRead={showRead} showTeam={showTeam}
-      collapsed={collapsed} onToggleSection={toggleSection} onToggleAll={toggleAll}
+    <QuickAnalysisView report={report} status={status} error={error} loading={loading} tab={tab} onTab={setTab} showRead={showRead} showTeam={showTeam} flags={flags} onFlag={toggleFlag}
       onToggleRead={() => setShowRead(s => !s)} onToggleTeam={() => setShowTeam(s => !s)} onRun={runNow} onSetRead={setRead} />
   );
 };

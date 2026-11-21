@@ -11,6 +11,7 @@ export default function MergedPrsTab({ refreshKey }: { meta: DeliveryMeta; refre
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
+  const [reveal, setReveal] = useState(0);
 
   const load = useCallback(() => setTick(t => t + 1), []);
 
@@ -24,7 +25,6 @@ export default function MergedPrsTab({ refreshKey }: { meta: DeliveryMeta; refre
     return () => { cancelled = true; };
   }, [from, to, refreshKey, tick]);
 
-  const repos = new Set(rows.map(r => r.repo)).size;
   const pending = rows.filter(r => r.aiRecommended).length;
   const custom = !!(from || to);
 
@@ -38,13 +38,12 @@ export default function MergedPrsTab({ refreshKey }: { meta: DeliveryMeta; refre
           <input type="date" value={to || range?.to || ''} onChange={e => setTo(e.target.value)} className="px-2 py-1 border border-gray-300 rounded-lg text-sm" />
         </label>
         {custom && <button onClick={() => { setFrom(''); setTo(''); }} className="px-3 py-1.5 rounded-lg text-sm bg-gray-100 text-gray-700 hover:bg-gray-200">Today</button>}
-        {pending > 0 && <span className="text-xs bg-amber-50 text-amber-800 border border-amber-200 rounded px-2 py-1">{pending} complex PR{pending === 1 ? '' : 's'}: analysis recommended</span>}
-        <span className="text-sm text-gray-500 ml-auto">{rows.length} PR{rows.length === 1 ? '' : 's'} in {repos} repo{repos === 1 ? '' : 's'} · merged by date; each run adds PRs since the previous run</span>
+        {pending > 0 && <button onClick={() => setReveal(n => n + 1)} title="Open the PR" className="text-xs bg-amber-50 text-amber-800 border border-amber-200 rounded px-2 py-1 hover:bg-amber-100">{pending} complex PR{pending === 1 ? '' : 's'}: analysis recommended</button>}
       </div>
       <div className="flex-1 overflow-auto p-4">
         {error && <div className="mb-3 px-3 py-2 text-sm bg-red-50 text-red-700 border border-red-200 rounded">❌ {error}</div>}
         {loading && rows.length === 0 ? <p className="text-sm text-gray-500">Loading…</p>
-          : <PrTable rows={rows} empty="No PRs merged in these dates." onChanged={load} />}
+          : <PrTable rows={rows} empty="No PRs merged in these dates." onChanged={load} revealComplex={reveal} />}
       </div>
     </div>
   );

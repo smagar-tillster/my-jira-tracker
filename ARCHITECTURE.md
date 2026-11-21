@@ -20,7 +20,7 @@ Browser (React/TS, Vite)  --REST/HTTP-->  Express API  --REST (axios+token)-->  
   - `views/` — `ListView.tsx`, `CalendarView.tsx`, `GanttView.tsx` render issues in different layouts.
   - `shell/` — `AppDrawer` (searchable app launcher), `TabStrip`, `NotificationBell` (placeholder).
   - `apps/` — `ReportViewer` (lists and renders HTML reports from a backend folder), `EmbeddedApp` (iframe, used for the fleet monitoring page), `ComingSoon`.
-  - `PrReviews.tsx` — the PR Reviews app: read, edit, skip and post the drafts. The header bell shows how many are waiting.
+  - `PrReviews.tsx` — the PR Reviews pill inside Release & PRs: read, edit, skip and post the drafts. The pill and the header bell show how many are waiting.
   - Accomplishments, Config Viewer and Menu Compare are placeholders.
 - **Data access**: `src/services/api.ts` is the single axios client (base URL from `VITE_API_URL`); `src/services/dataProcessor.ts` handles client-side filter/sort/group logic.
 

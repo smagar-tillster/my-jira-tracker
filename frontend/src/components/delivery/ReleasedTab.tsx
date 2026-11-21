@@ -30,7 +30,7 @@ export default function ReleasedTab({ meta, refreshKey }: { meta: DeliveryMeta; 
   }, [from, to, tenants, envs, refreshKey]);
 
   const released = rows.filter(r => r.released).length;
-  const customRange = !!(from || to);
+  const filtered = !!(from || to) || tenants.length > 0 || envs.length > 0 || types.length > 0;
 
   return (
     <div className="h-full flex flex-col">
@@ -42,14 +42,14 @@ export default function ReleasedTab({ meta, refreshKey }: { meta: DeliveryMeta; 
         <label className="flex items-center gap-1 text-sm text-gray-600">To
           <input type="date" value={to || range?.to || ''} onChange={e => setTo(e.target.value)} className="px-2 py-1 border border-gray-300 rounded-lg text-sm" />
         </label>
-        {customRange && (
-          <button onClick={() => { setFrom(''); setTo(''); }} className="px-3 py-1.5 rounded-lg text-sm bg-gray-100 text-gray-700 hover:bg-gray-200">
-            Last released day{meta.lastReleasedDay ? ` (${meta.lastReleasedDay})` : ''}
-          </button>
-        )}
         <MultiSelect label="Tenant" options={meta.tenants} value={tenants} onChange={setTenants} />
         <MultiSelect label="Env" options={meta.envs} value={envs} onChange={setEnvs} tone="indigo" />
         <MultiSelect label="Type" options={RELEASE_TYPES} value={types} onChange={setTypes} />
+        {filtered && (
+          <button onClick={() => { setFrom(''); setTo(''); setTenants([]); setEnvs([]); setTypes([]); }}
+            title={`Back to the last released day${meta.lastReleasedDay ? ` (${meta.lastReleasedDay})` : ''} with no tenant, env or type filter`}
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-red-500 text-white hover:bg-red-600 transition-colors whitespace-nowrap">🧹 Clear Filters</button>
+        )}
         <button onClick={() => setSummaryOpen(true)} disabled={rows.length === 0}
           className="px-3 py-1.5 rounded-lg text-sm bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">Release summary</button>
         <span className="text-sm text-gray-500 ml-auto">{rows.length} release ticket{rows.length === 1 ? '' : 's'} · {released} released</span>

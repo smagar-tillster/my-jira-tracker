@@ -3,6 +3,14 @@ import { GenerateJob, ReviewApiError, generateBusy, reviewsApi } from '../../ser
 
 export const prId = (p: { repo: string; number: number }) => `${p.repo}#${p.number}`;
 
+/** Where the Release & PRs page is told which pill to open (read once; the bell uses the same note). */
+export const SUBTAB_KEY = 'mytracker.releases.subtab';
+/** "See PR review": switches Release & PRs to its PR Reviews pill. */
+export const openPrReviews = () => {
+  try { sessionStorage.setItem(SUBTAB_KEY, 'reviews'); } catch { /* the page just stays where it is */ }
+  window.dispatchEvent(new Event('releases-subtab'));
+};
+
 /**
  * "Initiate Code Review": starts reviews for one or several PRs and follows their progress.
  * The backend runs a few at a time and saves each result as a draft in the PR Reviews tab; nothing is posted to GitHub.
@@ -33,11 +41,13 @@ export function useCodeReview(onDone: () => void) {
 
   const follow = useCallback(() => { if (timer.current === null) timer.current = window.setInterval(poll, 3000); }, [poll]);
 
-  // pick up reviews that are already running (the tab was reopened)
+  // pick up reviews that are already running (the tab was reopened), and follow ones another page just queued
   useEffect(() => {
     reviewsApi.generateStatus().then(next => { setJobs(next); if (Object.values(next).some(generateBusy)) follow(); }).catch(() => { /* none yet */ });
-    return stop;
-  }, [follow]);
+    const queuedElsewhere = () => { follow(); poll(); };
+    window.addEventListener('reviews-queued', queuedElsewhere);
+    return () => { stop(); window.removeEventListener('reviews-queued', queuedElsewhere); };
+  }, [follow, poll]);
 
   const start = async (prs: { repo: string; number: number }[]) => {
     setError(null);
@@ -45,6 +55,7 @@ export function useCodeReview(onDone: () => void) {
       const started = await reviewsApi.generate(prs);
       setJobs(prev => ({ ...prev, ...started }));
       follow();
+      window.dispatchEvent(new Event('reviews-queued')); // PR Reviews shows them as queued; nothing alerts until one is done
     } catch (e) {
       setError(e instanceof ReviewApiError ? e.message : String((e as Error)?.message || e));
     }

@@ -3,7 +3,8 @@ import { DeliveryRelease } from '../../services/api';
 import { ListControls, Modal, Section, StatusDot, TicketLink, dayLabel } from './shared';
 import { filterRows } from './search';
 import TenantGroupList from './TenantGroupList';
-import { byCount, byNotReady } from './tenantGrouping';
+import { byCount, byNotReady, groupByTenant } from './tenantGrouping';
+import { useRefresh } from './RefreshContext';
 
 const envBadge = (env: string) => (
   <span className={`px-2 py-0.5 rounded text-xs font-medium ${/PROD/i.test(env) ? 'bg-orange-100 text-orange-800' : 'bg-sky-100 text-sky-800'}`}>{env || '—'}</span>
@@ -66,6 +67,24 @@ const notReadyFirst = byNotReady<DeliveryRelease>(notReadyCount);
 const mostFirst = byCount<DeliveryRelease>();
 const hasNotReady = (items: DeliveryRelease[]) => notReadyCount(items) > 0;
 
+/** "Refresh releases": re-reads Jira only (no GitHub), so it is quicker than the full report; the PR lists are left as they are. */
+function RefreshReleasesButton({ counts }: { counts: string }) {
+  const r = useRefresh();
+  if (!r) return null;
+  const mine = r.running && r.job?.kind === 'releases';
+  const at = r.releasesAt ? new Date(r.releasesAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : null;
+  return (
+    <>
+      <button onClick={r.refreshReleases} disabled={r.running}
+        title={r.running && !mine ? 'A report is running; releases refresh with it' : 'Re-reads Jira only: refreshes Released and To Release Today. Quicker than the full report; PR lists are not refreshed.'}
+        className="px-3 py-1 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap">
+        {mine ? '⏳ Refreshing releases…' : '⟳ Refresh releases'}
+      </button>
+      <span className="text-sm text-gray-500" title={at ? `Releases as of ${at}` : undefined}>{counts}</span>
+    </>
+  );
+}
+
 /** What a collapsed tenant group says about its releases, across every day in the filter. */
 const groupSummary = (rows: DeliveryRelease[], showStatus?: boolean) => {
   const notReady = rows.filter(r => !r.ready).length;
@@ -85,12 +104,15 @@ export default function ReleaseTable({ rows, showStatus, empty }: { rows: Delive
   const shown = useMemo(() => filterRows(rows, query), [rows, query]);
   if (rows.length === 0) return <div className="p-8 text-center text-gray-400">{empty}</div>;
   const byClient = groupBy === 'client';
+  const groupLabel = byClient ? 'tenant' : 'component';
+  const groupCount = groupByTenant(shown, byClient ? releaseTenants : releaseComponents, undefined, byClient ? undefined : '(no component)').groups.length;
+  const counts = `${groupCount} ${groupLabel}${groupCount === 1 ? '' : 's'} · ${shown.length} release ticket${shown.length === 1 ? '' : 's'}`;
   return (
     <>
-      <ListControls groups={GROUPS} groupBy={groupBy} onGroupBy={setGroupBy} query={query} onQuery={setQuery} shown={shown.length} total={rows.length} unit="release ticket" allOpen={allOpen} onToggleAll={toggleAll} />
+      <ListControls groups={GROUPS} groupBy={groupBy} onGroupBy={setGroupBy} query={query} onQuery={setQuery} shown={shown.length} total={rows.length} unit="release ticket" allOpen={allOpen} onToggleAll={toggleAll} extra={<RefreshReleasesButton counts={counts} />} />
       {shown.length === 0 ? <div className="p-8 text-center text-gray-400">Nothing matches &ldquo;{query.trim()}&rdquo;.</div> : (
-        <TenantGroupList command={cmd} onAllOpenChange={setAllOpen} items={shown} tenantsOf={byClient ? releaseTenants : releaseComponents} unit="release ticket" summary={items => groupSummary(items, showStatus)}
-          groupLabel={byClient ? 'tenant' : 'component'} fallback={byClient ? undefined : '(no component)'} expandAll={!!query.trim()}
+        <TenantGroupList command={cmd} onAllOpenChange={setAllOpen} items={shown} tenantsOf={byClient ? releaseTenants : releaseComponents} unit="release ticket" summary={items => groupSummary(items, showStatus)} hideIntro
+          groupLabel={groupLabel} fallback={byClient ? undefined : '(no component)'} expandAll={!!query.trim()}
           order={byClient ? (showStatus ? notReadyFirst : mostFirst) : mostFirst}
           orderLabel={byClient && showStatus ? 'tenants with tickets not ready first' : 'most release tickets first'}
           alert={showStatus ? hasNotReady : undefined}>
@@ -103,7 +125,9 @@ export default function ReleaseTable({ rows, showStatus, empty }: { rows: Delive
 }
 
 function ReleaseRows({ rows, showStatus, showTenant, onOpen }: { rows: DeliveryRelease[]; showStatus?: boolean; showTenant?: boolean; onOpen: (r: DeliveryRelease) => void }) {
-  const setOpen = onOpen;
+  const detailsPill = (r: DeliveryRelease) => (
+    <button onClick={() => onOpen(r)} className="inline-block px-3 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100">Details</button>
+  );
   return (
     <>
       <table className="w-full table-fixed text-[14px] leading-[22px] [overflow-wrap:anywhere]">
@@ -111,21 +135,31 @@ function ReleaseRows({ rows, showStatus, showTenant, onOpen }: { rows: DeliveryR
           <tr>
             {showTenant && <th className="px-2 py-[7px] w-[110px]">Tenant</th>}
             <th className="px-2 py-[7px] w-[110px]">Date</th><th className="px-2 py-[7px] w-[130px]">Env</th>
+            <th className="px-2 py-[7px] w-[200px]">Release ticket</th>
+            <th className="px-2 py-[7px] w-[140px]">Status</th>
             <th className="px-2 py-[7px] w-[26%]">Description</th>
-            <th className="px-2 py-[7px]">Components{showStatus ? '' : ' released'} (version)</th><th className="px-2 py-[7px] w-[200px]">Release ticket</th>
-            {showStatus && <th className="px-2 py-[7px] w-[130px]">Status</th>}<th className="px-2 py-[7px] w-[70px]"></th>
+            <th className="px-2 py-[7px]">Components{showStatus ? '' : ' released'} (version)</th>
           </tr>
         </thead>
         <tbody>
           {rows.map(r => (
-            <tr key={r.id} className="border-t border-gray-100 hover:bg-gray-50 align-middle">
-              {showTenant && <td className="px-2 py-[5.5px] font-medium text-gray-800" title={r.tenant}>{r.tenant}</td>}
-              <td className="px-2 py-[5.5px] whitespace-nowrap text-gray-600">{dayLabel(r.date)}</td>
-              <td className="px-2 py-[5.5px]">{envBadge(r.env)}</td>
-              <td className="px-2 py-[5.5px]" title={r.summary}>
+            <tr key={r.id} className="border-t border-gray-100 hover:bg-gray-50 align-top">
+              {showTenant && <td className="px-2 py-2 font-medium text-gray-800" title={r.tenant}>{r.tenant}</td>}
+              <td className="px-2 py-2 whitespace-nowrap text-gray-600">{dayLabel(r.date)}</td>
+              <td className="px-2 py-2">{envBadge(r.env)}</td>
+              <td className="px-2 py-2 whitespace-nowrap">
+                {r.key ? <><TicketLink k={r.key} url={r.url} /> <span className="text-xs text-gray-500">{r.status}</span></> : <span className="text-xs text-red-600 font-medium">none yet</span>}
+              </td>
+              <td className="px-2 py-2 whitespace-nowrap">
+                {showStatus
+                  ? <StatusDot ok={r.ready} label={r.ready ? 'Ready' : `${r.notReady} not ready`} />
+                  : <StatusDot ok={r.released} label={r.released ? 'Released' : 'Not released'} />}
+                <div className="mt-1.5">{detailsPill(r)}</div>
+              </td>
+              <td className="px-2 py-2" title={r.summary}>
                 <div className="line-clamp-2 text-gray-800">{r.noReleaseTicket ? r.summary : (r.what || r.title)}</div>
               </td>
-              <td className="px-2 py-[5.5px]">
+              <td className="px-2 py-2">
                 <div className="flex flex-wrap gap-1">
                   {r.components.length === 0 && <span className="text-gray-400">—</span>}
                   {r.components.map(c => (
@@ -133,15 +167,6 @@ function ReleaseRows({ rows, showStatus, showTenant, onOpen }: { rows: DeliveryR
                   ))}
                 </div>
               </td>
-              <td className="px-2 py-[5.5px] whitespace-nowrap">
-                {r.key ? <><TicketLink k={r.key} url={r.url} /> <span className="text-xs text-gray-500">{r.status}</span></> : <span className="text-xs text-red-600 font-medium">none yet</span>}
-              </td>
-              {showStatus && (
-                <td className="px-2 py-[5.5px] whitespace-nowrap">
-                  <StatusDot ok={r.ready} label={r.ready ? 'Ready' : `${r.notReady} not ready`} />
-                </td>
-              )}
-              <td className="px-2 py-[5.5px] whitespace-nowrap"><button onClick={() => setOpen(r)} className="text-blue-600 hover:underline">Details</button></td>
             </tr>
           ))}
         </tbody>
