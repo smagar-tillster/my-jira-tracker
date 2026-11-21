@@ -160,6 +160,10 @@ export const SprintTicketsTrendView: React.FC<TrendViewProps> = ({ data, loading
                       </button>
                     );
                   })}
+                  <span title="Time logged on every ticket in view, each counted once (a ticket under several lines is not added twice)"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-800 ring-1 ring-indigo-200">
+                    ⏱ Total logged <span className="tabular-nums">{hoursOf(data.summary.timeSpent) === '–' ? '0m' : hoursOf(data.summary.timeSpent)}</span>
+                  </span>
                   {hidden.size > 0 && <button onClick={onShowAll} className="text-xs text-blue-600 hover:underline ml-1">Show all</button>}
                 </div>
               )}
