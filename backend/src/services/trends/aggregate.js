@@ -94,7 +94,7 @@ export const ticketsInView = ({ rows, basis = 'resolved', months = 6, filters = 
     .filter(({ date }) => wanted.has(monthOf(date)))
     .sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(a.r.key).localeCompare(String(b.r.key)))
     .map(({ r, date }) => ({
-      key: r.key, summary: r.summary || '', type: r.type || 'Unknown', assignee: r.assignee || '', clients: r.clients || [], components: r.components || [],
+      key: r.key, summary: r.summary || '', timeSpent: Number.isFinite(r.timeSpent) ? r.timeSpent : null, type: r.type || 'Unknown', assignee: r.assignee || '', clients: r.clients || [], components: r.components || [],
       date, month: monthOf(date),
     }));
 };

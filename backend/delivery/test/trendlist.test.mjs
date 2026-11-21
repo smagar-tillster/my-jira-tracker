@@ -39,3 +39,10 @@ test("'ytd' is January up to the current month; 3 and 6 are themselves", () => {
   assert.equal(resolveMonths('3', now), 3);
   assert.deepEqual(ticketsInView({ rows, basis: 'resolved', months: resolveMonths('ytd', now), now }).map((t) => t.key), ['T-2', 'T-1', 'T-3']);
 });
+
+test('time logged comes through as seconds, and is empty when Jira has none', () => {
+  const withTime = [{ ...rows[0], timeSpent: 7200 }, { ...rows[1] }];
+  const list = ticketsInView({ rows: withTime, basis: 'resolved', months: 1, now });
+  assert.equal(list.find((t) => t.key === 'T-1').timeSpent, 7200);
+  assert.equal(list.find((t) => t.key === 'T-2').timeSpent, null);
+});

@@ -136,6 +136,8 @@ export function initDb() {
   if (!trendCols.includes('assignee')) db.exec('ALTER TABLE trend_tickets ADD COLUMN assignee TEXT');
   if (!trendCols.includes('clients')) db.exec('ALTER TABLE trend_tickets ADD COLUMN clients TEXT');
   for (const col of ['summary', 'description', 'component', 'components', 'labels', 'priority']) if (!trendCols.includes(col)) db.exec(`ALTER TABLE trend_tickets ADD COLUMN ${col} TEXT`);
+  // time logged on the ticket, in seconds (Jira's aggregate time spent); empty until the next read from Jira
+  if (!trendCols.includes('time_spent')) db.exec('ALTER TABLE trend_tickets ADD COLUMN time_spent INTEGER');
 
   console.log('✓ SQLite database initialized');
   return db;

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { trendsApi, SprintTrend, TrendFilters, TrendGroup, TrendMonths, TrendTicket } from '../../services/api';
 import TenantGroupList from '../delivery/TenantGroupList';
-import { byCount } from '../delivery/tenantGrouping';
+import { GroupOrder } from '../delivery/tenantGrouping';
 import { buildSeries, seriesCounts, monthLabel, OTHER_COLOR, SERIES_COLORS, MAX_NAMED } from '../../utils/trendsChart';
 import LineChart, { LineSeries, INK } from './LineChart';
 import MultiSelect from './MultiSelect';
@@ -238,14 +238,19 @@ const GROUP_OF: Record<TrendGroup, { tenantsOf: (t: TrendTicket) => string[]; fa
   component: { tenantsOf: t => t.components, fallback: 'No component' },
   assignee: { tenantsOf: t => [t.assignee || 'Unassigned'] },
 };
-const mostTickets = byCount<TrendTicket>();
+const logged = (items: TrendTicket[]) => items.reduce((n, t) => n + (t.timeSpent ?? 0), 0);
+/** Groups with the most time logged first (ties: most tickets, then A to Z). */
+const mostLogged: GroupOrder<TrendTicket> = (a, b) => logged(b.items) - logged(a.items) || b.items.length - a.items.length || a.tenant.localeCompare(b.tenant, 'en', { sensitivity: 'base' });
+/** Seconds as hours, one decimal: 12.5h. */
+const hoursOf = (sec: number | null) => (sec ? `${Math.round(sec / 360) / 10}h` : '–');
+const byLogged = (rows: TrendTicket[]) => [...rows].sort((a, b) => (b.timeSpent ?? 0) - (a.timeSpent ?? 0) || b.date.localeCompare(a.date));
 const dayOf = (iso: string) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
 const TicketRows: React.FC<{ rows: TrendTicket[]; showGroupCols: boolean }> = ({ rows, showGroupCols }) => (
   <table className="w-full table-fixed text-[14px] leading-[22px] [overflow-wrap:anywhere]">
     <thead className="bg-gray-50 text-left text-[13px] font-semibold text-gray-600 border-b border-gray-200">
       <tr><th className="px-3 py-[7px] w-[110px]">Done</th><th className="px-3 py-[7px] w-[130px]">Ticket</th><th className="px-3 py-[7px]">Summary</th><th className="px-3 py-[7px] w-[90px]">Type</th>
-        <th className="px-3 py-[7px] w-[150px]">Assignee</th>{showGroupCols && <th className="px-3 py-[7px] w-[22%]">Clients</th>}</tr>
+        <th className="px-3 py-[7px] w-[150px]">Assignee</th><th className="px-3 py-[7px] w-[90px] text-right">Logged</th>{showGroupCols && <th className="px-3 py-[7px] w-[22%]">Clients</th>}</tr>
     </thead>
     <tbody>
       {rows.map(t => (
@@ -255,6 +260,7 @@ const TicketRows: React.FC<{ rows: TrendTicket[]; showGroupCols: boolean }> = ({
           <td className="px-3 py-2 text-gray-800">{t.summary || <span className="text-gray-400">No summary</span>}</td>
           <td className="px-3 py-2"><span className={`px-2 py-0.5 rounded text-xs font-medium ${t.type === 'Defect' ? 'bg-rose-100 text-rose-800' : 'bg-gray-100 text-gray-700'}`}>{t.type}</span></td>
           <td className="px-3 py-2 text-gray-700">{t.assignee || <span className="text-gray-400">Unassigned</span>}</td>
+          <td className="px-3 py-2 text-right tabular-nums text-gray-800" title={t.timeSpent ? `${t.timeSpent / 3600} hours logged` : 'Nothing logged'}>{hoursOf(t.timeSpent)}</td>
           {showGroupCols && <td className="px-3 py-2 text-gray-600">{t.clients.join(', ') || '–'}</td>}
         </tr>
       ))}
@@ -281,11 +287,11 @@ const TrendTicketList: React.FC<{ months: TrendMonths; group: TrendGroup; filter
   if (!rows) return <p className="text-sm text-gray-500 py-6 text-center">Loading…</p>;
   if (shown.length === 0) return <p className="text-sm text-gray-400 py-10 text-center">No tickets in view.</p>;
   return group === 'all' ? (
-    <div className="overflow-auto max-h-[560px] border border-gray-200 rounded-md"><TicketRows rows={shown} showGroupCols /></div>
+    <div className="overflow-auto max-h-[560px] border border-gray-200 rounded-md"><TicketRows rows={byLogged(shown)} showGroupCols /></div>
   ) : (
-    <TenantGroupList items={shown} tenantsOf={names} unit="ticket" groupLabel={GROUPS.find(g => g.id === group)?.one ?? 'group'} fallback={spec.fallback} hideIntro order={mostTickets}
-      summary={items => `${items.length} ticket${items.length === 1 ? '' : 's'}`}>
-      {items => <TicketRows rows={items} showGroupCols={group !== 'client'} />}
+    <TenantGroupList items={shown} tenantsOf={names} unit="ticket" groupLabel={GROUPS.find(g => g.id === group)?.one ?? 'group'} fallback={spec.fallback} hideIntro order={mostLogged}
+      summary={items => `${items.length} ticket${items.length === 1 ? '' : 's'} · ${hoursOf(logged(items))} logged`}>
+      {items => <TicketRows rows={byLogged(items)} showGroupCols={group !== 'client'} />}
     </TenantGroupList>
   );
 };

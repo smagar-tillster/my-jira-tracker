@@ -455,7 +455,7 @@ export type TrendBasis = 'sprint' | 'created' | 'resolved';
 export type TrendGroup = 'all' | 'type' | 'client' | 'component' | 'assignee';
 /** 3 or 6 months, or 'ytd': this year so far (January up to the current month). */
 export type TrendMonths = 3 | 6 | 'ytd';
-export interface TrendTicket { key: string; summary: string; type: string; assignee: string; clients: string[]; components: string[]; date: string; month: string; url: string }
+export interface TrendTicket { key: string; summary: string; type: string; assignee: string; clients: string[]; components: string[]; date: string; month: string; url: string; /** Time logged on the ticket, in seconds (null when none or not read yet). */ timeSpent: number | null }
 export interface TrendsStatus {
   running: boolean; lastSyncAt: string | null; lastStatus: 'running' | 'ok' | 'failed' | null; lastError: string | null;
   lastDurationMs: number | null; tickets: number; firstLoad: boolean;
