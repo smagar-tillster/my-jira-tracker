@@ -241,8 +241,12 @@ const GROUP_OF: Record<TrendGroup, { tenantsOf: (t: TrendTicket) => string[]; fa
 const logged = (items: TrendTicket[]) => items.reduce((n, t) => n + (t.timeSpent ?? 0), 0);
 /** Groups with the most time logged first (ties: most tickets, then A to Z). */
 const mostLogged: GroupOrder<TrendTicket> = (a, b) => logged(b.items) - logged(a.items) || b.items.length - a.items.length || a.tenant.localeCompare(b.tenant, 'en', { sensitivity: 'base' });
-/** Seconds as hours, one decimal: 12.5h. */
-const hoursOf = (sec: number | null) => (sec ? `${Math.round(sec / 360) / 10}h` : '–');
+/** Seconds as hours and minutes: 45m, 1h 30m, 12h. */
+const hoursOf = (sec: number | null) => {
+  if (!sec) return '–';
+  const m = Math.round(sec / 60); const h = Math.floor(m / 60); const r = m % 60;
+  return h ? (r ? `${h}h ${r}m` : `${h}h`) : `${r}m`;
+};
 const byLogged = (rows: TrendTicket[]) => [...rows].sort((a, b) => (b.timeSpent ?? 0) - (a.timeSpent ?? 0) || b.date.localeCompare(a.date));
 const dayOf = (iso: string) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 

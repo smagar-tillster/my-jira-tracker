@@ -46,3 +46,10 @@ test('time logged comes through as seconds, and is empty when Jira has none', ()
   assert.equal(list.find((t) => t.key === 'T-1').timeSpent, 7200);
   assert.equal(list.find((t) => t.key === 'T-2').timeSpent, null);
 });
+
+test('a Jira ticket row takes time logged like the Tasks list: total with sub-tasks, else its own, else empty', async () => {
+  const { toRow } = await import('../../src/services/trends/sync.js');
+  assert.equal(toRow({ key: 'T-1', fields: { aggregatetimespent: 2700, timespent: 600 } }).timeSpent, 2700);
+  assert.equal(toRow({ key: 'T-2', fields: { aggregatetimespent: null, timespent: 2700 } }).timeSpent, 2700);
+  assert.equal(toRow({ key: 'T-3', fields: {} }).timeSpent, null);
+});
