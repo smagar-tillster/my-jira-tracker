@@ -89,6 +89,7 @@ export const SprintTicketsTrendView: React.FC<TrendViewProps> = ({ data, loading
               <div style={{ width: `${sd ? (data.summary.defects / sd) * 100 : 0}%`, background: SERIES_COLORS[1] }} />
             </div>
           </Tile>
+          <Tile label="Time logged" value={hoursOf(data.summary.timeSpent) === '–' ? '0m' : hoursOf(data.summary.timeSpent)} sub={data.summary.timeSpent ? 'On the tickets in view' : 'Nothing logged yet (press Refresh to read it)'} />
           <Tile label="Top client" value={data.summary.topClient?.name ?? '–'} sub={data.summary.topClient ? `${plural(data.summary.topClient.count, 'ticket')}, ${pct(data.summary.topClient.count, inRange)}% of tickets shown` : 'No done ticket has a client'} />
           <Tile label="Busiest month" value={busiest >= 0 && totals[busiest] > 0 ? monthLabel(data.months[busiest]).full : '–'} sub={busiest >= 0 && totals[busiest] > 0 ? plural(totals[busiest], 'ticket') : undefined} />
         </div>

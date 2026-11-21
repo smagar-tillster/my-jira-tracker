@@ -466,7 +466,7 @@ export interface TrendFilters { type?: string[]; client?: string[]; assignee?: s
 export interface SprintTrend {
   basis: TrendBasis; group: TrendGroup; months: string[]; series: TrendSeries[]; counts: Record<string, number[]>;
   /** For the tiles, over the tickets counted in the months shown. */
-  summary: { stories: number; defects: number; topClient: { name: string; count: number } | null };
+  summary: { stories: number; defects: number; topClient: { name: string; count: number } | null; /** Time logged on the tickets counted, in seconds. */ timeSpent: number };
   /** Distinct tickets per month (a ticket with two clients is one here although it is under both clients in `counts`). */
   totals: number[];
   options: { types: string[]; clients: string[]; components: string[]; assignees: string[] };

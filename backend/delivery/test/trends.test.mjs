@@ -98,8 +98,8 @@ test('with no split there is one line, All tickets, which is the month totals', 
 
 test('the tile numbers: stories, defects and the top client, over the tickets in view only', () => {
   const a = A.aggregate({ rows: rows(), months: 6, now: NOW });
-  assert.deepEqual(a.summary, { stories: 2, defects: 2, topClient: { name: 'BK', count: 3 } });   // A-1, A-2 (Story), A-3, A-4 (Defect); A-6, A-8 are not in view
-  assert.deepEqual(A.aggregate({ rows: rows(), months: 6, filters: { assignee: 'Ann' }, now: NOW }).summary, { stories: 1, defects: 1, topClient: { name: 'BK', count: 1 } });   // PLK ties and sorts after BK
+  assert.deepEqual(a.summary, { stories: 2, defects: 2, topClient: { name: 'BK', count: 3 }, timeSpent: 0 });   // A-1, A-2 (Story), A-3, A-4 (Defect); A-6, A-8 are not in view
+  assert.deepEqual(A.aggregate({ rows: rows(), months: 6, filters: { assignee: 'Ann' }, now: NOW }).summary, { stories: 1, defects: 1, topClient: { name: 'BK', count: 1 }, timeSpent: 0 });   // PLK ties and sorts after BK
   assert.equal(A.aggregate({ rows: [], now: NOW }).summary.topClient, null);
 });
 

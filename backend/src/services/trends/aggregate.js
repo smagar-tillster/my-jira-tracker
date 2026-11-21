@@ -112,7 +112,7 @@ export const aggregate = ({ rows, basis = 'sprint', group = 'all', months = 6, f
   const counts = {};
   const totals = list.map(() => 0);
   let noDate = 0; let future = 0; let before = 0; let inRange = 0;
-  const summary = { stories: 0, defects: 0, topClient: null };
+  const summary = { stories: 0, defects: 0, topClient: null, timeSpent: 0 };
   const clientCounts = new Map();
   for (const r of kept) {
     const m = monthOf(dateFor(r, basis));
@@ -123,6 +123,7 @@ export const aggregate = ({ rows, basis = 'sprint', group = 'all', months = 6, f
     inRange++; totals[i]++;
     if (r.type === 'Story') summary.stories++;
     else if (r.type === 'Defect') summary.defects++;
+    if (Number.isFinite(r.timeSpent)) summary.timeSpent += r.timeSpent;
     for (const c of r.clients?.length ? r.clients : []) clientCounts.set(c, (clientCounts.get(c) || 0) + 1);
     for (const v of valuesFor(r, group)) (counts[v] ||= list.map(() => 0))[i]++;
   }

@@ -8,7 +8,7 @@ import path from 'node:path';
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mytracker-trendlist-'));
 process.env.DATA_DIR = tmp;
 process.env.NGK_DATA_DIR = tmp;
-const { ticketsInView, resolveMonths } = await import('../../src/services/trends/aggregate.js');
+const { ticketsInView, resolveMonths, aggregate } = await import('../../src/services/trends/aggregate.js');
 
 const now = new Date('2026-11-20T12:00:00');
 const rows = [
@@ -52,4 +52,10 @@ test('a Jira ticket row takes time logged like the Tasks list: total with sub-ta
   assert.equal(toRow({ key: 'T-1', fields: { aggregatetimespent: 2700, timespent: 600 } }).timeSpent, 2700);
   assert.equal(toRow({ key: 'T-2', fields: { aggregatetimespent: null, timespent: 2700 } }).timeSpent, 2700);
   assert.equal(toRow({ key: 'T-3', fields: {} }).timeSpent, null);
+});
+
+test('the summary adds up the time logged on every ticket in view, whatever the grouping', () => {
+  const timed = [{ ...rows[0], timeSpent: 2700 }, { ...rows[1], timeSpent: 900 }, { ...rows[2], timeSpent: 600 }, { ...rows[3], timeSpent: 99999 }];
+  for (const group of ['all', 'client']) assert.equal(aggregate({ rows: timed, basis: 'resolved', group, months: 3, now }).summary.timeSpent, 4200);   // T-4 is out of range
+  assert.equal(aggregate({ rows, basis: 'resolved', months: 3, now }).summary.timeSpent, 0);
 });
