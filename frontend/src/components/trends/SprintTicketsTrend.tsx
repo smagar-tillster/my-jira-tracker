@@ -294,7 +294,7 @@ const TrendTicketList: React.FC<{ months: TrendMonths; group: TrendGroup; filter
     <div className="overflow-auto max-h-[560px] border border-gray-200 rounded-md"><TicketRows rows={byLogged(shown)} showGroupCols /></div>
   ) : (
     <TenantGroupList items={shown} tenantsOf={names} unit="ticket" groupLabel={GROUPS.find(g => g.id === group)?.one ?? 'group'} fallback={spec.fallback} hideIntro order={mostLogged}
-      summary={items => `${items.length} ticket${items.length === 1 ? '' : 's'} · ${hoursOf(logged(items))} logged`}>
+      summary={items => `⏱ ${hoursOf(logged(items)) === '–' ? '0m' : hoursOf(logged(items))} logged · ${items.length} ticket${items.length === 1 ? '' : 's'}`}>
       {items => <TicketRows rows={byLogged(items)} showGroupCols={group !== 'client'} />}
     </TenantGroupList>
   );
